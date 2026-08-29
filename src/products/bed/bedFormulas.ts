@@ -7,25 +7,35 @@ import type { ComponentSource } from '../../engine/types';
 // below is exactly that sheet's documented formula, evaluated against this
 // session's real measurements — never a hand-typed or approximated number.
 //
-// MAPPING DECISION (the source sheet reuses generic W/H/D column names across
-// every product family, and Bed's own README flags an internal
-// inconsistency — see docs/PRODUCT_STANDARDS.md "Open questions"):
-//   CALC_BED "W" -> this app's W (overall / mattress width) — anchored by
-//     HEAD BOARD height = W, and a headboard's installed span is the bed's width.
-//   CALC_BED "H" -> this app's H (frame / box height) — anchored by
-//     LEFT+RIGHT SIDE height = H - clearances, a side rail's vertical height.
-//   CALC_BED "D" -> this app's D (Side Panel Depth field, literal name match)
-//     — used only by BACK PANAL+FRNT. Flagged for shop-floor confirmation.
-// Mattress LENGTH (this app's "L") is not an input to any verified CALC_BED
-// formula — it is used only to draw the real mattress footprint in Plan/Side
-// views, which needs no formula (it's just the mattress's own stated size).
+// AXIS MAPPING — now definitively resolved (previously flagged as an open
+// question; re-derived directly from the ORIGINAL source workbook
+// FORMULA.xlsx, sheets "BED" and "BED 2", which is what CALC_BED was
+// generalized from):
+//
+//   Both source sheets have an explicit header row "W | D | H" directly
+//   above the real example values (BED: 1830 | 400 | 1980 — title cell
+//   literally reads "BED (1830X400X1980)"; BED 2: 1067 | 400 | 2033).
+//   Tracing every formula against both examples independently confirms:
+//     sheet "W" = overall / mattress WIDTH        -> this app's W (unchanged)
+//     sheet "D" = FRAME HEIGHT (~400mm)            -> this app's H (Frame Height)
+//     sheet "H" = MATTRESS LENGTH (~1980-2033mm)   -> this app's L (Overall Length)
+//   e.g. LEFT+RIGHT SIDE height = "=D2-100-18" evaluates to 1862 in the BED
+//   example (1980-118) and 1915 in BED 2 (2033-118) — only consistent with
+//   sheet "H" meaning mattress length, not frame height.
+//
+//   This also resolves the workbook's own README caveat ("Bed: Depth is
+//   never used in any Bed formula") — it's correct as stated: this app's own
+//   dedicated "D" / Side Panel Depth field has no corresponding parameter in
+//   the verified 3-input sheet at all (a rectangular bed frame has no
+//   independent depth axis distinct from its length) and is intentionally
+//   not read by any formula below.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface BedInputs {
   W: number; // overall / mattress width
-  L: number; // mattress length (not a CALC_BED formula input — see note above)
-  H: number; // frame/box height
-  D: number; // "Side Panel Depth" field — the one formula that reads CALC_BED's D
+  L: number; // mattress length — this is sheet "H" (verified above)
+  H: number; // frame/box height — this is sheet "D" (verified above)
+  D: number; // "Side Panel Depth" field — genuinely unused by any verified formula (see mapping note)
   headboardH: number; // this app keeps headboard height user-adjustable — see docs
   thk: number;
   includeHeadboard: boolean;
@@ -45,7 +55,7 @@ export interface BedCutRow {
 const C = CLEARANCE_MASTER;
 
 export function computeBedCutlist(inp: BedInputs): BedCutRow[] {
-  const { W, H, D, headboardH, includeHeadboard, includeHydraulic } = inp;
+  const { W, L, H, headboardH, includeHeadboard, includeHydraulic } = inp;
   const rows: BedCutRow[] = [];
 
   if (includeHeadboard) {
@@ -56,25 +66,25 @@ export function computeBedCutlist(inp: BedInputs): BedCutRow[] {
   }
   const backFront = W - C.BED_W_CLR1 - C.BED_W_CLR2;
   rows.push({
-    id: 'BACK_PANEL_FRONT', type: 'BACK_PANEL_FRONT', label: 'Back Panel + Front', cutWidth: D, cutHeight: backFront, qty: 2,
-    source: { formula: `Width = D | Height = W - BED_W_CLR1(${C.BED_W_CLR1}) - BED_W_CLR2(${C.BED_W_CLR2})`, constants: ['BED_W_CLR1', 'BED_W_CLR2'], needsVerification: true, note: 'D-mapping flagged in docs/PRODUCT_STANDARDS.md — confirm with shop floor.' },
+    id: 'BACK_PANEL_FRONT', type: 'BACK_PANEL_FRONT', label: 'Back Panel + Front', cutWidth: H, cutHeight: backFront, qty: 2,
+    source: { formula: `Width = H (Frame Height) | Height = W - BED_W_CLR1(${C.BED_W_CLR1}) - BED_W_CLR2(${C.BED_W_CLR2})`, constants: ['BED_W_CLR1', 'BED_W_CLR2'] },
   });
-  const sideH = H - C.BED_H_CLR1 - C.BED_H_CLR2;
+  const sideH = L - C.BED_H_CLR1 - C.BED_H_CLR2;
   rows.push({
-    id: 'SIDE_400', type: 'SIDE_PANEL', label: 'Left+Right Side (400)', cutWidth: D, cutHeight: sideH, qty: 2,
-    source: { formula: `Width = D | Height = H - BED_H_CLR1(${C.BED_H_CLR1}) - BED_H_CLR2(${C.BED_H_CLR2})`, constants: ['BED_H_CLR1', 'BED_H_CLR2'] },
+    id: 'SIDE_400', type: 'SIDE_PANEL', label: 'Left+Right Side (400)', cutWidth: H, cutHeight: sideH, qty: 2,
+    source: { formula: `Width = H (Frame Height) | Height = L (Mattress Length) - BED_H_CLR1(${C.BED_H_CLR1}) - BED_H_CLR2(${C.BED_H_CLR2})`, constants: ['BED_H_CLR1', 'BED_H_CLR2'] },
   });
   rows.push({
     id: 'SIDE_330', type: 'SIDE_PANEL', label: 'Left+Right Side (330)', cutWidth: 330, cutHeight: sideH, qty: 2,
-    source: { formula: `Width = 330 (fixed) | Height = H - BED_H_CLR1 - BED_H_CLR2`, constants: ['BED_H_CLR1', 'BED_H_CLR2'], fixed: true },
+    source: { formula: `Width = 330 (fixed) | Height = L (Mattress Length) - BED_H_CLR1 - BED_H_CLR2`, constants: ['BED_H_CLR1', 'BED_H_CLR2'], fixed: true },
   });
   rows.push({
     id: 'FRNT', type: 'FOOT_RAIL', label: 'Front (Foot Rail)', cutWidth: 330, cutHeight: W - C.BED_W_CLR1, qty: 1,
     source: { formula: `Width = 330 (fixed) | Height = W - BED_W_CLR1(${C.BED_W_CLR1})`, constants: ['BED_W_CLR1'], fixed: true },
   });
   rows.push({
-    id: 'TOP', type: 'PLATFORM_TOP', label: 'Top (Platform)', cutWidth: W, cutHeight: H / 2, qty: 2,
-    source: { formula: 'Width = W | Height = H / 2', constants: [] },
+    id: 'TOP', type: 'PLATFORM_TOP', label: 'Top (Platform)', cutWidth: W, cutHeight: L / 2, qty: 2,
+    source: { formula: 'Width = W | Height = L (Mattress Length) / 2', constants: [] },
   });
   rows.push({
     id: 'BOTTOM', type: 'PLATFORM_BOTTOM', label: 'Bottom', cutWidth: backFront, cutHeight: (sideH - C.BED_BOTTOM_H_DEDUCT) / 2, qty: 2,
@@ -85,8 +95,8 @@ export function computeBedCutlist(inp: BedInputs): BedCutRow[] {
     source: { formula: 'Width = 50 (fixed) | Height = W', constants: [], fixed: true },
   });
   rows.push({
-    id: 'PATTI_H', type: 'TRIM_PATTI', label: 'Top Patti', cutWidth: 50, cutHeight: H, qty: 2,
-    source: { formula: 'Width = 50 (fixed) | Height = H', constants: [], fixed: true },
+    id: 'PATTI_H', type: 'TRIM_PATTI', label: 'Top Patti', cutWidth: 50, cutHeight: L, qty: 2,
+    source: { formula: 'Width = 50 (fixed) | Height = L (Mattress Length)', constants: [], fixed: true },
   });
   rows.push({
     id: 'H_SELF_A', type: 'SHELF', label: 'H Panal Self', cutWidth: 250, cutHeight: 750, qty: 2,

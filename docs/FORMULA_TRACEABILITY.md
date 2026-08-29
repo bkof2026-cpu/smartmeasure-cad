@@ -50,6 +50,36 @@ workbook doesn't include a `VALIDATION`-tab-style table for those families — t
 formulas are individually documented in each `CALC_*` sheet's own notes column instead, which is
 the traceability basis used until a table like BOX's exists).
 
+## Worked example (BED family, axis-mapping proof)
+
+`FORMULA.xlsx` sheets "BED" and "BED 2" each carry a literal header row `W | D | H` directly above
+a real numeric example: BED = `1830 | 400 | 1980` (title cell "BED (1830X400X1980)"); BED 2 =
+`1067 | 400 | 2033`. Tracing the `LEFT+RIGHT SIDE height = D2 − 100 − 18` formula against both:
+
+| Sheet | `H` value | `LEFT+RIGHT SIDE height` per formula | Only consistent with |
+|---|---|---|---|
+| BED (1830×400×1980) | 1980 | `1980 − 100 − 18 = 1862` | sheet `H` = mattress length |
+| BED 2 (1067×400×2033) | 2033 | `2033 − 100 − 18 = 1915` | sheet `H` = mattress length |
+
+If sheet `H` instead meant frame height (~400mm, as originally implemented), the formula would
+evaluate to a negative number in both examples — proof by contradiction that the original mapping
+(this app's `H` field ← sheet `H`, this app's `D` field ← sheet `D`) was wrong. The corrected
+mapping — this app's `H` field ← sheet `D`, this app's `L` field ← sheet `H` — was verified live
+against the running engine on 29 Aug 2026 at `W=1800, L=2000, H=450, thk=18, headboardH=1200`:
+
+| Component | Formula | Calculation | Engine result |
+|---|---|---|---|
+| BACK PANAL+FRNT width | `H` (Frame Height) | `450` | 450 |
+| LEFT+RIGHT SIDE (400) width | `H` (Frame Height) | `450` | 450 |
+| LEFT+RIGHT SIDE (400) height | `L − BED_H_CLR1(100) − BED_H_CLR2(18)` | `2000 − 118` | 1882 |
+| FRNT height | `W − BED_W_CLR1(200)` | `1800 − 200` | 1600 |
+| TOP height | `L / 2` | `2000 / 2` | 1000 |
+| TOP PATTI (×2) height | `L` | `2000` | 2000 |
+
+All six confirmed exact-match against the PDF's component table and the Drawing Inspector's
+per-component formula display (see `src/products/bed/bedFormulas.ts` header comment for the full
+before/after derivation).
+
 ## What "Formula Verified ✓" is allowed to mean in this app
 
 A product may show "Formula Verified ✓" only when every one of its resolved components' formulas

@@ -78,21 +78,34 @@ W780×H615×D400) — see `FORMULA_TRACEABILITY.md`.
 
 ## BED
 
-Inputs: `W`, `H`, `D` — **open question**: which physical bed axis each maps to is not stated
-explicitly in the sheet (see "Open questions" below); headboard height = `W`, so `W` behaves as
-the *width across the headboard* (mattress width). `H` behaves as the bed *box/frame height*.
+Inputs (sheet-native names): `W`, `D`, `H`. **Axis mapping is now definitively resolved** —
+re-derived directly from `FORMULA.xlsx` sheets "BED" and "BED 2", which both carry an explicit
+header row `W | D | H` directly above a real numeric example (BED: `1830 | 400 | 1980`, title cell
+literally "BED (1830X400X1980)"; BED 2: `1067 | 400 | 2033`, cross-validated independently).
+Tracing every formula against both examples confirms:
 
-| Component | Width | Height | Qty | Notes |
+- sheet `W` = overall / mattress **width** → this app's `W` field (unchanged)
+- sheet `D` = **frame/box height** (~400mm) → this app's `H` field ("Frame Height")
+- sheet `H` = **mattress length** (~1980–2033mm) → this app's `L` field ("Overall Length")
+
+e.g. `LEFT+RIGHT SIDE height = D2−100−18` evaluates to 1862 in the BED example (1980−118) and 1915
+in BED 2 (2033−118) — only consistent with sheet `H` meaning mattress length, not frame height.
+This also resolves the workbook's own README caveat ("Bed: Depth is never used in any Bed
+formula") — correct as stated: this app's own dedicated `D` / "Side Panel Depth" field has no
+matching parameter in the verified 3-input sheet at all, and is intentionally unused by every
+formula below.
+
+| Component | Width (sheet formula) | Height (sheet formula) | Qty | Notes |
 |---|---|---|---|---|
 | HEAD BOARD 36MM | 900 (fixed) | `W` | 1 | only if Headboard = Yes |
-| BACK PANAL + FRNT | `D` | `W − BED_W_CLR1 − BED_W_CLR2` | 2 | |
-| LEFT+RIGHT SIDE (400) | `D` | `H − BED_H_CLR1 − BED_H_CLR2` | 2 | |
-| LEFT+RIGHT SIDE (330) | 330 (fixed) | `H − BED_H_CLR1 − BED_H_CLR2` | 2 | |
+| BACK PANAL + FRNT | `D` → app `H` (Frame Height) | `W − BED_W_CLR1 − BED_W_CLR2` | 2 | |
+| LEFT+RIGHT SIDE (400) | `D` → app `H` (Frame Height) | `H` → app `L` (Mattress Length) `− BED_H_CLR1 − BED_H_CLR2` | 2 | |
+| LEFT+RIGHT SIDE (330) | 330 (fixed) | `H` → app `L` (Mattress Length) `− BED_H_CLR1 − BED_H_CLR2` | 2 | |
 | FRNT | 330 (fixed) | `W − BED_W_CLR1` | 1 | |
-| TOP | `W` | `H / 2` | 2 | |
+| TOP | `W` | `H` → app `L` (Mattress Length) `/ 2` | 2 | |
 | BOTTAM | `[BACK PANAL+FRNT height]` | `([L/R SIDE 400 height] − BED_BOTTOM_H_DEDUCT) / 2` | 2 | |
 | TOP PATTI | 50 (fixed) | `W` | 1 | |
-| TOP PATTI | 50 (fixed) | `H` | 2 | |
+| TOP PATTI | 50 (fixed) | `H` → app `L` (Mattress Length) | 2 | |
 | H PANAL SELF | 250×750 (fixed) | | 2 | **not derived from W/H/D** in source data |
 | H PANAL SELF | 200×1000 (fixed) | | 2 | **not derived from W/H/D** in source data |
 | HYDRAULIC MECHANISM | — | — | 0/1 flag | hardware only, adds no cut panel |
@@ -101,10 +114,11 @@ Side table(s) attached to a bed use the **Side Table** family's own component se
 a zone beside the headboard end — entered historically as a separate order line, not folded into
 Bed's cutlist.
 
-**Open questions (flag to the user, do not silently resolve):**
-- Bed's `D` input is flagged unused by the workbook's own README, yet `BACK PANAL+FRNT` width
-  formula reads `= D`. Needs confirmation which is correct before shipping as "Formula Verified."
-- H PANAL SELF shelf pair sizes are fixed regardless of bed size — confirm if this is intentional.
+Implemented in `src/products/bed/bedFormulas.ts` (`computeBedCutlist`), with every drawn front-
+elevation component (side panel thickness, top patti, foot rail) and plan-view component
+(Platform A/B) individually dimensioned on-screen and in the PDF — not just listed in the
+component table. Resolved 29 Aug 2026; previously shipped with `D`↔`H` swapped (flagged
+`needsVerification` at the time) — see `FORMULA_TRACEABILITY.md` for the full before/after proof.
 
 ## SIDE TABLE
 

@@ -57,6 +57,15 @@ export function resolveBedFront(inp: BedInputs, sideTables: SideTableZone[] = []
   const mattH = Math.max(0, floorY - footRailH - mattY - 6);
   components.push({ id: 'bed-mattress', type: 'MATTRESS', label: 'Mattress Zone', x: bedX + thk + 6, y: mattY, width: W - thk * 2 - 12, height: mattH, qty: 1, visible: true, source: { formula: 'Drawn at entered mattress size — not a cut panel', constants: [] } });
 
+  // Per-component dimensions — every drawn part gets its own real size
+  // labeled on the drawing, not just the overall width/height. (Platform
+  // Top/Bottom boards are lay-flat panels, not visible edge-on in a front
+  // elevation with a meaningful height — their real W x L/2 dimension is
+  // shown in the Plan view instead, where the board's true face is seen.)
+  dimReqs.push({ axis: 'v', x1: bedX, y1: frameY, x2: bedX, y2: frameY + pattiH, edge: 'left', componentIds: ['bed-patti'], label: `${Math.round(pattiH)} mm`, source: pattiRow.source });
+  dimReqs.push({ axis: 'v', x1: bedX, y1: floorY - footRailH, x2: bedX, y2: floorY, edge: 'left', componentIds: ['bed-foot-rail'], label: `${Math.round(footRailH)} mm`, source: frnt.source });
+  dimReqs.push({ axis: 'h', x1: bedX, y1: frameY, x2: bedX + thk, y2: frameY, edge: 'top', componentIds: ['bed-side-l'], label: `${Math.round(thk)} mm`, source: leftSide.source });
+
   // Side tables
   for (const zone of sideTables) {
     const originX = zone.side === 'left' ? 0 : bedX + W + GAP;
@@ -123,6 +132,7 @@ export function resolveBedPlan(inp: BedInputs, L: number, sideTables: SideTableZ
   const { W, thk } = inp;
   const railBand = Math.max(thk * 3, 40);
   const footBand = Math.max(thk * 2, 30);
+  const cutlist = computeBedCutlist(inp);
 
   const leftZone = sideTables.find((z) => z.side === 'left');
   const rightZone = sideTables.find((z) => z.side === 'right');
@@ -142,6 +152,18 @@ export function resolveBedPlan(inp: BedInputs, L: number, sideTables: SideTableZ
     { axis: 'h', x1: bedX, y1: L, x2: bedX + W, y2: L, edge: 'bottom', componentIds: components.map((c) => c.id), label: `${Math.round(W)} mm`, source: { formula: 'Overall Width = W', constants: [] } },
     { axis: 'v', x1: bedX + W, y1: 0, x2: bedX + W, y2: L, edge: 'right', componentIds: components.map((c) => c.id), label: `${Math.round(L)} mm`, source: { formula: 'Mattress Length = L (entered)', constants: [] } },
   ];
+
+  // Platform (Top) boards — 2 real lay-flat panels forming the mattress
+  // deck, each W x L/2. Genuinely visible face-on only in plan, so drawn
+  // here (split across the mattress footprint) with their real cut size,
+  // instead of a misleading edge-on sliver on the front elevation.
+  const platformRow = cutlist.find((r) => r.id === 'TOP')!;
+  const platformInnerW = W - railBand * 2 - 12;
+  const platformY1 = railBand + 6;
+  const platformSplitY = platformY1 + platformRow.cutHeight;
+  components.push({ id: 'bed-plan-platform-a', type: 'PLATFORM_TOP', label: 'Platform A', x: bedX + railBand + 6, y: platformY1, width: platformInnerW, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
+  components.push({ id: 'bed-plan-platform-b', type: 'PLATFORM_TOP', label: 'Platform B', x: bedX + railBand + 6, y: platformSplitY, width: platformInnerW, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
+  dimReqs.push({ axis: 'v', x1: bedX + railBand + 6 - 4, y1: platformY1, x2: bedX + railBand + 6 - 4, y2: platformSplitY, edge: 'left', componentIds: ['bed-plan-platform-a'], label: `${Math.round(platformRow.cutHeight)} mm`, source: platformRow.source });
 
   for (const zone of sideTables) {
     const originX = zone.side === 'left' ? 0 : bedX + W + GAP;
