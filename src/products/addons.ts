@@ -31,6 +31,7 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Frame & Structure', color: '#3b82f6', keys: ['W', 'L', 'H', 'thk'] },
     { label: 'Headboard',         color: '#f59e0b', keys: ['headboardH'] },
     { label: 'Side Panel',        color: '#8b5cf6', keys: ['D'] },
+    { label: 'Base / Skirting',   color: '#a16207', keys: ['skirtingH'] },
   ],
   'side-table': [
     { label: 'Cabinet Body',   color: '#3b82f6', keys: ['W', 'D', 'H', 'thk'] },

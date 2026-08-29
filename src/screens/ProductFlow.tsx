@@ -115,7 +115,17 @@ function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]
 </html>`;
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
+  // Direct file download to the device (no new tab / print-dialog step) —
+  // an <a download> click is what actually saves a file in the browser;
+  // window.open() only opened a viewable tab the user had to Ctrl+P from.
+  const safeName = productName.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'drawing';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeName}-2D-Drawing.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 // ─── Add-on detail views (generic / not yet migrated to the real engine) ──────
