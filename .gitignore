@@ -1,0 +1,24 @@
+node_modules/
+dist/
+*.zip
+# Reference-only assets, not imported by any source file, and GitHub's LFS
+# storage isn't provisioned for this repo (uploads returned 501) — excluded
+# rather than fighting LFS for files the app never actually loads.
+src/imports/Arc_.Rutuja_Joshi__compressed.pdf
+src/imports/image.png
+src/imports/image-1.png
+src/imports/image-2.png
+# .mise.toml pins pnpm as the package manager; keep pnpm-lock.yaml as the
+# single source of truth so Vercel doesn't see two conflicting lockfiles.
+package-lock.json
+build/
+.cache/
+.env*
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+*-debug.log*
+logs/
+*.log
+.claude-replay.*
+.tmp-*

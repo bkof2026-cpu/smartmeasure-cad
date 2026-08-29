@@ -1,0 +1,10 @@
+{
+  "description": "Streamline on-site furniture measurements and 2D drawing creation for interior teams, ensuring accurate, real-time updates and project validation.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
