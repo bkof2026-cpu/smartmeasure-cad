@@ -27,7 +27,7 @@ export interface BoxCutRow {
 const C = CLEARANCE_MASTER;
 
 export function computeBoxCutlist(inp: BoxInputs): BoxCutRow[] {
-  const { W, H, D, verticalQty, shelfQty, includeBack, includeDoor } = inp;
+  const { W, H, D, thk, verticalQty, shelfQty, includeBack, includeDoor } = inp;
   const rows: BoxCutRow[] = [];
 
   rows.push({ id: 'TOP', type: 'TOP_PANEL', label: 'Top', cutWidth: W - C.BOX_TB_DEDUCT, cutHeight: D, qty: 1, source: { formula: `Width = W - BOX_TB_DEDUCT(${C.BOX_TB_DEDUCT}) | Height = D`, constants: ['BOX_TB_DEDUCT'] } });
@@ -46,7 +46,14 @@ export function computeBoxCutlist(inp: BoxInputs): BoxCutRow[] {
   }
   if (includeDoor) {
     const compartments = Math.max(1, verticalQty + 1);
-    rows.push({ id: 'DOOR', type: 'DOOR', label: 'Door', cutWidth: (W - 5) / compartments, cutHeight: H - 5, qty: compartments, source: { formula: 'NOT formula-driven in verified source data — confirmed manual in every historical order (each used a different door width). Shown here at an even compartment split for the drawing only.', constants: [], needsVerification: true, note: 'Enter the real door size from the client cutting slip before fabrication.' } });
+    // Door width per the user's own real fabrication practice (confirmed
+    // directly against real loft box / cabinet photos, not the CALC_BOX
+    // sheet — that sheet states Door is not formula-driven at all): divide
+    // the Overall Width by the Number of Boxes, then deduct the material
+    // thickness once (the divider/side panel it sits against) and a 2mm
+    // groove — not the old (W - thk*2)/compartments carcass-based split.
+    const doorWidth = W / compartments - thk - 2;
+    rows.push({ id: 'DOOR', type: 'DOOR', label: 'Door', cutWidth: doorWidth, cutHeight: H - 5, qty: compartments, source: { formula: `Width = (W / Number of Boxes(${compartments})) - Material Thickness(${thk}) - 2mm (door groove) | Height = H - 5 (fixed, unconfirmed — CALC_BOX marks Door as not formula-driven)`, constants: [], note: 'Width formula confirmed by the user against real fabrication practice. Height still an even placeholder — enter the real door height from the client cutting slip before fabrication.' } });
   }
 
   return rows;

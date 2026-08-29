@@ -71,10 +71,11 @@ Inputs: `W`, `H`, `D` (overall width/height/depth of the box carcass).
 | BACK (9mm) | `W − BOX_BACK_WH_DEDUCT` | `H − BOX_BACK_WH_DEDUCT` | 1 | qty 0 if Back Panel = No |
 | VERTICAL | `D − BOX_VERT_D_DEDUCT` | `H − BOX_VERT_H_DEDUCT` | Vertical Qty | |
 | SHELF | `W − BOX_TB_DEDUCT` | `D − BOX_VERT_D_DEDUCT` | Shelf Qty | not cross-checked against a real Shelf order yet — flag as unverified pattern |
-| DOOR | — | — | Door Qty | **not formula-driven** — confirmed manual in every historical order; enter per order |
+| DOOR | `(W / Number of Boxes) − Material Thickness − 2` | `H − 5` (unconfirmed placeholder) | Door Qty | Width formula confirmed 29 Aug 2026 by the user directly against real fabrication practice (not the CALC_BOX sheet, which states Door is not formula-driven at all). Height still an even-split placeholder — enter the real door height from the client cutting slip. |
 
 Verified exactly against 2 real historical orders (client TAMBARAM PATEL, W2295×H615×D400 and
-W780×H615×D400) — see `FORMULA_TRACEABILITY.md`.
+W780×H615×D400) — see `FORMULA_TRACEABILITY.md`. The DOOR width formula above is a separate,
+directly user-confirmed real-world formula, not from that historical-order cross-check.
 
 ## BED
 
@@ -102,12 +103,14 @@ formula below.
 | LEFT+RIGHT SIDE (400) | `D` → app `H` (Frame Height) | `H` → app `L` (Mattress Length) `− BED_H_CLR1 − BED_H_CLR2` | 2 | |
 | LEFT+RIGHT SIDE (330) | 330 (fixed) | `H` → app `L` (Mattress Length) `− BED_H_CLR1 − BED_H_CLR2` | 2 | |
 | FRNT | 330 (fixed) | `W − BED_W_CLR1` | 1 | |
-| TOP | `W` | `H` → app `L` (Mattress Length) `/ 2` | 2 | |
+| TOP | `W` | `H` → app `L` (Mattress Length) `/ 2` | 2 | Cut from **16mm** stock — every other Bed panel uses the general Material Thickness field |
 | BOTTAM | `[BACK PANAL+FRNT height]` | `([L/R SIDE 400 height] − BED_BOTTOM_H_DEDUCT) / 2` | 2 | |
 | TOP PATTI | 50 (fixed) | `W` | 1 | |
 | TOP PATTI | 50 (fixed) | `H` → app `L` (Mattress Length) | 2 | |
 | H PANAL SELF | 250×750 (fixed) | | 2 | **not derived from W/H/D** in source data |
 | H PANAL SELF | 200×1000 (fixed) | | 2 | **not derived from W/H/D** in source data |
+| SKIRTING (Front/Back) | Skirting Height (fixed, user-entered) | `W` | 2 | No verified CALC_BED row — added 29 Aug 2026 as a real, user-adjustable measurement (base trim band visible in real assembled beds), same honest treatment as Headboard Height |
+| SKIRTING (Sides) | Skirting Height (fixed, user-entered) | `L` (Mattress Length) | 2 | Same as above |
 | HYDRAULIC MECHANISM | — | — | 0/1 flag | hardware only, adds no cut panel |
 
 Side table(s) attached to a bed use the **Side Table** family's own component set, positioned as

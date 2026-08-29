@@ -29,7 +29,12 @@ export function resolveBoxFront(inp: BoxInputs): ResolvedDrawing {
   for (let i = 0; i < compartments; i++) {
     const cx = thk + compW * i;
     if (includeDoor && doorRow) {
-      components.push({ id: `door-${i}`, type: 'DOOR', label: `Door ${i + 1}`, x: cx + 2, y: thk + 2, width: compW - 4, height: H - thk * 2 - 4, qty: 1, visible: true, source: doorRow.source });
+      // Door drawn at its real cutlist width (W/compartments - thk - 2mm
+      // groove — see boxFormulas.ts), centered in its raw W/compartments
+      // slot so the BOM and the drawing never disagree on door size.
+      const doorW = doorRow.cutWidth;
+      const doorX = cx + (compW - doorW) / 2;
+      components.push({ id: `door-${i}`, type: 'DOOR', label: `Door ${i + 1}`, x: doorX, y: thk + 2, width: doorW, height: H - thk * 2 - 4, qty: 1, visible: true, source: doorRow.source });
     } else {
       components.push({ id: `open-${i}`, type: 'NICHE_PANEL', label: `Box ${i + 1}`, x: cx + 3, y: thk + 3, width: compW - 6, height: H - thk * 2 - 6, qty: 1, visible: true, source: { formula: 'Open compartment (no door)', constants: [] } });
     }
