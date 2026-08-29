@@ -7,8 +7,10 @@ import type { AddonDef } from '../products/addons';
 import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSelection';
 import { BedTechnicalDrawing } from '../products/bed/BedTechnicalDrawing';
 import type { SideTableZone } from '../products/bed/bedGeometry';
-import { WardrobeTechnicalDrawing } from '../products/wardrobe/WardrobeTechnicalDrawing';
+import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
+import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 const n = (v: number | string) => Number(v);
 type WorkspaceTab = 'measure' | 'drawing' | 'evidence' | 'validation' | 'pdf' | 'history';
@@ -35,12 +37,46 @@ const MIXED_WARDROBE_FIELDS = [
 // of being the one hand-authored special case. See renderMainDrawing().
 // ─── PDF Download ─────────────────────────────────────────────────────────────
 
-function downloadPDF(containerRef: React.RefObject<HTMLDivElement | null>, productName: string) {
-  const container = containerRef.current;
-  if (!container) return;
-  const svgs = Array.from(container.querySelectorAll('svg'));
-  if (svgs.length === 0) return;
-  const svgHTML = svgs.map((s) => s.outerHTML).join('\n<div style="margin:16px 0;border-top:1px dashed #ccc"></div>\n');
+interface PdfCutRow { component: string; width: number; height: number; qty: number; thickness?: number; remark?: string; }
+interface PdfView { label: string; svgHTML: string; }
+
+/**
+ * Every part's real formula/size/qty as a clean table — not leader-line
+ * callouts scattered across the drawing (which gets congested fast once a
+ * design has 20+ real components). This is the same information the
+ * on-screen Drawing Inspector shows for one clicked component, just listed
+ * for every component at once, the way a real fabrication drawing's
+ * component/BOM table does.
+ */
+function componentTableHTML(rows: PdfCutRow[]): string {
+  if (!rows.length) return '';
+  const body = rows.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${r.component}</td>
+      <td>${Math.round(r.width)}</td>
+      <td>${Math.round(r.height)}</td>
+      <td>${r.qty}</td>
+      <td>${r.thickness ?? ''}</td>
+      <td>${r.remark ?? ''}</td>
+    </tr>`).join('');
+  return `
+  <table class="comp-table">
+    <thead><tr><th>Sr.</th><th>Component</th><th>Width (mm)</th><th>Height (mm)</th><th>Qty</th><th>Thk (mm)</th><th>Formula / Note</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
+/**
+ * One PDF, every applicable view (Front/Plan/Side, or Internal where a
+ * product has it) — each view is re-rendered off-screen at its own view
+ * value (see renderMainDrawing's viewOverride param), so the PDF is never
+ * limited to whichever single tab happened to be open when Download was
+ * clicked.
+ */
+function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]) {
+  if (views.length === 0) return;
+  const svgHTML = views.map((v) => `<div class="view-label">${v.label.toUpperCase()} VIEW</div>${v.svgHTML}`).join('\n<div style="margin:16px 0;border-top:1px dashed #ccc"></div>\n');
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -52,7 +88,14 @@ function downloadPDF(containerRef: React.RefObject<HTMLDivElement | null>, produ
     .header { padding-bottom: 8px; border-bottom: 2px solid #333; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-end; }
     .header h1 { font-size: 16px; font-weight: 900; }
     .header p  { font-size: 10px; color: #666; }
+    .view-label { font-size: 10px; font-weight: 700; color: #666; letter-spacing: 0.06em; margin-bottom: 4px; }
     svg { max-width: 100%; height: auto; display: block; margin-bottom: 16px; page-break-inside: avoid; }
+    h2.section-title { font-size: 12px; font-weight: 900; margin: 18px 0 8px; padding-top: 10px; border-top: 2px solid #333; }
+    table.comp-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+    table.comp-table th, table.comp-table td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+    table.comp-table th { background: #f0f0f0; font-weight: 700; }
+    table.comp-table tr { page-break-inside: avoid; }
+    table.comp-table td:nth-child(3), table.comp-table td:nth-child(4), table.comp-table td:nth-child(5), table.comp-table td:nth-child(6) { text-align: right; font-family: 'JetBrains Mono', monospace; }
     @page { size: A3 landscape; margin: 10mm; }
     @media print { .no-print { display: none !important; } }
   </style>
@@ -66,6 +109,7 @@ function downloadPDF(containerRef: React.RefObject<HTMLDivElement | null>, produ
     <p style="font-size:9px;color:#999">All dimensions in millimetres (mm)</p>
   </div>
   ${svgHTML}
+  ${cutlist.length ? `<h2 class="section-title">Component Table — every part's real size, quantity and formula</h2>${componentTableHTML(cutlist)}` : ''}
   <script>window.onload = () => { setTimeout(() => window.print(), 300); }</script>
 </body>
 </html>`;
@@ -289,22 +333,26 @@ export const ProductFlow: React.FC = () => {
   const bedHasSTR = selectedId === 'bed' && selectedAddons.has('side-table-right');
   const wardHasLoft = (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && selectedAddons.has('loft');
 
-  const renderMainDrawing = () => {
+  // Accepts an explicit view so the PDF exporter can render Front/Plan/Side
+  // (or Internal) in turn without touching the on-screen activeView state —
+  // defaults to the currently-selected tab for normal on-screen rendering.
+  const renderMainDrawing = (viewOverride?: string) => {
     if (!product) return null;
+    const view = viewOverride ?? activeView;
 
     // Bed + side tables — real engine, real component geometry for both the
     // bed and each side table, dimensions derived from that same geometry.
-    if (selectedId === 'bed' && (bedHasSTL || bedHasSTR) && (activeView === 'plan' || activeView === 'front')) {
+    if (selectedId === 'bed' && (bedHasSTL || bedHasSTR) && (view === 'plan' || view === 'front')) {
       const leftD = addonDims['side-table-left'] ?? {};
       const rightD = addonDims['side-table-right'] ?? {};
       const sideTables: SideTableZone[] = [];
       if (bedHasSTL) sideTables.push({ side: 'left', inputs: { W: leftD.W ?? 450, D: leftD.D ?? 400, H: leftD.H ?? 500, drawers: 0, includeBackPanel: true, includeSkirting: true } });
       if (bedHasSTR) sideTables.push({ side: 'right', inputs: { W: rightD.W ?? 450, D: rightD.D ?? 400, H: rightD.H ?? 500, drawers: 0, includeBackPanel: true, includeSkirting: true } });
-      return <BedTechnicalDrawing dims={dims} activeView={activeView} sideTables={sideTables} />;
+      return <BedTechnicalDrawing dims={dims} activeView={view} sideTables={sideTables} />;
     }
 
     // Wardrobe + loft composite (front view)
-    if (wardHasLoft && (activeView === 'front' || activeView === 'elevation')) {
+    if (wardHasLoft && (view === 'front' || view === 'elevation')) {
       const ld = addonDims['loft'] ?? {};
       return (
         <WardrobeWithLoftFront
@@ -321,11 +369,34 @@ export const ProductFlow: React.FC = () => {
     // real zone-based engine — replacing the old special-case that only drew
     // 1 of 25 designs correctly (see docs/GAP_REPORT.md).
     if ((selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && wardrobeDesign) {
-      return <WardrobeTechnicalDrawing designId={wardrobeDesign.id} dims={dims} activeView={activeView} />;
+      return <WardrobeTechnicalDrawing designId={wardrobeDesign.id} dims={dims} activeView={view} />;
     }
 
     // Standard drawing
-    return <product.DrawingComponent dims={dims} activeView={activeView} />;
+    return <product.DrawingComponent dims={dims} activeView={view} />;
+  };
+
+  // Re-renders every applicable view off-screen (via renderMainDrawing's
+  // viewOverride) and pulls the real per-component cutlist, so the PDF
+  // always contains Front/Plan/Side (or Internal) together with the full
+  // component table — never just whichever single tab was open on screen.
+  const handleDownloadPDF = () => {
+    if (!product) return;
+    const views: PdfView[] = product.views
+      .map((v) => {
+        const markup = renderToStaticMarkup(<>{renderMainDrawing(v)}</>);
+        const holder = document.createElement('div');
+        holder.innerHTML = markup;
+        const svg = holder.querySelector('svg');
+        return { label: v.replace(/-/g, ' '), svgHTML: svg ? svg.outerHTML : '' };
+      })
+      .filter((v) => v.svgHTML);
+
+    const cutlist: PdfCutRow[] = wardrobeDesign && (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe')
+      ? computeWardrobeCutlist(wardrobeDesign.id, wardrobeDimsFrom(dims))
+      : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
+
+    downloadPDF(product.name, views, cutlist);
   };
 
   // Separate add-on detail drawings
@@ -414,21 +485,6 @@ export const ProductFlow: React.FC = () => {
               }
               setWardrobeDesign(null);
               setSelectedId(nextId);
-              // Set synchronously with selectedId (same batched render) —
-              // relying solely on the [selectedId] effect below left a real,
-              // confirmed one-render window where the new product's drawing
-              // rendered against the PREVIOUS product's dims shape (e.g.
-              // switching to TV Unit while Bed's {W,L,H,headboardH,D,thk}
-              // was still in state, with no tvW/baseCabs/wallCabs at all),
-              // producing NaN SVG attributes and a console error on every
-              // single product switch.
-              const nextProduct = getProduct(nextId);
-              if (nextProduct) {
-                setDims({ ...nextProduct.demoDimensions });
-                setActiveView(nextProduct.views[0]);
-                setSelectedAddons(new Set());
-                setAddonDims({});
-              }
             }}
             className="text-sm font-bold rounded-xl px-3 py-2 outline-none"
             style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045', minWidth: 200 }}>
@@ -451,7 +507,7 @@ export const ProductFlow: React.FC = () => {
         </div>
 
         <button
-          onClick={() => downloadPDF(drawingRef, product.name)}
+          onClick={handleDownloadPDF}
           className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0"
           style={{ background: '#1d4ed8', color: '#fff' }}>
           ⬇ Download PDF
@@ -874,7 +930,7 @@ export const ProductFlow: React.FC = () => {
             <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>PDF Package</div>
             <div className="mt-1 text-xs" style={{ color: '#64748b' }}>The same live SVG scene shown in Drawing will be included.</div>
             <div className="mt-5 grid gap-2 md:grid-cols-2">{[['Project ID', model.project.projectId], ['Client', model.project.clientName || 'Not entered'], ['Employee', model.employeeName || 'Employee'], ['Product', product.name]].map(([label, value]) => <div key={label} className="rounded-lg px-3 py-2" style={{ background: '#0f172a' }}><div className="text-[10px] uppercase" style={{ color: '#64748b' }}>{label}</div><div className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>{value}</div></div>)}</div>
-            <button onClick={() => downloadPDF(drawingRef, product.name)} className="mt-5 rounded-xl px-4 py-3 text-sm font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>⬇ Download Current Drawing PDF</button>
+            <button onClick={handleDownloadPDF} className="mt-5 rounded-xl px-4 py-3 text-sm font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>⬇ Download Current Drawing PDF</button>
           </div>
         </div>
       )}

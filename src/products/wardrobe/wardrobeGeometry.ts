@@ -31,6 +31,60 @@ function layoutZones(def: WardrobeDesignDef, dims: WardrobeDims): ZoneLayout[] {
   });
 }
 
+export interface WardrobeCutRow {
+  component: string;
+  width: number;
+  height: number;
+  qty: number;
+  remark: string;
+}
+
+/**
+ * Real, design-aware cutlist — one row set per zone (standard zones use the
+ * verified CALC_OPEN_WARDROBE/CALC_SLIDE_WARDROBE formulas; niche/dressing/
+ * drawer-tower zones are noted as such). This replaces the generic
+ * single-carcass cutlist in productRegistry.tsx for wardrobe specifically —
+ * that one doesn't know which of the 25 designs is selected, so its numbers
+ * never matched what was actually drawn. Used for the PDF component table.
+ */
+export function computeWardrobeCutlist(designId: string, dims: WardrobeDims): WardrobeCutRow[] {
+  const def = getWardrobeDesignDef(designId);
+  if (!def) return [];
+  const rows: WardrobeCutRow[] = [];
+  const zoneLayouts = layoutZones(def, dims);
+
+  if (def.hasLoft) {
+    rows.push({ component: 'Loft Shutter', width: Math.round(dims.W / Math.max(1, dims.loftShutters)), height: dims.loftH, qty: Math.max(1, dims.loftShutters), remark: 'Loft shutter, width = overall width / loft shutter count' });
+  }
+
+  for (const { zone, width } of zoneLayouts) {
+    const zoneLabel = zone.id === 'main' ? '' : ` (${zone.id})`;
+    if (zone.content === 'niche') {
+      rows.push({ component: `Open Niche${zoneLabel}`, width: Math.round(width), height: dims.H, qty: 1, remark: 'Open zone — no door, real carcass opening' });
+      continue;
+    }
+    if (zone.content === 'dressing') {
+      rows.push({ component: `Mirror Panel${zoneLabel}`, width: Math.round(width), height: Math.round(dims.H * 0.55), qty: 1, remark: 'Mirror panel sized to zone width' });
+      rows.push({ component: `Open Shelf${zoneLabel}`, width: Math.round(width), height: 18, qty: 1, remark: 'Open shelf below mirror' });
+      continue;
+    }
+    const cutlist = computeZoneCutlist({
+      W: width, H: dims.H, D: dims.D, construction: def.construction, doorCount: zone.doorCount,
+      shelves: Math.round((zone.shelfShare ?? 0) * dims.shelves), drawers: Math.round((zone.drawerShare ?? 0) * dims.drawers),
+      verticals: 0, backThk: dims.backThk,
+    });
+    for (const r of cutlist) {
+      rows.push({ component: `${r.label}${zoneLabel}`, width: Math.round(r.cutWidth), height: Math.round(r.cutHeight), qty: r.qty, remark: r.source.formula });
+    }
+  }
+
+  if (def.hasPlinth) {
+    rows.push({ component: 'Plinth / Skirting', width: Math.round(dims.W), height: dims.plinthH, qty: 1, remark: 'Skirting strip, real board width per CALC_OPEN_WARDROBE SCRTING row' });
+  }
+
+  return rows;
+}
+
 const NOT_CONFIGURED_DRAWING = (view: string, designId: string): ResolvedDrawing => ({
   view, productType: 'wardrobe', designId, designName: designId,
   worldWidth: 100, worldHeight: 100, components: [], dimensions: [],
