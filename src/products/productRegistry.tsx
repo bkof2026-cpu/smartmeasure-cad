@@ -2,7 +2,7 @@ import React from 'react';
 import type { ProductTemplate, CutlistRow, ProductId } from './productTypes';
 import { BedTechnicalDrawing } from './bed/BedTechnicalDrawing';
 import { computeBedCutlist } from './bed/bedFormulas';
-import { resolveSideTableFront } from './sideTable/sideTableGeometry';
+import { resolveSideTableFront, resolveSideTablePlan, resolveSideTableSide } from './sideTable/sideTableGeometry';
 import { computeSideTableCutlist } from './sideTable/sideTableFormulas';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
@@ -156,20 +156,21 @@ function NorthArrow({ x, y }: { x: number; y: number }) {
 // SIDE TABLE — migrated to the real, verified engine (CALC_SIDE_TABLE).
 // See src/products/sideTable/{sideTableFormulas,sideTableGeometry}.ts.
 // ═══════════════════════════════════════════════════════════════════════════════
-const SideTableDrawing: React.FC<{ dims: Record<string, number | string>; activeView: string }> = ({ dims }) => {
-  const drawing = resolveSideTableFront({
+const SideTableDrawing: React.FC<{ dims: Record<string, number | string>; activeView: string }> = ({ dims, activeView }) => {
+  const inp = {
     W: n(dims.W), D: n(dims.D), H: n(dims.H),
     drawers: n(dims.drawers) || 0,
     includeBackPanel: true,
     includeSkirting: true,
-  });
+  };
+  const drawing = activeView === 'plan' ? resolveSideTablePlan(inp) : activeView === 'side' ? resolveSideTableSide(inp) : resolveSideTableFront(inp);
   const [selected, setSelected] = React.useState<ReturnType<typeof resolveSideTableFront>['components'][number] | null>(null);
   return (
     <div>
       <TechnicalDrawingSvg
         worldWidth={drawing.worldWidth}
         worldHeight={drawing.worldHeight}
-        title={`SIDE TABLE FRONT — ${Math.round(drawing.worldWidth)}×${Math.round(drawing.worldHeight)} mm`}
+        title={`SIDE TABLE ${activeView.toUpperCase()} — ${Math.round(drawing.worldWidth)}×${Math.round(drawing.worldHeight)} mm`}
         components={drawing.components}
         dimensions={drawing.dimensions}
         onSelectComponent={setSelected}
