@@ -76,7 +76,13 @@ function componentTableHTML(rows: PdfCutRow[]): string {
  */
 function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]) {
   if (views.length === 0) return;
-  const svgHTML = views.map((v) => `<div class="view-label">${v.label.toUpperCase()} VIEW</div>${v.svgHTML}`).join('\n<div style="margin:16px 0;border-top:1px dashed #ccc"></div>\n');
+  // Each view gets its own page, forced with page-break-before so a view
+  // never starts mid-page with too little room left — and the SVG itself
+  // is height-capped to the printable page height (A3 landscape minus
+  // margins minus header room), so a portrait-proportioned drawing (e.g.
+  // a bed's Plan view) scales DOWN to fit one page instead of overflowing
+  // and getting visually split across a page boundary.
+  const svgHTML = views.map((v, i) => `<div class="view-block"${i > 0 ? ' style="page-break-before:always"' : ''}><div class="view-label">${v.label.toUpperCase()} VIEW</div>${v.svgHTML}</div>`).join('\n');
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -88,9 +94,10 @@ function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]
     .header { padding-bottom: 8px; border-bottom: 2px solid #333; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-end; }
     .header h1 { font-size: 16px; font-weight: 900; }
     .header p  { font-size: 10px; color: #666; }
+    .view-block { page-break-inside: avoid; }
     .view-label { font-size: 10px; font-weight: 700; color: #666; letter-spacing: 0.06em; margin-bottom: 4px; }
-    svg { max-width: 100%; height: auto; display: block; margin-bottom: 16px; page-break-inside: avoid; }
-    h2.section-title { font-size: 12px; font-weight: 900; margin: 18px 0 8px; padding-top: 10px; border-top: 2px solid #333; }
+    svg { max-width: 100%; max-height: 220mm; width: auto; height: auto; display: block; margin: 0 auto 16px; page-break-inside: avoid; }
+    h2.section-title { font-size: 12px; font-weight: 900; margin: 18px 0 8px; padding-top: 10px; border-top: 2px solid #333; page-break-before: always; }
     table.comp-table { width: 100%; border-collapse: collapse; font-size: 9px; }
     table.comp-table th, table.comp-table td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
     table.comp-table th { background: #f0f0f0; font-weight: 700; }
