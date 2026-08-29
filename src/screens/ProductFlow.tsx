@@ -578,7 +578,7 @@ export const ProductFlow: React.FC = () => {
       <div className="flex flex-1 overflow-hidden" style={{ display: activeWorkspace === 'measure' || activeWorkspace === 'drawing' ? 'flex' : 'none' }}>
 
         {/* Left panel: measurements + add-ons */}
-        <div className="overflow-auto flex-shrink-0" style={{ width: 340, borderRight: '1px solid #1e293b', background: '#0d1117', display: activeWorkspace === 'measure' ? 'block' : 'none' }}>
+        <div className={`overflow-auto flex-shrink-0 w-full lg:w-[340px] ${activeWorkspace === 'measure' ? 'block' : 'hidden'}`} style={{ borderRight: '1px solid #1e293b', background: '#0d1117' }}>
           <div className="p-4 flex flex-col gap-5">
 
             {/* Measurements — grouped by colour */}
@@ -778,8 +778,11 @@ export const ProductFlow: React.FC = () => {
           </div>
         </div>
 
-        {/* Right panel: drawing canvas */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#0d1117' }}>
+        {/* Right panel: drawing canvas — hidden (not squeezed) on small
+            screens while the Measure tab is active, since a 340px form panel
+            left no usable width for the preview on a phone; the Drawing tab
+            already gives it the full screen. Unchanged on desktop (lg+). */}
+        <div className={`flex-1 flex-col overflow-hidden ${activeWorkspace === 'measure' ? 'hidden lg:flex' : 'flex'}`} style={{ background: '#0d1117' }}>
 
           {/* View selector */}
           <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0 flex-wrap"
