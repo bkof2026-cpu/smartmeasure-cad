@@ -154,16 +154,20 @@ export function resolveBedPlan(inp: BedInputs, L: number, sideTables: SideTableZ
   ];
 
   // Platform (Top) boards — 2 real lay-flat panels forming the mattress
-  // deck, each W x L/2. Genuinely visible face-on only in plan, so drawn
-  // here (split across the mattress footprint) with their real cut size,
-  // instead of a misleading edge-on sliver on the front elevation.
+  // deck, each W x L/2 at their real cut size. They span the bed's full
+  // footprint (no clearance deduction in the verified formula), so drawing
+  // them inside the already-inset mattress area overflowed the bed's own
+  // bounds by design — instead they get their own labeled row below the
+  // main footprint, at true scale, so nothing overlaps and nothing exceeds
+  // the drawing bounds.
   const platformRow = cutlist.find((r) => r.id === 'TOP')!;
-  const platformInnerW = W - railBand * 2 - 12;
-  const platformY1 = railBand + 6;
+  const platformGap = 60;
+  const platformY1 = L + platformGap;
   const platformSplitY = platformY1 + platformRow.cutHeight;
-  components.push({ id: 'bed-plan-platform-a', type: 'PLATFORM_TOP', label: 'Platform A', x: bedX + railBand + 6, y: platformY1, width: platformInnerW, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
-  components.push({ id: 'bed-plan-platform-b', type: 'PLATFORM_TOP', label: 'Platform B', x: bedX + railBand + 6, y: platformSplitY, width: platformInnerW, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
-  dimReqs.push({ axis: 'v', x1: bedX + railBand + 6 - 4, y1: platformY1, x2: bedX + railBand + 6 - 4, y2: platformSplitY, edge: 'left', componentIds: ['bed-plan-platform-a'], label: `${Math.round(platformRow.cutHeight)} mm`, source: platformRow.source });
+  const platformEndY = platformSplitY + platformRow.cutHeight;
+  components.push({ id: 'bed-plan-platform-a', type: 'PLATFORM_TOP', label: 'Platform A', x: bedX, y: platformY1, width: W, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
+  components.push({ id: 'bed-plan-platform-b', type: 'PLATFORM_TOP', label: 'Platform B', x: bedX, y: platformSplitY, width: W, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
+  dimReqs.push({ axis: 'v', x1: bedX + W, y1: platformY1, x2: bedX + W, y2: platformSplitY, edge: 'right', componentIds: ['bed-plan-platform-a'], label: `${Math.round(platformRow.cutHeight)} mm`, source: platformRow.source });
 
   for (const zone of sideTables) {
     const originX = zone.side === 'left' ? 0 : bedX + W + GAP;
@@ -177,7 +181,7 @@ export function resolveBedPlan(inp: BedInputs, L: number, sideTables: SideTableZ
   }
 
   const worldWidth = leftW + W + rightW;
-  const worldHeight = L;
+  const worldHeight = platformEndY;
   const dimensions = resolveDimensions(dimReqs);
   const issues = [
     ...validateComponentBounds(components, worldWidth, worldHeight),
