@@ -20,7 +20,7 @@ const GAP = 40; // mm real gap drawn between bed and side table, not a fabricati
  * overlapping or below it (spec's own Bed+Side-Table acceptance test).
  */
 export function resolveBedFront(inp: BedInputs, sideTables: SideTableZone[] = []): ResolvedDrawing {
-  const { W, H, headboardH, thk, skirtingH, includeHeadboard } = inp;
+  const { W, H, headboardH, thk, includeHeadboard } = inp;
   const cutlist = computeBedCutlist(inp);
   const components: ComponentSpec[] = [];
   const dimReqs: DimensionRequest[] = [];
@@ -30,7 +30,7 @@ export function resolveBedFront(inp: BedInputs, sideTables: SideTableZone[] = []
   const leftW = leftZone ? leftZone.inputs.W + GAP : 0;
   const rightW = rightZone ? rightZone.inputs.W + GAP : 0;
   const bedX = leftW;
-  const floorY = headboardH + H; // bottom edge of the frame/box itself (unchanged meaning)
+  const floorY = headboardH + H;
 
   if (includeHeadboard) {
     const hb = cutlist.find((r) => r.id === 'HEAD_BOARD')!;
@@ -52,14 +52,6 @@ export function resolveBedFront(inp: BedInputs, sideTables: SideTableZone[] = []
   const footRailH = frnt.cutWidth; // fixed 330mm cut width = installed foot-rail height
   components.push({ id: 'bed-foot-rail', type: 'FOOT_RAIL', label: 'Foot Rail', x: bedX + thk, y: floorY - footRailH, width: W - thk * 2, height: footRailH, qty: 1, visible: true, source: frnt.source });
 
-  // Skirting — base trim/plinth band wrapping the bottom of the box,
-  // visible in real assembled beds (see reference photos); a real,
-  // user-adjustable measurement (no verified CALC_BED formula exists for
-  // it, same honest treatment as Headboard Height).
-  const skirtRow = cutlist.find((r) => r.id === 'SKIRTING_WLEN')!;
-  components.push({ id: 'bed-skirting', type: 'SKIRTING', label: 'Skirting', x: bedX, y: floorY, width: W, height: skirtingH, qty: 1, visible: true, source: skirtRow.source });
-  const trueFloorY = floorY + skirtingH;
-
   // Mattress zone — drawn at its stated size, not a fabricated panel.
   const mattY = frameY + pattiH + 6;
   const mattH = Math.max(0, floorY - footRailH - mattY - 6);
@@ -72,22 +64,20 @@ export function resolveBedFront(inp: BedInputs, sideTables: SideTableZone[] = []
   // shown in the Plan view instead, where the board's true face is seen.)
   dimReqs.push({ axis: 'v', x1: bedX, y1: frameY, x2: bedX, y2: frameY + pattiH, edge: 'left', componentIds: ['bed-patti'], label: `${Math.round(pattiH)} mm`, source: pattiRow.source });
   dimReqs.push({ axis: 'v', x1: bedX, y1: floorY - footRailH, x2: bedX, y2: floorY, edge: 'left', componentIds: ['bed-foot-rail'], label: `${Math.round(footRailH)} mm`, source: frnt.source });
-  dimReqs.push({ axis: 'v', x1: bedX, y1: floorY, x2: bedX, y2: trueFloorY, edge: 'left', componentIds: ['bed-skirting'], label: `${Math.round(skirtingH)} mm`, source: skirtRow.source });
   dimReqs.push({ axis: 'h', x1: bedX, y1: frameY, x2: bedX + thk, y2: frameY, edge: 'top', componentIds: ['bed-side-l'], label: `${Math.round(thk)} mm`, source: leftSide.source });
 
-  // Side tables — bottom-aligned to the true floor (box + skirting), same
-  // floor line the bed itself now stands on.
+  // Side tables
   for (const zone of sideTables) {
     const originX = zone.side === 'left' ? 0 : bedX + W + GAP;
-    const originY = trueFloorY - zone.inputs.H;
+    const originY = floorY - zone.inputs.H;
     const st = resolveSideTableFront(zone.inputs, originX, originY, `bed-${zone.side}`);
     components.push(...st.components);
     dimReqs.push({ axis: 'h', x1: originX, y1: originY, x2: originX + zone.inputs.W, y2: originY, edge: 'top', componentIds: st.components.map((c) => c.id), label: `${Math.round(zone.inputs.W)} mm`, source: { formula: 'Side Table Width', constants: [] } });
-    dimReqs.push({ axis: 'v', x1: zone.side === 'left' ? originX - 4 : originX + zone.inputs.W + 4, y1: originY, x2: zone.side === 'left' ? originX - 4 : originX + zone.inputs.W + 4, y2: trueFloorY, edge: zone.side === 'left' ? 'left' : 'right', componentIds: st.components.map((c) => c.id), label: `${Math.round(zone.inputs.H)} mm`, source: { formula: 'Side Table Height', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: zone.side === 'left' ? originX - 4 : originX + zone.inputs.W + 4, y1: originY, x2: zone.side === 'left' ? originX - 4 : originX + zone.inputs.W + 4, y2: floorY, edge: zone.side === 'left' ? 'left' : 'right', componentIds: st.components.map((c) => c.id), label: `${Math.round(zone.inputs.H)} mm`, source: { formula: 'Side Table Height', constants: [] } });
   }
 
   const worldWidth = leftW + W + rightW;
-  const worldHeight = trueFloorY;
+  const worldHeight = floorY;
 
   dimReqs.push({ axis: 'h', x1: bedX, y1: worldHeight, x2: bedX + W, y2: worldHeight, edge: 'bottom', componentIds: components.map((c) => c.id), label: `${Math.round(W)} mm (bed width)`, source: { formula: 'Overall Width = W', constants: [] } });
   if (includeHeadboard) {
@@ -110,13 +100,11 @@ export function resolveBedFront(inp: BedInputs, sideTables: SideTableZone[] = []
   };
 }
 
-/** Side elevation — headboard profile at the head end, frame height, skirting band, mattress zone along the length. */
+/** Side elevation — headboard profile at the head end, frame height, mattress zone along the length. */
 export function resolveBedSide(inp: BedInputs, L: number): ResolvedDrawing {
-  const { H, headboardH, thk, skirtingH, includeHeadboard } = inp;
-  const cutlist = computeBedCutlist(inp);
-  const boxH = headboardH + H;
+  const { H, headboardH, thk, includeHeadboard } = inp;
   const worldWidth = L;
-  const worldHeight = boxH + skirtingH;
+  const worldHeight = headboardH + H;
   const components: ComponentSpec[] = [];
 
   if (includeHeadboard) {
@@ -127,13 +115,9 @@ export function resolveBedSide(inp: BedInputs, L: number): ResolvedDrawing {
   components.push({ id: 'bed-side-frame', type: 'PLATFORM_TOP', label: 'Frame', x: 0, y: frameY, width: L, height: frameH, qty: 1, visible: true, source: { formula: 'Frame profile, height = H', constants: [] } });
   components.push({ id: 'bed-side-mattress', type: 'MATTRESS', label: 'Mattress', x: thk * 2 + 4, y: frameY + 4, width: L - thk * 2 - 8, height: Math.max(0, frameH - 40), qty: 1, visible: true, source: { formula: 'Drawn at entered mattress length', constants: [] } });
 
-  const skirtRow = cutlist.find((r) => r.id === 'SKIRTING_LLEN')!;
-  components.push({ id: 'bed-side-skirting', type: 'SKIRTING', label: 'Skirting', x: 0, y: boxH, width: L, height: skirtingH, qty: 1, visible: true, source: skirtRow.source });
-
   const dimReqs: DimensionRequest[] = [
     { axis: 'h', x1: 0, y1: worldHeight, x2: L, y2: worldHeight, edge: 'bottom', componentIds: components.map((c) => c.id), label: `${Math.round(L)} mm`, source: { formula: 'Mattress Length = L', constants: [] } },
-    { axis: 'v', x1: L, y1: 0, x2: L, y2: boxH, edge: 'right', componentIds: components.map((c) => c.id), label: `${Math.round(boxH)} mm`, source: { formula: 'Headboard + Frame Height', constants: [] } },
-    { axis: 'v', x1: L, y1: boxH, x2: L, y2: worldHeight, edge: 'right', componentIds: ['bed-side-skirting'], label: `${Math.round(skirtingH)} mm`, source: skirtRow.source },
+    { axis: 'v', x1: L, y1: 0, x2: L, y2: worldHeight, edge: 'right', componentIds: components.map((c) => c.id), label: `${Math.round(worldHeight)} mm`, source: { formula: 'Headboard + Frame Height', constants: [] } },
   ];
   const dimensions = resolveDimensions(dimReqs);
   const issues = [

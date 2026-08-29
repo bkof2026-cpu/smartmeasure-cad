@@ -38,7 +38,6 @@ export interface BedInputs {
   D: number; // "Side Panel Depth" field — genuinely unused by any verified formula (see mapping note)
   headboardH: number; // this app keeps headboard height user-adjustable — see docs
   thk: number;
-  skirtingH: number; // base trim/plinth band height — user-adjustable, see SKIRTING note below
   includeHeadboard: boolean;
   includeHydraulic: boolean;
 }
@@ -62,7 +61,7 @@ const C = CLEARANCE_MASTER;
 const TOP_PLATFORM_THK = 16; // Platform (Top) boards are always cut from 16mm stock, regardless of the general thk field
 
 export function computeBedCutlist(inp: BedInputs): BedCutRow[] {
-  const { W, L, H, headboardH, thk, skirtingH, includeHeadboard, includeHydraulic } = inp;
+  const { W, L, H, headboardH, thk, includeHeadboard, includeHydraulic } = inp;
   const rows: BedCutRow[] = [];
 
   if (includeHeadboard) {
@@ -112,22 +111,6 @@ export function computeBedCutlist(inp: BedInputs): BedCutRow[] {
   rows.push({
     id: 'H_SELF_B', type: 'SHELF', label: 'H Panal Self', cutWidth: 200, cutHeight: 1000, qty: 2, thk,
     source: { formula: 'Fixed 200 x 1000 — not derived from W/H/D in source data', constants: [], fixed: true, needsVerification: true, note: 'Confirm if this should scale with bed size.' },
-  });
-  // Skirting (base trim/plinth band) — visible in real assembled beds as a
-  // distinct band wrapping the base below the box, not present in the
-  // verified CALC_BED sheet (no source formula exists for it), so it's a
-  // real, user-adjustable measurement like Headboard Height rather than an
-  // invented formula. Two long runs (front/back, along W) + two short runs
-  // (sides, along L), each cut with its entered height as the fixed board
-  // width, matching the same "cutWidth = fixed = installed height"
-  // convention used for the Top Patti and Foot Rail above.
-  rows.push({
-    id: 'SKIRTING_WLEN', type: 'SKIRTING', label: 'Skirting (Front/Back)', cutWidth: skirtingH, cutHeight: W, qty: 2, thk,
-    source: { formula: `Width = Skirting Height (user-entered, ${skirtingH}mm) | Height = W`, constants: [], needsVerification: true, note: 'No verified CALC_BED row for skirting — user-entered per real reference photos, not a source-sheet formula.' },
-  });
-  rows.push({
-    id: 'SKIRTING_LLEN', type: 'SKIRTING', label: 'Skirting (Sides)', cutWidth: skirtingH, cutHeight: L, qty: 2, thk,
-    source: { formula: `Width = Skirting Height (user-entered, ${skirtingH}mm) | Height = L (Mattress Length)`, constants: [], needsVerification: true, note: 'No verified CALC_BED row for skirting — user-entered per real reference photos, not a source-sheet formula.' },
   });
   if (includeHydraulic) {
     rows.push({

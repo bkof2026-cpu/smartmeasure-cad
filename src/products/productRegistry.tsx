@@ -865,7 +865,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     icon: '🛏️',
     category: 'furniture',
     isFormulaVerified: true,
-    demoDimensions: { W: 1800, L: 2000, H: 450, headboardH: 1200, D: 600, thk: 18, skirtingH: 100, includeHeadboard: 1, includeHydraulic: 0 },
+    demoDimensions: { W: 1800, L: 2000, H: 450, headboardH: 1200, D: 600, thk: 18, includeHeadboard: 1, includeHydraulic: 0 },
     measurementFields: [
       { key: 'W', label: 'Overall Width (mattress width)', unit: 'mm', defaultValue: 1800, min: 900, max: 2400 },
       { key: 'L', label: 'Overall Length (mattress length)', unit: 'mm', defaultValue: 2000, min: 1800, max: 2400 },
@@ -873,7 +873,6 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       { key: 'headboardH', label: 'Headboard Height', unit: 'mm', defaultValue: 1200, min: 600, max: 1500 },
       { key: 'D', label: 'Side Panel Depth', unit: 'mm', defaultValue: 600, min: 400, max: 700 },
       { key: 'thk', label: 'Material Thickness', unit: 'mm', defaultValue: 18, min: 12, max: 25 },
-      { key: 'skirtingH', label: 'Skirting Height (base trim)', unit: 'mm', defaultValue: 100, min: 40, max: 200 },
       { key: 'includeHeadboard', label: 'Include Headboard', unit: 'bool', defaultValue: 1 },
       { key: 'includeHydraulic', label: 'Hydraulic Storage Mechanism', unit: 'bool', defaultValue: 0 },
     ],
@@ -881,15 +880,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // Real, verified cutlist — see docs/PRODUCT_STANDARDS.md "BED" (CALC_BED,
     // cross-checked against real historical orders). Replaces the previous
     // approximate formulas, which did not match the verified source data.
-    // Skirting has no verified CALC_BED row (added per real reference
-    // photos, see docs) and Top (Platform) boards are always 16mm stock
-    // regardless of the general thickness field — both carried per-row via
-    // r.thk rather than the single hardcoded 18 this used to pass.
+    // Top (Platform) boards are always 16mm stock regardless of the general
+    // thickness field — carried per-row via r.thk rather than the single
+    // hardcoded 18 this used to pass.
     computeCutlist: (dims) => {
       const cutRows = computeBedCutlist({
         W: n(dims.W), L: n(dims.L), H: n(dims.H), D: n(dims.D), headboardH: n(dims.headboardH),
         thk: n(dims.thk) || 18,
-        skirtingH: n(dims.skirtingH) || 100,
         includeHeadboard: dims.includeHeadboard === undefined ? true : n(dims.includeHeadboard) === 1,
         includeHydraulic: n(dims.includeHydraulic) === 1,
       });

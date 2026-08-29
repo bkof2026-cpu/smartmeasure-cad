@@ -109,8 +109,6 @@ formula below.
 | TOP PATTI | 50 (fixed) | `H` → app `L` (Mattress Length) | 2 | |
 | H PANAL SELF | 250×750 (fixed) | | 2 | **not derived from W/H/D** in source data |
 | H PANAL SELF | 200×1000 (fixed) | | 2 | **not derived from W/H/D** in source data |
-| SKIRTING (Front/Back) | Skirting Height (fixed, user-entered) | `W` | 2 | No verified CALC_BED row — added 29 Aug 2026 as a real, user-adjustable measurement (base trim band visible in real assembled beds), same honest treatment as Headboard Height |
-| SKIRTING (Sides) | Skirting Height (fixed, user-entered) | `L` (Mattress Length) | 2 | Same as above |
 | HYDRAULIC MECHANISM | — | — | 0/1 flag | hardware only, adds no cut panel |
 
 Side table(s) attached to a bed use the **Side Table** family's own component set, positioned as

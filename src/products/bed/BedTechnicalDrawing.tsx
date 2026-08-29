@@ -11,7 +11,6 @@ function bedInputsFrom(dims: Record<string, number | string>): BedInputs {
   return {
     W: n(dims.W), L: n(dims.L), H: n(dims.H), D: n(dims.D),
     headboardH: n(dims.headboardH), thk: n(dims.thk) || 18,
-    skirtingH: n(dims.skirtingH) || 100,
     includeHeadboard: dims.includeHeadboard === undefined ? true : Number(dims.includeHeadboard) === 1,
     includeHydraulic: Number(dims.includeHydraulic) === 1,
   };
