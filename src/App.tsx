@@ -159,12 +159,6 @@ function DesktopHeader() {
       <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#3d4f6a' }}>{screenLabel}</span>
 
       <div className="ml-auto flex items-center gap-4">
-        {model.isDemoData && (
-          <span className="px-3 py-1 rounded-lg text-xs font-bold"
-            style={{ background: '#78350f', color: '#fcd34d', border: '1px solid #92400e' }}>
-            ⚠ DEMO DATA — Placeholder values only
-          </span>
-        )}
         <span className="text-xs font-mono" style={{ color: '#4a5f7a' }}>
           {model.project.clientName || 'New Project'} · {model.project.projectId}
         </span>

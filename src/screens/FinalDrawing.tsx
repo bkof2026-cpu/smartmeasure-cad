@@ -18,9 +18,6 @@ function TitleBlock() {
           </div>
           <div className="text-xs font-mono" style={{ color: '#4a5f7a' }}>KITCHEN WORKING DRAWING SET</div>
         </div>
-        {model.isDemoData && (
-          <span className="px-3 py-1 rounded-lg text-xs font-bold" style={{ background: '#78350f', color: '#fcd34d' }}>⚠ DEMO DATA</span>
-        )}
         <div className="text-right">
           <div className="text-sm font-bold font-mono" style={{ color: '#60a5fa' }}>{p.projectId}</div>
           <div className="text-xs" style={{ color: '#4a5f7a' }}>Drawn: {p.date}</div>

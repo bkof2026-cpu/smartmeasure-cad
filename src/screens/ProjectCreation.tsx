@@ -29,11 +29,6 @@ export const ProjectCreation: React.FC = () => {
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">📐</span>
           <h1 className="text-xl font-bold" style={{ color: '#e2e8f0' }}>New Project</h1>
-          {model.isDemoData && (
-            <span className="px-2 py-0.5 rounded text-xs font-bold" style={{ background: '#78350f', color: '#fcd34d' }}>
-              DEMO DATA
-            </span>
-          )}
         </div>
         <p className="text-sm" style={{ color: '#64748b' }}>Enter project details before starting measurement</p>
       </div>
