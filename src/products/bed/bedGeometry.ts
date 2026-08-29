@@ -132,7 +132,6 @@ export function resolveBedPlan(inp: BedInputs, L: number, sideTables: SideTableZ
   const { W, thk } = inp;
   const railBand = Math.max(thk * 3, 40);
   const footBand = Math.max(thk * 2, 30);
-  const cutlist = computeBedCutlist(inp);
 
   const leftZone = sideTables.find((z) => z.side === 'left');
   const rightZone = sideTables.find((z) => z.side === 'right');
@@ -153,21 +152,14 @@ export function resolveBedPlan(inp: BedInputs, L: number, sideTables: SideTableZ
     { axis: 'v', x1: bedX + W, y1: 0, x2: bedX + W, y2: L, edge: 'right', componentIds: components.map((c) => c.id), label: `${Math.round(L)} mm`, source: { formula: 'Mattress Length = L (entered)', constants: [] } },
   ];
 
-  // Platform (Top) boards — 2 real lay-flat panels forming the mattress
-  // deck, each W x L/2 at their real cut size. They span the bed's full
-  // footprint (no clearance deduction in the verified formula), so drawing
-  // them inside the already-inset mattress area overflowed the bed's own
-  // bounds by design — instead they get their own labeled row below the
-  // main footprint, at true scale, so nothing overlaps and nothing exceeds
-  // the drawing bounds.
-  const platformRow = cutlist.find((r) => r.id === 'TOP')!;
-  const platformGap = 60;
-  const platformY1 = L + platformGap;
-  const platformSplitY = platformY1 + platformRow.cutHeight;
-  const platformEndY = platformSplitY + platformRow.cutHeight;
-  components.push({ id: 'bed-plan-platform-a', type: 'PLATFORM_TOP', label: 'Platform A', x: bedX, y: platformY1, width: W, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
-  components.push({ id: 'bed-plan-platform-b', type: 'PLATFORM_TOP', label: 'Platform B', x: bedX, y: platformSplitY, width: W, height: platformRow.cutHeight, qty: 1, visible: true, source: platformRow.source });
-  dimReqs.push({ axis: 'v', x1: bedX + W, y1: platformY1, x2: bedX + W, y2: platformSplitY, edge: 'right', componentIds: ['bed-plan-platform-a'], label: `${Math.round(platformRow.cutHeight)} mm`, source: platformRow.source });
+  // Platform (Top) boards are real, correctly-formula'd cutlist rows (W x
+  // L/2 each, qty 2) but — like Back Panel+Front, Bottom, and the H-Panel
+  // shelves — they're lay-flat panels with no honest single-view placement:
+  // drawing them full-size inside this footprint either overlaps every
+  // other component or (as tried and reverted) forces the canvas taller
+  // than the bed itself, corrupting this view's own "W x L" title. They
+  // stay fully documented — correct formula and size — in the component
+  // table and Drawing Inspector instead of a misleading forced drawing.
 
   for (const zone of sideTables) {
     const originX = zone.side === 'left' ? 0 : bedX + W + GAP;
@@ -181,7 +173,7 @@ export function resolveBedPlan(inp: BedInputs, L: number, sideTables: SideTableZ
   }
 
   const worldWidth = leftW + W + rightW;
-  const worldHeight = platformEndY;
+  const worldHeight = L;
   const dimensions = resolveDimensions(dimReqs);
   const issues = [
     ...validateComponentBounds(components, worldWidth, worldHeight),
