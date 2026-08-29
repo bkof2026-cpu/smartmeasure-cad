@@ -45,7 +45,16 @@ export function resolveBoxFront(inp: BoxInputs): ResolvedDrawing {
   if (compartments > 1) {
     for (let i = 0; i < compartments; i++) {
       const cx = thk + compW * i;
-      dimReqs.push({ axis: 'h', x1: cx, y1: 0, x2: cx + compW, y2: 0, edge: 'top', componentIds: [], label: `${Math.round(compW)} mm`, source: { formula: 'Compartment width = (W - 2×thk) / compartments', constants: [] } });
+      if (includeDoor && doorRow) {
+        // Dimension the door's own real width (its cutlist formula), not
+        // the generic carcass slot — the two are no longer the same number
+        // now that Door has its own real formula (see boxFormulas.ts).
+        const doorW = doorRow.cutWidth;
+        const doorX = cx + (compW - doorW) / 2;
+        dimReqs.push({ axis: 'h', x1: doorX, y1: 0, x2: doorX + doorW, y2: 0, edge: 'top', componentIds: [`door-${i}`], label: `${Math.round(doorW)} mm`, source: doorRow.source });
+      } else {
+        dimReqs.push({ axis: 'h', x1: cx, y1: 0, x2: cx + compW, y2: 0, edge: 'top', componentIds: [], label: `${Math.round(compW)} mm`, source: { formula: 'Compartment width = (W - 2×thk) / compartments', constants: [] } });
+      }
     }
   }
 

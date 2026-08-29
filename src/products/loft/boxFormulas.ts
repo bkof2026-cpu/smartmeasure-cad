@@ -27,7 +27,7 @@ export interface BoxCutRow {
 const C = CLEARANCE_MASTER;
 
 export function computeBoxCutlist(inp: BoxInputs): BoxCutRow[] {
-  const { W, H, D, thk, verticalQty, shelfQty, includeBack, includeDoor } = inp;
+  const { W, H, D, verticalQty, shelfQty, includeBack, includeDoor } = inp;
   const rows: BoxCutRow[] = [];
 
   rows.push({ id: 'TOP', type: 'TOP_PANEL', label: 'Top', cutWidth: W - C.BOX_TB_DEDUCT, cutHeight: D, qty: 1, source: { formula: `Width = W - BOX_TB_DEDUCT(${C.BOX_TB_DEDUCT}) | Height = D`, constants: ['BOX_TB_DEDUCT'] } });
@@ -46,14 +46,15 @@ export function computeBoxCutlist(inp: BoxInputs): BoxCutRow[] {
   }
   if (includeDoor) {
     const compartments = Math.max(1, verticalQty + 1);
-    // Door width per the user's own real fabrication practice (confirmed
-    // directly against real loft box / cabinet photos, not the CALC_BOX
-    // sheet — that sheet states Door is not formula-driven at all): divide
-    // the Overall Width by the Number of Boxes, then deduct the material
-    // thickness once (the divider/side panel it sits against) and a 2mm
-    // groove — not the old (W - thk*2)/compartments carcass-based split.
-    const doorWidth = W / compartments - thk - 2;
-    rows.push({ id: 'DOOR', type: 'DOOR', label: 'Door', cutWidth: doorWidth, cutHeight: H - 5, qty: compartments, source: { formula: `Width = (W / Number of Boxes(${compartments})) - Material Thickness(${thk}) - 2mm (door groove) | Height = H - 5 (fixed, unconfirmed — CALC_BOX marks Door as not formula-driven)`, constants: [], note: 'Width formula confirmed by the user against real fabrication practice. Height still an even placeholder — enter the real door height from the client cutting slip before fabrication.' } });
+    // Door width per the user's own real fabrication practice, confirmed
+    // with a worked example (not the CALC_BOX sheet — that sheet states
+    // Door is not formula-driven at all): each door loses a flat 2mm
+    // groove off the Overall Width before splitting evenly across the
+    // door count — no material-thickness deduction. Worked example given:
+    // W=2100, 4 doors -> 2100 - (2+2+2+2) = 2092 -> 2092/4 = 523mm each.
+    const doorGrooveTotal = 2 * compartments;
+    const doorWidth = (W - doorGrooveTotal) / compartments;
+    rows.push({ id: 'DOOR', type: 'DOOR', label: 'Door', cutWidth: doorWidth, cutHeight: H - 5, qty: compartments, source: { formula: `Width = (W - 2mm×Number of Boxes(${compartments})) / Number of Boxes(${compartments}) | Height = H - 5 (fixed, unconfirmed — CALC_BOX marks Door as not formula-driven)`, constants: [], note: 'Width formula confirmed by the user with a worked example (W=2100, 4 doors -> 523mm each). Height still an even placeholder — enter the real door height from the client cutting slip before fabrication.' } });
   }
 
   return rows;
