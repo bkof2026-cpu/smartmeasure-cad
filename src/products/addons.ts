@@ -28,9 +28,8 @@ export interface FieldColorGroup {
 
 export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   bed: [
-    { label: 'Frame & Structure', color: '#3b82f6', keys: ['W', 'L', 'H', 'thk'] },
-    { label: 'Headboard',         color: '#f59e0b', keys: ['headboardH'] },
-    { label: 'Side Panel',        color: '#8b5cf6', keys: ['D'] },
+    { label: 'Bed', color: '#3b82f6', keys: ['W', 'L', 'H'] },
+    { label: 'Headboard', color: '#f59e0b', keys: ['headboardH'] },
   ],
   'side-table': [
     { label: 'Cabinet Body',   color: '#3b82f6', keys: ['W', 'D', 'H', 'thk'] },
@@ -90,27 +89,29 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
 export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
   bed: [
     {
+      // Height is intentionally not a field here — it's auto-fetched from
+      // Bed Height (see ProductFlow.tsx's bedLST/bedRST construction), not
+      // independently entered. Attaches to the bed's headboard-side left
+      // corner (X = Bed.Left - LST.Width, Y = Bed.Top).
       id: 'side-table-left',
-      label: 'Side Table — Left',
+      label: 'Left Side Table (LST)',
       icon: '🪑',
-      description: 'Bedside cabinet on the left side of the bed',
+      description: 'Attaches at the headboard-side left corner — Height auto-fetched from Bed Height',
       placement: 'composite',
       fields: [
-        { key: 'H', label: 'Height', defaultValue: 500, min: 380, max: 700 },
-        { key: 'W', label: 'Width',  defaultValue: 450, min: 280, max: 650 },
-        { key: 'D', label: 'Depth',  defaultValue: 400, min: 280, max: 550 },
+        { key: 'D', label: 'Depth', defaultValue: 460, min: 280, max: 650 },
+        { key: 'W', label: 'Width', defaultValue: 560, min: 280, max: 700 },
       ],
     },
     {
       id: 'side-table-right',
-      label: 'Side Table — Right',
+      label: 'Right Side Table (RST)',
       icon: '🪑',
-      description: 'Bedside cabinet on the right side of the bed',
+      description: 'Attaches at the headboard-side right corner — Height auto-fetched from Bed Height',
       placement: 'composite',
       fields: [
-        { key: 'H', label: 'Height', defaultValue: 500, min: 380, max: 700 },
-        { key: 'W', label: 'Width',  defaultValue: 450, min: 280, max: 650 },
-        { key: 'D', label: 'Depth',  defaultValue: 400, min: 280, max: 550 },
+        { key: 'D', label: 'Depth', defaultValue: 460, min: 280, max: 650 },
+        { key: 'W', label: 'Width', defaultValue: 560, min: 280, max: 700 },
       ],
     },
     {

@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ProductTemplate, CutlistRow, ProductId } from './productTypes';
-import { BedTechnicalDrawing } from './bed/BedTechnicalDrawing';
-import { computeBedCutlist } from './bed/bedFormulas';
+import { SimpleBedDrawing } from './bed/SimpleBedDrawing';
+import { simpleBedCutlist } from './bed/simpleBedGeometry';
 import { resolveSideTableFront, resolveSideTablePlan, resolveSideTableSide } from './sideTable/sideTableGeometry';
 import { computeSideTableCutlist } from './sideTable/sideTableFormulas';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
@@ -145,11 +145,12 @@ function NorthArrow({ x, y }: { x: number; y: number }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// BED — migrated to the real, verified engine.
-// See src/products/bed/{bedFormulas,bedGeometry,BedTechnicalDrawing}.tsx and
-// docs/PRODUCT_STANDARDS.md. The hand-authored SVG that used to live here has
-// been retired — it produced approximate geometry that didn't match the
-// verified CALC_BED formulas.
+// BED — simplified per the user's real site-measurement workflow
+// (2026-08-29). See src/products/bed/simpleBedGeometry.ts and
+// SimpleBedDrawing.tsx. The detailed CALC_BED panel/patti/platform engine
+// (bedFormulas.ts, bedGeometry.ts, BedTechnicalDrawing.tsx) is kept intact
+// for a future "fabrication detail" mode but is no longer wired into the
+// live Bed product entry.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -866,37 +867,30 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     icon: '🛏️',
     category: 'furniture',
     isFormulaVerified: true,
-    demoDimensions: { W: 1800, L: 2000, H: 450, headboardH: 1200, D: 600, thk: 18, includeHeadboard: 1, includeHydraulic: 0 },
+    // Simplified per the user's real site-measurement workflow (2026-08-29):
+    // a measurement person needs W/L/H + a headboard + optional side tables
+    // in under a minute, not a fabrication component tree. The detailed
+    // CALC_BED panel/patti/platform engine (bedFormulas.ts, bedGeometry.ts,
+    // BedTechnicalDrawing.tsx) is kept, unused, for a future "fabrication
+    // detail" mode — nothing was deleted, this product entry just no
+    // longer wires to it. See src/products/bed/simpleBedGeometry.ts.
+    demoDimensions: { W: 1800, L: 2000, H: 450, headboardH: 900 },
     measurementFields: [
-      { key: 'W', label: 'Overall Width (mattress width)', unit: 'mm', defaultValue: 1800, min: 900, max: 2400 },
-      { key: 'L', label: 'Overall Length (mattress length)', unit: 'mm', defaultValue: 2000, min: 1800, max: 2400 },
-      { key: 'H', label: 'Frame Height (box height)', unit: 'mm', defaultValue: 450, min: 250, max: 600 },
-      { key: 'headboardH', label: 'Headboard Height', unit: 'mm', defaultValue: 1200, min: 600, max: 1500 },
-      { key: 'D', label: 'Side Panel Depth', unit: 'mm', defaultValue: 600, min: 400, max: 700 },
-      { key: 'thk', label: 'Material Thickness', unit: 'mm', defaultValue: 18, min: 12, max: 25 },
-      { key: 'includeHeadboard', label: 'Include Headboard', unit: 'bool', defaultValue: 1 },
-      { key: 'includeHydraulic', label: 'Hydraulic Storage Mechanism', unit: 'bool', defaultValue: 0 },
+      { key: 'W', label: 'Bed Width', unit: 'mm', defaultValue: 1800, min: 900, max: 2400 },
+      { key: 'L', label: 'Bed Length', unit: 'mm', defaultValue: 2000, min: 1800, max: 2400 },
+      { key: 'H', label: 'Bed Height', unit: 'mm', defaultValue: 450, min: 250, max: 600 },
+      { key: 'headboardH', label: 'Headboard Height', unit: 'mm', defaultValue: 900, min: 400, max: 1500 },
     ],
-    views: ['front', 'plan', 'side'],
-    // Real, verified cutlist — see docs/PRODUCT_STANDARDS.md "BED" (CALC_BED,
-    // cross-checked against real historical orders). Replaces the previous
-    // approximate formulas, which did not match the verified source data.
-    // Top (Platform) boards are always 16mm stock regardless of the general
-    // thickness field — carried per-row via r.thk rather than the single
-    // hardcoded 18 this used to pass.
+    views: ['plan'],
     computeCutlist: (dims) => {
-      const cutRows = computeBedCutlist({
-        W: n(dims.W), L: n(dims.L), H: n(dims.H), D: n(dims.D), headboardH: n(dims.headboardH),
-        thk: n(dims.thk) || 18,
-        includeHeadboard: dims.includeHeadboard === undefined ? true : n(dims.includeHeadboard) === 1,
-        includeHydraulic: n(dims.includeHydraulic) === 1,
+      const cutRows = simpleBedCutlist({
+        W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardH: n(dims.headboardH) || 900,
+        lst: { enabled: false, depthMm: 460, widthMm: 560 },
+        rst: { enabled: false, depthMm: 460, widthMm: 560 },
       });
-      return cutRows.map((r, i) => row(
-        i + 1, r.label, r.type === 'HARDWARE' ? 'Hardware' : `${r.thk}mm BWP Ply`,
-        r.cutWidth, r.cutHeight, r.qty, r.thk, '', r.source.formula,
-      ));
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
-    DrawingComponent: (props) => <BedTechnicalDrawing dims={props.dims} activeView={props.activeView} />,
+    DrawingComponent: (props) => <SimpleBedDrawing dims={props.dims} />,
   },
 
   // ── SIDE TABLE ────────────────────────────────────────────────────────────────

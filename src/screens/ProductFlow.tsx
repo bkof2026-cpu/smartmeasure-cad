@@ -5,8 +5,8 @@ import { PRODUCT_ADDONS, FIELD_GROUPS } from '../products/addons';
 import type { ProductId } from '../products/productTypes';
 import type { AddonDef } from '../products/addons';
 import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSelection';
-import { BedTechnicalDrawing } from '../products/bed/BedTechnicalDrawing';
-import type { SideTableZone } from '../products/bed/bedGeometry';
+import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
+import { simpleBedCutlist, type SimpleSideTableInput } from '../products/bed/simpleBedGeometry';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
@@ -350,6 +350,13 @@ export const ProductFlow: React.FC = () => {
   const bedHasSTR = selectedId === 'bed' && selectedAddons.has('side-table-right');
   const wardHasLoft = (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && selectedAddons.has('loft');
 
+  // Bed's LST/RST: D/W are user-entered addon fields, Height is always
+  // auto-fetched from the Bed's own H field (never independently entered) —
+  // shared by the on-screen drawing and the PDF's component table so they
+  // can never disagree.
+  const bedLST: SimpleSideTableInput = { enabled: bedHasSTL, depthMm: (addonDims['side-table-left']?.D) ?? 460, widthMm: (addonDims['side-table-left']?.W) ?? 560 };
+  const bedRST: SimpleSideTableInput = { enabled: bedHasSTR, depthMm: (addonDims['side-table-right']?.D) ?? 460, widthMm: (addonDims['side-table-right']?.W) ?? 560 };
+
   // Accepts an explicit view so the PDF exporter can render Front/Plan/Side
   // (or Internal) in turn without touching the on-screen activeView state —
   // defaults to the currently-selected tab for normal on-screen rendering.
@@ -357,15 +364,10 @@ export const ProductFlow: React.FC = () => {
     if (!product) return null;
     const view = viewOverride ?? activeView;
 
-    // Bed + side tables — real engine, real component geometry for both the
-    // bed and each side table, dimensions derived from that same geometry.
-    if (selectedId === 'bed' && (bedHasSTL || bedHasSTR) && (view === 'plan' || view === 'front')) {
-      const leftD = addonDims['side-table-left'] ?? {};
-      const rightD = addonDims['side-table-right'] ?? {};
-      const sideTables: SideTableZone[] = [];
-      if (bedHasSTL) sideTables.push({ side: 'left', inputs: { W: leftD.W ?? 450, D: leftD.D ?? 400, H: leftD.H ?? 500, drawers: 0, includeBackPanel: true, includeSkirting: true } });
-      if (bedHasSTR) sideTables.push({ side: 'right', inputs: { W: rightD.W ?? 450, D: rightD.D ?? 400, H: rightD.H ?? 500, drawers: 0, includeBackPanel: true, includeSkirting: true } });
-      return <BedTechnicalDrawing dims={dims} activeView={view} sideTables={sideTables} />;
+    // Bed — single simplified plan view; LST/RST height always auto-fetched
+    // from the Bed's own H field, never independently entered.
+    if (selectedId === 'bed') {
+      return <SimpleBedDrawing dims={dims} lst={bedLST} rst={bedRST} />;
     }
 
     // Wardrobe + loft composite (front view)
@@ -411,6 +413,8 @@ export const ProductFlow: React.FC = () => {
 
     const cutlist: PdfCutRow[] = wardrobeDesign && (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe')
       ? computeWardrobeCutlist(wardrobeDesign.id, wardrobeDimsFrom(dims))
+      : selectedId === 'bed'
+      ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
       : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
 
     downloadPDF(product.name, views, cutlist);
@@ -502,6 +506,19 @@ export const ProductFlow: React.FC = () => {
               }
               setWardrobeDesign(null);
               setSelectedId(nextId);
+              // Reset dims/view/addons synchronously, in the same update as
+              // selectedId — otherwise there's one render where the NEW
+              // product's resolver runs against the OLD product's dims
+              // (missing keys -> NaN geometry), before the selectedId-keyed
+              // useEffect catches up a render later.
+              const nextProduct = getProduct(nextId);
+              if (nextProduct) {
+                setDims({ ...nextProduct.demoDimensions });
+                setActiveView(nextProduct.views[0]);
+                setSelectedAddons(new Set());
+                setAddonDims({});
+                setActiveWorkspace('measure');
+              }
             }}
             className="text-sm font-bold rounded-xl px-3 py-2 outline-none"
             style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045', minWidth: 200 }}>
@@ -783,6 +800,15 @@ export const ProductFlow: React.FC = () => {
                                 </span>
                               </div>
                             ))}
+                            {(addon.id === 'side-table-left' || addon.id === 'side-table-right') && (
+                              <div className="flex flex-col gap-0.5 mt-2">
+                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Height (mm)</label>
+                                <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
+                                  {Number(dims.H ?? 0)} mm
+                                </div>
+                                <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from Bed Height</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -812,13 +838,6 @@ export const ProductFlow: React.FC = () => {
               </button>
             ))}
             {/* Composite views */}
-            {(bedHasSTL || bedHasSTR) && (
-              <button onClick={() => setActiveView('plan')}
-                className="px-3 py-1 rounded-md text-xs font-bold"
-                style={{ background: activeView === 'plan' ? '#7c3aed' : '#1e293b', color: activeView === 'plan' ? '#fff' : '#a855f7', border: '1px solid #3b1f6a' }}>
-                ✦ Plan with Side Tables
-              </button>
-            )}
             {wardHasLoft && (
               <button onClick={() => setActiveView('front')}
                 className="px-3 py-1 rounded-md text-xs font-bold"
