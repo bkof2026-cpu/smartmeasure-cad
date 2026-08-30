@@ -40,12 +40,12 @@ export interface SimpleBedCutRow {
   remark: string;
 }
 
-/** "BED — PLAN VIEW" / "BED + LST — PLAN VIEW" / "BED + LST + RST — PLAN VIEW", per the selected side tables. */
+/** "BED WITHOUT SIDE TABLE" / "BED WITH LEFT SIDE TABLE" / "BED WITH RIGHT SIDE TABLE" / "BED WITH SIDE TABLES". */
 export function simpleBedTitle(inp: SimpleBedInputs): string {
-  const parts = ['BED'];
-  if (inp.lst.enabled) parts.push('LST');
-  if (inp.rst.enabled) parts.push('RST');
-  return `${parts.join(' + ')} — PLAN VIEW`;
+  if (inp.lst.enabled && inp.rst.enabled) return 'BED WITH SIDE TABLES';
+  if (inp.lst.enabled) return 'BED WITH LEFT SIDE TABLE';
+  if (inp.rst.enabled) return 'BED WITH RIGHT SIDE TABLE';
+  return 'BED WITHOUT SIDE TABLE';
 }
 
 /** Same data used for both the screen and the PDF — single source of truth. */
@@ -63,25 +63,25 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
   return rows;
 }
 
-const HEADBOARD_GAP = 60; // visual gap between the floating Headboard box and the Bed — not a real dimension
+const HEADBOARD_GAP = 300; // real visual gap between the Headboard box and the Bed — big enough for a clearly visible height leader through it
 
 export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
   const { W, L, H, headboardH, lst, rst } = inp;
-  const leaderMargin = 40; // room for the diagonal Bed-Height leader, which extends left of bedX even with no LST
+  const leaderMargin = 110; // room for the diagonal Bed-Height leader, which extends left of bedX even with no LST
   const leftW = lst.enabled ? lst.widthMm : 0;
   const rightW = rst.enabled ? rst.widthMm : 0;
   const bedX = leftW + leaderMargin; // shift everything right so nothing is negative
-  const topOffset = HEADBOARD_GAP + headboardH; // room for the floating Headboard box above the Bed
-  const bedY = topOffset;
+  const bedY = headboardH + HEADBOARD_GAP; // Headboard sits above, with a real gap before the Bed
 
   const components: ComponentSpec[] = [];
   const dimReqs: DimensionRequest[] = [];
   const lines: AnnotationLine[] = [];
 
-  // Headboard — a separate, non-touching box per the user's own reference
-  // sketch, captioned with its own size inline (no dimension arrows on it;
+  // Headboard — a separate box above the Bed with a real gap between them,
+  // captioned with its own size inline (no dimension arrows on it;
   // Headboard Width always = Bed Width, so a redundant arrow would just
-  // repeat the Bed Width dimension below).
+  // repeat the Bed Width dimension below). The Bed Height leader (below)
+  // is drawn through this gap.
   components.push({
     id: 'headboard', type: 'HEAD_BOARD', label: `Headboard = ${Math.round(headboardH)} × ${Math.round(W)}`, x: bedX, y: 0, width: W, height: headboardH, qty: 1, visible: true,
     source: { formula: 'Width = Bed Width (auto) | Height = Headboard Height (standard default 900mm, editable)', constants: [] },
@@ -99,8 +99,9 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
   // corner leader/callout instead of an axis-aligned DimensionLine, anchored
   // at the Bed's own top-left corner — matching the user's own hand-sketch
   // convention exactly (the "/" leader marks depth/height for any box, at
-  // that box's left corner).
-  lines.push({ x1: bedX, y1: bedY, x2: bedX - 30, y2: bedY - 34, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
+  // that box's left corner). Drawn as a long stroke through the headboard
+  // gap, not a short stub, so it reads as a real "big" callout line.
+  lines.push({ x1: bedX, y1: bedY, x2: bedX - 100, y2: headboardH + 30, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
 
   if (lst.enabled) {
     const lw = lst.widthMm, ld = lst.depthMm;
@@ -110,12 +111,14 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       source: { formula: `Depth = ${Math.round(ld)}mm (entered) | Width = ${Math.round(lw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
     dimReqs.push({ axis: 'h', x1: lx, y1: bedY - 8, x2: lx + lw, y2: bedY - 8, edge: 'top', componentIds: ['lst'], label: `${Math.round(lw)} mm (W)`, source: { formula: 'LST Width (entered)', constants: [] } });
-    dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + ld, edge: 'left', componentIds: ['lst'], label: `${Math.round(ld)} mm (D)`, source: { formula: 'LST Depth (entered)', constants: [] } });
-    // Height isn't a real plan-view span (same reasoning as Bed's own h) —
-    // a diagonal leader from the table's own bottom-left corner (a real
-    // left corner of the box, and clear of the headboard above and the
-    // W/D arrows alongside).
-    lines.push({ x1: lx, y1: bedY + ld, x2: lx - 26, y2: bedY + ld + 26, color: '#cc2200', label: `${Math.round(H)} mm (H)` });
+    // Height is a real, straight vertical dimension (auto-fetched from Bed
+    // Height, but still the table's genuine vertical extent). Depth is the
+    // "/" diagonal leader at the table's own left corner (bottom-left,
+    // since its top-left corner sits flush against the headboard/Bed
+    // edge) — per the user's own reference sketch, where the diagonal
+    // marks Depth, not Height.
+    dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + H, edge: 'left', componentIds: ['lst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'LST Height = Bed Height (auto-fetched)', constants: [] } });
+    lines.push({ x1: lx, y1: bedY + ld, x2: lx - 26, y2: bedY + ld + 26, color: '#cc2200', label: `${Math.round(ld)} mm (D)` });
   }
   if (rst.enabled) {
     const rw = rst.widthMm, rd = rst.depthMm;
@@ -125,10 +128,10 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       source: { formula: `Depth = ${Math.round(rd)}mm (entered) | Width = ${Math.round(rw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
     dimReqs.push({ axis: 'h', x1: rx, y1: bedY - 8, x2: rx + rw, y2: bedY - 8, edge: 'top', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] } });
-    dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + rd, edge: 'right', componentIds: ['rst'], label: `${Math.round(rd)} mm (D)`, source: { formula: 'RST Depth (entered)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + H, edge: 'right', componentIds: ['rst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'RST Height = Bed Height (auto-fetched)', constants: [] } });
     // Same "/" convention as LST, anchored at RST's own left corner (its
     // bottom-left, the corner shared with the Bed's edge).
-    lines.push({ x1: rx, y1: bedY + rd, x2: rx - 26, y2: bedY + rd + 26, color: '#cc2200', label: `${Math.round(H)} mm (H)` });
+    lines.push({ x1: rx, y1: bedY + rd, x2: rx - 26, y2: bedY + rd + 26, color: '#cc2200', label: `${Math.round(rd)} mm (D)` });
   }
 
   // Include every leader-line endpoint so nothing (e.g. the LST/RST Height
