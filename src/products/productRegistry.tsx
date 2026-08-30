@@ -874,11 +874,11 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // BedTechnicalDrawing.tsx) is kept, unused, for a future "fabrication
     // detail" mode — nothing was deleted, this product entry just no
     // longer wires to it. See src/products/bed/simpleBedGeometry.ts.
-    demoDimensions: { W: 1800, L: 2000, H: 450, headboardH: 900 },
+    demoDimensions: { W: 1800, L: 2000, H: 436, headboardH: 900 },
     measurementFields: [
       { key: 'W', label: 'Bed Width', unit: 'mm', defaultValue: 1800, min: 900, max: 2400 },
       { key: 'L', label: 'Bed Length', unit: 'mm', defaultValue: 2000, min: 1800, max: 2400 },
-      { key: 'H', label: 'Bed Height', unit: 'mm', defaultValue: 450, min: 250, max: 600 },
+      { key: 'H', label: 'Bed Height', unit: 'mm', defaultValue: 436, min: 250, max: 600 },
       { key: 'headboardH', label: 'Headboard Height', unit: 'mm', defaultValue: 900, min: 400, max: 1500 },
     ],
     views: ['plan'],
