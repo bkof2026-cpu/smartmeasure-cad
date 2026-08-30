@@ -52,22 +52,26 @@ Redesigned 29 Aug 2026 to match the user's own two reference sketches
 - **Bed** is captioned `Bed - {L} × {W}`, with real W (bottom) and L (left
   edge) dimension arrows.
 - **Bed Height (h)** has no natural edge to dimension in a plan view (it's
-  the axis perpendicular to the page) — shown as a diagonal corner
+  the axis perpendicular to the page) — shown as a diagonal "/" corner
   leader/callout (`AnnotationLine` with an optional `label`, added to the
-  shared engine's `types.ts` and rendered in `CanonicalSvg.tsx`) anchored
-  at the top-center of the Bed, in the headboard gap — matching the user's
-  own hand-sketch convention, and positioned there specifically (not a
-  corner) so it never collides with the LST/RST dimension cluster at
-  either corner.
+  shared engine's `types.ts` and rendered in `CanonicalSvg.tsx`), the
+  user's own explicit convention: "the / line shows the depth or height of
+  the bed and any box, and it should be on the left corner of the box".
+  Anchored at the Bed's own top-left corner (matches the "Bed without side
+  table" sketch exactly).
 - **LST/RST**: flush at the two head-end corners. Depth gets a real
   vertical dimension arrow; Width gets a real horizontal one. Height —
   like Bed's own h — isn't a real plan-view span either (it's auto-fetched
-  from Bed Height, not an independent footprint measurement), so it's a
-  second diagonal leader from the table's outer-bottom corner rather than
-  a second vertical arrow. Two same-origin, near-equal-length vertical
-  dimensions (D ≈ 460mm, H ≈ 436mm in the worked example) were tried first
-  and rejected: the collision engine's per-tier offset (`DIM_TIER_STEP_PX`
-  = 18px) is far narrower than a rendered label box (~60px), so two
+  from Bed Height, not an independent footprint measurement), so it's the
+  same "/" leader convention, anchored at that table's own left corner
+  (bottom-left specifically, since a table's top-left corner sits flush
+  against the headboard/Bed edge — anchoring there would land the label on
+  top of the headboard's own caption for LST, or inside the Bed's own
+  fill for RST). Two same-origin, near-equal-length vertical dimensions
+  (D ≈ 460mm, H ≈ 436mm in the worked example) were tried first as a
+  second vertical arrow and rejected: the collision engine's per-tier
+  offset (`DIM_TIER_STEP_PX` = 18px) is far narrower than a rendered label
+  box (~60px), so two
   dimensions sharing almost the same span midpoint still overlap even on
   different tiers — a leader avoids the collision entirely rather than
   trying to out-tune the shared tier system for one narrow case.

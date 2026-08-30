@@ -96,11 +96,11 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
 
   // Bed Height (h) — has no natural edge to dimension in a plan view (it's
   // the vertical axis, perpendicular to the page), so it's a diagonal
-  // corner leader/callout instead of an axis-aligned DimensionLine,
-  // matching the user's own hand-sketch convention exactly. Anchored at the
-  // TOP-CENTER of the Bed (in the headboard gap) rather than a corner, so it
-  // never collides with the LST/RST dimension cluster at either corner.
-  lines.push({ x1: bedX + W / 2, y1: bedY, x2: bedX + W / 2 - 30, y2: bedY - 34, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
+  // corner leader/callout instead of an axis-aligned DimensionLine, anchored
+  // at the Bed's own top-left corner — matching the user's own hand-sketch
+  // convention exactly (the "/" leader marks depth/height for any box, at
+  // that box's left corner).
+  lines.push({ x1: bedX, y1: bedY, x2: bedX - 30, y2: bedY - 34, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
 
   if (lst.enabled) {
     const lw = lst.widthMm, ld = lst.depthMm;
@@ -112,9 +112,9 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     dimReqs.push({ axis: 'h', x1: lx, y1: bedY - 8, x2: lx + lw, y2: bedY - 8, edge: 'top', componentIds: ['lst'], label: `${Math.round(lw)} mm (W)`, source: { formula: 'LST Width (entered)', constants: [] } });
     dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + ld, edge: 'left', componentIds: ['lst'], label: `${Math.round(ld)} mm (D)`, source: { formula: 'LST Depth (entered)', constants: [] } });
     // Height isn't a real plan-view span (same reasoning as Bed's own h) —
-    // a diagonal leader from the table's bottom-left corner, clear of the
-    // W/D arrows, instead of a second vertical dimension fighting them for
-    // the same narrow column.
+    // a diagonal leader from the table's own bottom-left corner (a real
+    // left corner of the box, and clear of the headboard above and the
+    // W/D arrows alongside).
     lines.push({ x1: lx, y1: bedY + ld, x2: lx - 26, y2: bedY + ld + 26, color: '#cc2200', label: `${Math.round(H)} mm (H)` });
   }
   if (rst.enabled) {
@@ -126,7 +126,9 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     });
     dimReqs.push({ axis: 'h', x1: rx, y1: bedY - 8, x2: rx + rw, y2: bedY - 8, edge: 'top', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] } });
     dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + rd, edge: 'right', componentIds: ['rst'], label: `${Math.round(rd)} mm (D)`, source: { formula: 'RST Depth (entered)', constants: [] } });
-    lines.push({ x1: rx + rw, y1: bedY + rd, x2: rx + rw + 26, y2: bedY + rd + 26, color: '#cc2200', label: `${Math.round(H)} mm (H)` });
+    // Same "/" convention as LST, anchored at RST's own left corner (its
+    // bottom-left, the corner shared with the Bed's edge).
+    lines.push({ x1: rx, y1: bedY + rd, x2: rx - 26, y2: bedY + rd + 26, color: '#cc2200', label: `${Math.round(H)} mm (H)` });
   }
 
   // Include every leader-line endpoint so nothing (e.g. the LST/RST Height
