@@ -40,19 +40,45 @@ historical-order verification the way CALC_BED's clearance constants did):
 
 ## Drawing
 
-One combined "site sketch" style Plan view (`resolveSimpleBedPlan`) — not a
-strict single orthographic projection: the headboard band is drawn at its
-real height directly above the bed's own W×L footprint, matching the user's
-own hand-measured reference sketch exactly. LST/RST sit flush at the two
-head-end corners, forming one connected composition. Title is built
-dynamically: `BED — PLAN VIEW`, `BED + LST — PLAN VIEW`,
-`BED + RST — PLAN VIEW`, or `BED + LST + RST — PLAN VIEW`, and includes the
-Bed Height as text (`(H = 436mm)`) since height isn't a plan-view dimension
-but the user's sketch still wants it visible.
+Redesigned 29 Aug 2026 to match the user's own two reference sketches
+("Bed without side table" / "Bed with Side table") exactly, in
+`resolveSimpleBedPlan`:
 
-Only real drawn components get dimension lines (Bed W/L, Headboard H, each
-enabled side table's D/W) — no internal panels, drawers, shelves, or
-partitions are generated.
+- **Headboard** is a separate, non-touching box (a real gap above the Bed,
+  `HEADBOARD_GAP` = 60mm), captioned inline with its own size
+  (`Headboard = 900 × 1830`) — no dimension arrows on it, since Headboard
+  Width is always exactly Bed Width and a second arrow would just repeat
+  the Bed Width dimension below.
+- **Bed** is captioned `Bed - {L} × {W}`, with real W (bottom) and L (left
+  edge) dimension arrows.
+- **Bed Height (h)** has no natural edge to dimension in a plan view (it's
+  the axis perpendicular to the page) — shown as a diagonal corner
+  leader/callout (`AnnotationLine` with an optional `label`, added to the
+  shared engine's `types.ts` and rendered in `CanonicalSvg.tsx`) anchored
+  at the top-center of the Bed, in the headboard gap — matching the user's
+  own hand-sketch convention, and positioned there specifically (not a
+  corner) so it never collides with the LST/RST dimension cluster at
+  either corner.
+- **LST/RST**: flush at the two head-end corners. Depth gets a real
+  vertical dimension arrow; Width gets a real horizontal one. Height —
+  like Bed's own h — isn't a real plan-view span either (it's auto-fetched
+  from Bed Height, not an independent footprint measurement), so it's a
+  second diagonal leader from the table's outer-bottom corner rather than
+  a second vertical arrow. Two same-origin, near-equal-length vertical
+  dimensions (D ≈ 460mm, H ≈ 436mm in the worked example) were tried first
+  and rejected: the collision engine's per-tier offset (`DIM_TIER_STEP_PX`
+  = 18px) is far narrower than a rendered label box (~60px), so two
+  dimensions sharing almost the same span midpoint still overlap even on
+  different tiers — a leader avoids the collision entirely rather than
+  trying to out-tune the shared tier system for one narrow case.
+
+Title is built dynamically: `BED — PLAN VIEW`, `BED + LST — PLAN VIEW`,
+`BED + RST — PLAN VIEW`, or `BED + LST + RST — PLAN VIEW`, and includes the
+Bed Height as text (`(H = 436mm)`) in addition to the on-drawing leader.
+
+Only real drawn components get dimension lines or leaders (Bed W/L/h,
+Headboard's own inline caption, each enabled side table's D/W/H) — no
+internal panels, drawers, shelves, or partitions are generated.
 
 ## Screen ↔ PDF
 

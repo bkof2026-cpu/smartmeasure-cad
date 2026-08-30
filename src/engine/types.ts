@@ -78,6 +78,11 @@ export interface AnnotationLine {
   x1: number; y1: number; x2: number; y2: number;
   dashed?: boolean;
   color?: string;
+  /** Optional leader-line caption, drawn near (x2, y2) — e.g. a diagonal
+   * corner callout for a value that has no natural edge to dimension
+   * against in this view (real hand-sketch convention, not a measured
+   * axis-aligned DimensionLine). */
+  label?: string;
 }
 
 /** Everything needed to draw one view of one resolved design. */

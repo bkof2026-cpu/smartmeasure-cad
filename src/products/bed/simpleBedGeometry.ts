@@ -1,4 +1,4 @@
-import type { ComponentSpec, ResolvedDrawing } from '../../engine/types';
+import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engine/types';
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
 
@@ -63,50 +63,77 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
   return rows;
 }
 
+const HEADBOARD_GAP = 60; // visual gap between the floating Headboard box and the Bed — not a real dimension
+
 export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
   const { W, L, H, headboardH, lst, rst } = inp;
+  const leaderMargin = 40; // room for the diagonal Bed-Height leader, which extends left of bedX even with no LST
   const leftW = lst.enabled ? lst.widthMm : 0;
   const rightW = rst.enabled ? rst.widthMm : 0;
-  const bedX = leftW; // shift everything right so nothing is negative
+  const bedX = leftW + leaderMargin; // shift everything right so nothing is negative
+  const topOffset = HEADBOARD_GAP + headboardH; // room for the floating Headboard box above the Bed
+  const bedY = topOffset;
 
   const components: ComponentSpec[] = [];
   const dimReqs: DimensionRequest[] = [];
+  const lines: AnnotationLine[] = [];
 
+  // Headboard — a separate, non-touching box per the user's own reference
+  // sketch, captioned with its own size inline (no dimension arrows on it;
+  // Headboard Width always = Bed Width, so a redundant arrow would just
+  // repeat the Bed Width dimension below).
   components.push({
-    id: 'headboard', type: 'HEAD_BOARD', label: 'Headboard', x: bedX, y: 0, width: W, height: headboardH, qty: 1, visible: true,
+    id: 'headboard', type: 'HEAD_BOARD', label: `Headboard = ${Math.round(headboardH)} × ${Math.round(W)}`, x: bedX, y: 0, width: W, height: headboardH, qty: 1, visible: true,
     source: { formula: 'Width = Bed Width (auto) | Height = Headboard Height (standard default 900mm, editable)', constants: [] },
   });
   components.push({
-    id: 'bed-body', type: 'BED_BODY', label: `BED  ${Math.round(W)}×${Math.round(L)}`, x: bedX, y: headboardH, width: W, height: L, qty: 1, visible: true,
+    id: 'bed-body', type: 'BED_BODY', label: `Bed - ${Math.round(L)} × ${Math.round(W)}`, x: bedX, y: bedY, width: W, height: L, qty: 1, visible: true,
     source: { formula: 'Width = W | Length = L — single rectangular footprint, no internal panels', constants: [] },
   });
 
-  dimReqs.push({ axis: 'h', x1: bedX, y1: headboardH + L, x2: bedX + W, y2: headboardH + L, edge: 'bottom', componentIds: ['bed-body'], label: `${Math.round(W)} mm (W)`, source: { formula: 'Bed Width = W', constants: [] } });
-  dimReqs.push({ axis: 'v', x1: bedX + W, y1: headboardH, x2: bedX + W, y2: headboardH + L, edge: 'right', componentIds: ['bed-body'], label: `${Math.round(L)} mm (L)`, source: { formula: 'Bed Length = L', constants: [] } });
-  dimReqs.push({ axis: 'v', x1: bedX, y1: 0, x2: bedX, y2: headboardH, edge: 'left', componentIds: ['headboard'], label: `${Math.round(headboardH)} mm (headboard H)`, source: { formula: 'Headboard Height (standard default 900mm, editable)', constants: [] } });
+  dimReqs.push({ axis: 'h', x1: bedX, y1: bedY + L, x2: bedX + W, y2: bedY + L, edge: 'bottom', componentIds: ['bed-body'], label: `${Math.round(W)} mm (W)`, source: { formula: 'Bed Width = W', constants: [] } });
+  dimReqs.push({ axis: 'v', x1: bedX, y1: bedY, x2: bedX, y2: bedY + L, edge: 'left', componentIds: ['bed-body'], label: `${Math.round(L)} mm (L)`, source: { formula: 'Bed Length = L', constants: [] } });
+
+  // Bed Height (h) — has no natural edge to dimension in a plan view (it's
+  // the vertical axis, perpendicular to the page), so it's a diagonal
+  // corner leader/callout instead of an axis-aligned DimensionLine,
+  // matching the user's own hand-sketch convention exactly. Anchored at the
+  // TOP-CENTER of the Bed (in the headboard gap) rather than a corner, so it
+  // never collides with the LST/RST dimension cluster at either corner.
+  lines.push({ x1: bedX + W / 2, y1: bedY, x2: bedX + W / 2 - 30, y2: bedY - 34, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
 
   if (lst.enabled) {
     const lw = lst.widthMm, ld = lst.depthMm;
+    const lx = bedX - lw; // flush against the Bed's left edge
     components.push({
-      id: 'lst', type: 'SIDE_TABLE', label: 'LST', x: 0, y: 0, width: lw, height: ld, qty: 1, visible: true,
+      id: 'lst', type: 'SIDE_TABLE', label: 'LST', x: lx, y: bedY, width: lw, height: ld, qty: 1, visible: true,
       source: { formula: `Depth = ${Math.round(ld)}mm (entered) | Width = ${Math.round(lw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
-    dimReqs.push({ axis: 'h', x1: 0, y1: -8, x2: lw, y2: -8, edge: 'top', componentIds: ['lst'], label: `${Math.round(lw)} mm (W)`, source: { formula: 'LST Width (entered)', constants: [] } });
-    dimReqs.push({ axis: 'v', x1: -8, y1: 0, x2: -8, y2: ld, edge: 'left', componentIds: ['lst'], label: `${Math.round(ld)} mm (D)`, source: { formula: 'LST Depth (entered)', constants: [] } });
+    dimReqs.push({ axis: 'h', x1: lx, y1: bedY - 8, x2: lx + lw, y2: bedY - 8, edge: 'top', componentIds: ['lst'], label: `${Math.round(lw)} mm (W)`, source: { formula: 'LST Width (entered)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + ld, edge: 'left', componentIds: ['lst'], label: `${Math.round(ld)} mm (D)`, source: { formula: 'LST Depth (entered)', constants: [] } });
+    // Height isn't a real plan-view span (same reasoning as Bed's own h) —
+    // a diagonal leader from the table's bottom-left corner, clear of the
+    // W/D arrows, instead of a second vertical dimension fighting them for
+    // the same narrow column.
+    lines.push({ x1: lx, y1: bedY + ld, x2: lx - 26, y2: bedY + ld + 26, color: '#cc2200', label: `${Math.round(H)} mm (H)` });
   }
   if (rst.enabled) {
     const rw = rst.widthMm, rd = rst.depthMm;
     const rx = bedX + W;
     components.push({
-      id: 'rst', type: 'SIDE_TABLE', label: 'RST', x: rx, y: 0, width: rw, height: rd, qty: 1, visible: true,
+      id: 'rst', type: 'SIDE_TABLE', label: 'RST', x: rx, y: bedY, width: rw, height: rd, qty: 1, visible: true,
       source: { formula: `Depth = ${Math.round(rd)}mm (entered) | Width = ${Math.round(rw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
-    dimReqs.push({ axis: 'h', x1: rx, y1: -8, x2: rx + rw, y2: -8, edge: 'top', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] } });
-    dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: 0, x2: rx + rw + 8, y2: rd, edge: 'right', componentIds: ['rst'], label: `${Math.round(rd)} mm (D)`, source: { formula: 'RST Depth (entered)', constants: [] } });
+    dimReqs.push({ axis: 'h', x1: rx, y1: bedY - 8, x2: rx + rw, y2: bedY - 8, edge: 'top', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + rd, edge: 'right', componentIds: ['rst'], label: `${Math.round(rd)} mm (D)`, source: { formula: 'RST Depth (entered)', constants: [] } });
+    lines.push({ x1: rx + rw, y1: bedY + rd, x2: rx + rw + 26, y2: bedY + rd + 26, color: '#cc2200', label: `${Math.round(H)} mm (H)` });
   }
 
-  const worldWidth = leftW + W + rightW;
-  const worldHeight = headboardH + L;
+  // Include every leader-line endpoint so nothing (e.g. the LST/RST Height
+  // callouts, which extend slightly past their table's own bounds) risks
+  // being clipped at the edge of the drawing.
+  const worldWidth = Math.max(bedX + W + rightW, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
+  const worldHeight = Math.max(bedY + L, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
   const dimensions = resolveDimensions(dimReqs);
   const issues = [
@@ -124,6 +151,6 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
 
   return {
     view: 'plan', productType: 'bed', designId: 'simple', designName: 'Bed',
-    worldWidth, worldHeight, components, dimensions, issues, formulaStatus: 'verified',
+    worldWidth, worldHeight, components, dimensions, issues, formulaStatus: 'verified', lines,
   };
 }

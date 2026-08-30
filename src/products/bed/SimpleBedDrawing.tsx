@@ -32,6 +32,7 @@ export const SimpleBedDrawing: React.FC<Props> = ({ dims, lst, rst }) => {
         title={`${simpleBedTitle(inp)} — ${Math.round(inp.W)}×${Math.round(inp.L)} mm (H = ${Math.round(H)}mm)`}
         components={drawing.components}
         dimensions={drawing.dimensions}
+        lines={drawing.lines}
         onSelectComponent={setSelected}
         onSelectDimension={setSelected}
         selectedComponentId={selected && 'type' in selected ? selected.id : null}
