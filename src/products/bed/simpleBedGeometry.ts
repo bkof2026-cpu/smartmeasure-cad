@@ -143,32 +143,17 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
 
   // Bed Height (h) — has no natural edge to dimension in a plan view (it's
   // the vertical axis, perpendicular to the page), so it's a diagonal
-  // corner leader/callout instead of an axis-aligned DimensionLine. Per the
-  // user's explicit correction, this one stays OUTSIDE the Bed (unlike the
-  // LST/RST/Profile Shutter Depth leaders below, which the user wants drawn
-  // inside their own boxes) — anchored at the Bed's own top-left corner,
-  // routed to whichever side is clear of a Profile Shutter (which fills the
-  // whole gap column on whichever side it's mounted), falling back to the
-  // Bed's own bottom-left corner if both sides are occupied.
-  const psOnLeft = profileShutterActive(inp) && inp.profileShutter.side === 'left';
-  const psOnRight = profileShutterActive(inp) && inp.profileShutter.side === 'right';
-  // Started a little above bedY (not exactly at it) whenever a side table
-  // sits at that same corner — its own Depth diagonal is now drawn right
-  // there too (inside its box), so pulling this one's own midpoint further
-  // up into the gap keeps the two labels from landing on each other.
-  const hLeaderY1 = (rst.enabled || lst.enabled) ? bedY - 50 : bedY;
-  // Target near the very TOP of the gap band (15% down from y=0), not just
-  // below the Headboard — a target close to bedY only bought a little
-  // separation from the LST/RST corner clutter once this whole drawing's
-  // scale compresses under a lot of add-ons at once; anchoring near the top
-  // keeps the two well apart regardless of how small that scale gets.
-  const hLeaderTargetY = Math.max(20, bedY * 0.15);
-  if (psOnLeft && psOnRight) {
-    lines.push({ x1: bedX, y1: bedY + L, x2: bedX - 90, y2: bedY + L + 60, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
-  } else if (psOnLeft) {
-    lines.push({ x1: bedX + W, y1: hLeaderY1, x2: bedX + W + 100, y2: hLeaderTargetY, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
-  } else {
-    lines.push({ x1: bedX, y1: hLeaderY1, x2: bedX - 100, y2: hLeaderTargetY, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
+  // corner leader/callout instead of an axis-aligned DimensionLine — stays
+  // OUTSIDE the Bed itself (per the user's explicit correction), but per
+  // their own reference sketch it's a small diagonal anchored at the Bed's
+  // own top-left corner leaning up-and-RIGHT, into the Bed's own open
+  // headboard-gap space above it — never up-left, which is always LST's (or
+  // a Profile Shutter's) own column. Leaning right instead of left means
+  // this never needs to know or route around what's on the left at all.
+  {
+    const reachX = Math.min(W * 0.2, 80);
+    const reachY = Math.min(bedY * 0.3, 60);
+    lines.push({ x1: bedX, y1: bedY, x2: bedX + reachX, y2: bedY - reachY, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
   }
 
   if (lst.enabled) {
@@ -178,17 +163,19 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       id: 'lst', type: 'SIDE_TABLE', label: 'LST', x: lx, y: bedY, width: lw, height: ld, qty: 1, visible: true,
       source: { formula: `Depth = ${Math.round(ld)}mm (entered) | Width = ${Math.round(lw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
-    dimReqs.push({ axis: 'h', x1: lx, y1: bedY - 8, x2: lx + lw, y2: bedY - 8, edge: 'top', componentIds: ['lst'], label: `${Math.round(lw)} mm (W)`, source: { formula: 'LST Width (entered)', constants: [] } });
+    // Width — real straight dimension along the table's own BOTTOM edge
+    // (per the user's own reference sketch), well clear of the crowded top
+    // corner where the Bed's own Height leader and the Profile Shutter live.
+    dimReqs.push({ axis: 'h', x1: lx, y1: bedY + ld + 8, x2: lx + lw, y2: bedY + ld + 8, edge: 'bottom', componentIds: ['lst'], label: `${Math.round(lw)} mm (W)`, source: { formula: 'LST Width (entered)', constants: [] } });
     // Height is a real, straight vertical dimension (auto-fetched from Bed
     // Height, but still the table's genuine vertical extent) — stays
     // outside the box, standard convention for a straight dimension.
     dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + H, edge: 'left', componentIds: ['lst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'LST Height = Bed Height (auto-fetched)', constants: [] } });
     // Depth is the "/" diagonal leader, drawn INSIDE the table's own
-    // top-left corner — this also removes the old crowding against the
-    // Height dimension above, since the diagonal no longer shares that
-    // outside corner at all.
-    const lstDiag = insideDiagonal(lx, bedY, lw, ld, 'right-down');
-    lines.push({ x1: lx, y1: bedY, x2: lstDiag.x2, y2: lstDiag.y2, color: '#cc2200', label: `${Math.round(ld)} mm (D)` });
+    // BOTTOM-left corner leaning up-right — matching the user's own
+    // reference sketch exactly.
+    const lstDiag = insideDiagonal(lx, bedY + ld, lw, ld, 'right-up');
+    lines.push({ x1: lx, y1: bedY + ld, x2: lstDiag.x2, y2: lstDiag.y2, color: '#cc2200', label: `${Math.round(ld)} mm (D)` });
   }
   if (rst.enabled) {
     const rw = rst.widthMm, rd = rst.depthMm;
@@ -197,11 +184,13 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       id: 'rst', type: 'SIDE_TABLE', label: 'RST', x: rx, y: bedY, width: rw, height: rd, qty: 1, visible: true,
       source: { formula: `Depth = ${Math.round(rd)}mm (entered) | Width = ${Math.round(rw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
-    dimReqs.push({ axis: 'h', x1: rx, y1: bedY - 8, x2: rx + rw, y2: bedY - 8, edge: 'top', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] } });
+    // Width along the bottom edge, same as LST.
+    dimReqs.push({ axis: 'h', x1: rx, y1: bedY + rd + 8, x2: rx + rw, y2: bedY + rd + 8, edge: 'bottom', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] } });
     dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + H, edge: 'right', componentIds: ['rst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'RST Height = Bed Height (auto-fetched)', constants: [] } });
-    // Same "/" convention as LST, drawn inside RST's own top-left corner.
-    const rstDiag = insideDiagonal(rx, bedY, rw, rd, 'right-down');
-    lines.push({ x1: rx, y1: bedY, x2: rstDiag.x2, y2: rstDiag.y2, color: '#cc2200', label: `${Math.round(rd)} mm (D)` });
+    // Same "/" convention as LST, drawn inside RST's own BOTTOM-right
+    // corner leaning up-left (mirrored, matching the reference sketch).
+    const rstDiag = insideDiagonal(rx + rw, bedY + rd, rw, rd, 'left-up');
+    lines.push({ x1: rx + rw, y1: bedY + rd, x2: rstDiag.x2, y2: rstDiag.y2, color: '#cc2200', label: `${Math.round(rd)} mm (D)` });
   }
 
   // Profile Shutter — mounted flush on top of whichever side table it's
