@@ -6,14 +6,14 @@ import type { ProductId, ProductTemplate } from '../products/productTypes';
 import type { AddonDef } from '../products/addons';
 import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSelection';
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
-import { simpleBedCutlist, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
+import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, type WardrobeSide, type WardrobeDressingInput, type WardrobeSidePanelInput, type WardrobeLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeSidePanelInput, type WardrobeLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
 import { SimpleShoeRackDrawing } from '../products/shoeRack/SimpleShoeRackDrawing';
-import { shoeRackCutlist, type ShoeRackBoxInput } from '../products/shoeRack/shoeRackGeometry';
+import { shoeRackCutlist, resolveShoeRackPlan, type ShoeRackBoxInput } from '../products/shoeRack/shoeRackGeometry';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 const n = (v: number | string) => Number(v);
@@ -139,6 +139,69 @@ function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+// ─── Per-product addon-input derivation (pure, no component state) ────────────
+// Extracted so the SAME logic that drives the live on-screen drawing also
+// reconstructs any OTHER selected product's inputs from its own saved
+// session data — used by the multi-product combined PDF, which needs every
+// selected product's real drawing, not just whichever one is on screen.
+
+function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
+  const lst: SimpleSideTableInput = {
+    enabled: productId === 'bed' && selectedAddons.has('side-table-left'),
+    depthMm: (addonDims['side-table-left']?.D) ?? 460, widthMm: (addonDims['side-table-left']?.W) ?? 560,
+  };
+  const rst: SimpleSideTableInput = {
+    enabled: productId === 'bed' && selectedAddons.has('side-table-right'),
+    depthMm: (addonDims['side-table-right']?.D) ?? 460, widthMm: (addonDims['side-table-right']?.W) ?? 560,
+  };
+  const PS_SIDE_OPTS: ProfileShutterSide[] = ['left', 'right'];
+  const profileShutter: ProfileShutterInput = {
+    enabled: productId === 'bed' && selectedAddons.has('profile-shutter'),
+    side: PS_SIDE_OPTS[(addonDims['profile-shutter']?.side) ?? 0] ?? 'left',
+    heightMm: (addonDims['profile-shutter']?.H) ?? 150,
+    light: ((addonDims['profile-shutter']?.light) ?? 0) === 1,
+  };
+  return { lst, rst, profileShutter };
+}
+
+function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, number | string>, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
+  const isWardrobe = productId === 'openable-wardrobe' || productId === 'sliding-wardrobe';
+  const SIDE_OPTS: WardrobeSide[] = ['left', 'right', 'both'];
+  const dressing: WardrobeDressingInput = {
+    enabled: isWardrobe && selectedAddons.has('dressing'),
+    side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
+    widthMm: (addonDims['dressing']?.W) ?? 400,
+  };
+  const sidePanel: WardrobeSidePanelInput = {
+    enabled: isWardrobe && selectedAddons.has('side-panel'),
+    side: SIDE_OPTS[(addonDims['side-panel']?.side) ?? 0] ?? 'left',
+    widthMm: (addonDims['side-panel']?.W) ?? 80,
+    depthMm: (addonDims['side-panel']?.D) ?? 600,
+  };
+  const loft: WardrobeLoftInput = {
+    enabled: isWardrobe && selectedAddons.has('loft'),
+    mode: ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door',
+    widthMm: n(dims.W ?? 0),
+    heightMm: (addonDims['loft']?.H) ?? 400,
+    depthMm: (addonDims['loft']?.D) ?? 350,
+    doorCount: (addonDims['loft']?.doors) ?? 2,
+  };
+  return { dressing, sidePanel, loft };
+}
+
+function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
+  const isShoeRack = productId === 'shoe-rack';
+  const twoDoor: ShoeRackBoxInput = {
+    enabled: isShoeRack && selectedAddons.has('two-door-box'),
+    heightMm: (addonDims['two-door-box']?.H) ?? 1500, widthMm: (addonDims['two-door-box']?.W) ?? 1050, depthMm: (addonDims['two-door-box']?.D) ?? 450,
+  };
+  const singleDoor: ShoeRackBoxInput = {
+    enabled: isShoeRack && selectedAddons.has('single-door-box'),
+    heightMm: (addonDims['single-door-box']?.H) ?? 750, widthMm: (addonDims['single-door-box']?.W) ?? 450, depthMm: (addonDims['single-door-box']?.D) ?? 450,
+  };
+  return { twoDoor, singleDoor };
+}
+
 /** Renders one React element to a standalone <svg ...>...</svg> string. */
 function svgHtmlOf(el: React.ReactElement): string {
   const markup = renderToStaticMarkup(<>{el}</>);
@@ -148,51 +211,140 @@ function svgHtmlOf(el: React.ReactElement): string {
   return svg ? svg.outerHTML : '';
 }
 
-/**
- * Each product's drawing at its own standard/demo measurements — used by
- * the combined multi-product PDF, which needs every selected product's
- * diagram at once and isn't tied to whichever single product is currently
- * open on screen. Bed/Wardrobe/Shoe Rack get their real add-on-aware
- * drawing (add-ons off, matching how productRegistry.tsx's own
- * computeCutlist fallback already treats them); everything else uses its
- * registry DrawingComponent directly.
- */
-function defaultDrawingElementFor(product: ProductTemplate): React.ReactElement {
-  if (product.id === 'bed') {
-    return <SimpleBedDrawing dims={product.demoDimensions} />;
-  }
-  if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
-    return <SimpleWardrobeDrawing dims={product.demoDimensions} />;
-  }
-  if (product.id === 'shoe-rack') {
-    // Shoe Rack has no base W/H/D of its own — show both boxes at their own
-    // standard defaults so the combined PDF's diagram isn't blank.
-    return (
-      <SimpleShoeRackDrawing
-        twoDoor={{ enabled: true, heightMm: 1500, widthMm: 1050, depthMm: 450 }}
-        singleDoor={{ enabled: true, heightMm: 750, widthMm: 450, depthMm: 450 }}
-      />
-    );
-  }
-  return <product.DrawingComponent dims={product.demoDimensions} activeView={product.views[0]} />;
+// ─── Multi-product session ─────────────────────────────────────────────────
+// One Project/site visit can cover several products — each keeps its own
+// measurements/add-ons entirely isolated (never mixed with another
+// product's), and switching the active product never loses what was
+// already entered for the one left behind.
+
+export type ProductTodoStatus = 'not-started' | 'in-progress' | 'completed';
+
+export interface ProductSessionData {
+  dims: Record<string, number | string>;
+  selectedAddons: Set<string>;
+  addonDims: Record<string, Record<string, number>>;
+  status: ProductTodoStatus;
 }
 
-interface CombinedPdfItem { name: string; icon: string; svgHTML: string; }
+function freshSession(product: ProductTemplate): ProductSessionData {
+  return { dims: { ...product.demoDimensions }, selectedAddons: new Set(), addonDims: {}, status: 'not-started' };
+}
 
 /**
- * One PDF, every selected product's diagram laid out as a small card in a
- * responsive grid on as few pages as the print engine needs — unlike
- * downloadPDF's one-view-per-page layout (right for a single product's
- * fabrication detail), this is meant to fit many small diagrams together
- * for a quick multi-product overview.
+ * The real drawing element AND that product's own CRITICAL validation
+ * issues, built from one saved session — not from whichever product is
+ * currently open on screen. Bed/Wardrobe/Shoe Rack resolve through the
+ * same real geometry engine the live screen uses (so a completed product's
+ * combined-PDF diagram is never a simplified re-draw); everything else
+ * uses its registry DrawingComponent, which has no CRITICAL-issue
+ * infrastructure yet, so it's treated as always completable.
  */
-function downloadCombinedPDF(items: CombinedPdfItem[]) {
+function elementAndIssuesForSession(product: ProductTemplate, session: ProductSessionData): { element: React.ReactElement; criticalIssues: string[] } {
+  const { dims, selectedAddons, addonDims } = session;
+  if (product.id === 'bed') {
+    const { lst, rst, profileShutter } = deriveBedAddonInputs(product.id, selectedAddons, addonDims);
+    const headboardEnabled = Number(dims.hasHeadboard ?? 1) === 1;
+    const drawing = resolveSimpleBedPlan({ W: n(dims.W ?? 0), L: n(dims.L ?? 0), H: n(dims.H ?? 0), headboardEnabled, headboardH: n(dims.headboardH ?? 0) || 900, lst, rst, profileShutter });
+    return {
+      element: <SimpleBedDrawing dims={dims} lst={lst} rst={rst} profileShutter={profileShutter} />,
+      criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
+    };
+  }
+  if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
+    const { dressing, sidePanel, loft } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
+    const loftWithWidth = { ...loft, widthMm: loft.widthMm || n(dims.W ?? 0) };
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, sidePanel, loft: loftWithWidth });
+    return {
+      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} sidePanel={sidePanel} loft={loft} />,
+      criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
+    };
+  }
+  if (product.id === 'shoe-rack') {
+    const { twoDoor, singleDoor } = deriveShoeRackAddonInputs(product.id, selectedAddons, addonDims);
+    const drawing = resolveShoeRackPlan({ twoDoor, singleDoor });
+    return {
+      element: <SimpleShoeRackDrawing twoDoor={twoDoor} singleDoor={singleDoor} />,
+      criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
+    };
+  }
+  return { element: <product.DrawingComponent dims={dims} activeView={product.views[0]} />, criticalIssues: [] };
+}
+
+/** A short "W:1800mm H:2000mm ..." line under each PDF section's title, from that product's own real measurement fields. */
+function captionForSession(product: ProductTemplate, dims: Record<string, number | string>): string {
+  return product.measurementFields
+    .filter((f) => f.unit === 'mm')
+    .slice(0, 4)
+    .map((f) => `${f.label.replace(/^(Bed|Wardrobe|Table)\s+/i, '').split(' ')[0]}: ${Math.round(n(dims[f.key] ?? f.defaultValue))}mm`)
+    .join('   ');
+}
+
+interface CombinedPdfItem { id: ProductId; name: string; icon: string; caption: string; svgHTML: string; }
+
+// Products the layout engine gives the bigger (half-page) slot to when
+// they're combined with smaller ones — per the user's own worked example
+// (Wardrobe = half page, Bed/Shoe Rack = quarter page each). A product with
+// no entry here defaults to the small/quarter slot.
+const LARGE_PDF_PRODUCTS = new Set<ProductId>(['openable-wardrobe', 'sliding-wardrobe']);
+
+function pdfSectionHTML(it: CombinedPdfItem, sizeClass: string): string {
+  return `<div class="pdf-section ${sizeClass}">
+    <div class="section-title">${it.icon} ${it.name}</div>
+    ${it.caption ? `<div class="section-caption">${it.caption}</div>` : ''}
+    <div class="section-svg-wrap">${it.svgHTML}</div>
+  </div>`;
+}
+
+/**
+ * One page's worth of sections (at most 4), arranged per the user's own
+ * spec: 1 product = full page; 2 = stacked halves; 3 = one half-page
+ * "large" product (if any is flagged) over two quarter-page ones; 4 = an
+ * even 2x2 grid. This is the actual layout decision — expressed as a CSS
+ * grid template per page rather than hand-computed pixel coordinates,
+ * which is a correct, robust way to implement "automatically choose the
+ * most appropriate layout" in an HTML/print document.
+ */
+function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: number, projectId: string, employeeName: string): string {
+  const n = pageItems.length;
+  let gridClass: string;
+  let sectionsHTML: string;
+  if (n === 1) {
+    gridClass = 'grid-1';
+    sectionsHTML = pdfSectionHTML(pageItems[0], 'size-full');
+  } else if (n === 2) {
+    gridClass = 'grid-2';
+    sectionsHTML = pageItems.map((it) => pdfSectionHTML(it, 'size-half')).join('');
+  } else if (n === 3) {
+    gridClass = 'grid-3';
+    const largeIdx = pageItems.findIndex((it) => LARGE_PDF_PRODUCTS.has(it.id));
+    const big = largeIdx >= 0 ? pageItems[largeIdx] : pageItems[0];
+    const rest = pageItems.filter((it) => it !== big);
+    sectionsHTML = pdfSectionHTML(big, 'size-half-top') + rest.map((it) => pdfSectionHTML(it, 'size-quarter')).join('');
+  } else {
+    gridClass = 'grid-4';
+    sectionsHTML = pageItems.map((it) => pdfSectionHTML(it, 'size-quarter')).join('');
+  }
+  return `<div class="pdf-page">
+    <div class="page-header">
+      <div><strong>SmartMeasure CAD</strong> — Combined 2D Drawings</div>
+      <div>Project: ${projectId} &nbsp;·&nbsp; Employee: ${employeeName} &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+      <div>Page ${pageNum} of ${pageCount}</div>
+    </div>
+    <div class="page-grid ${gridClass}">${sectionsHTML}</div>
+  </div>`;
+}
+
+/**
+ * One PDF, every selected product's REAL drawing (same canonical SVG as its
+ * own on-screen view — never a re-simplified redraw) laid out with the
+ * half/quarter-page weighting from the user's own spec, paginated at a
+ * maximum of 4 sections per page.
+ */
+function downloadCombinedPDF(items: CombinedPdfItem[], projectId: string, employeeName: string) {
   if (items.length === 0) return;
-  const cards = items.map((it) => `
-    <div class="diagram-card">
-      <div class="diagram-title">${it.icon} ${it.name}</div>
-      ${it.svgHTML}
-    </div>`).join('\n');
+  const pages: CombinedPdfItem[][] = [];
+  for (let i = 0; i < items.length; i += 4) pages.push(items.slice(i, i + 4));
+  const pagesHTML = pages.map((page, i) => pdfPageHTML(page, i + 1, pages.length, projectId, employeeName)).join('\n');
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -200,27 +352,28 @@ function downloadCombinedPDF(items: CombinedPdfItem[]) {
   <title>Combined 2D Drawings — ${items.length} Products</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: white; font-family: 'Segoe UI', system-ui, sans-serif; padding: 10mm; }
-    .header { padding-bottom: 8px; border-bottom: 2px solid #333; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .header h1 { font-size: 16px; font-weight: 900; }
-    .header p  { font-size: 10px; color: #666; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120mm, 1fr)); gap: 6mm; align-items: start; }
-    .diagram-card { border: 1px solid #ccc; border-radius: 4px; padding: 5px; page-break-inside: avoid; }
-    .diagram-title { font-size: 10px; font-weight: 700; color: #333; margin-bottom: 4px; text-align: center; text-transform: uppercase; letter-spacing: 0.03em; }
-    svg { max-width: 100%; max-height: 70mm; width: auto; height: auto; display: block; margin: 0 auto; }
-    @page { size: A3 landscape; margin: 8mm; }
-    @media print { .no-print { display: none !important; } }
+    body { background: white; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .pdf-page { padding: 8mm; page-break-after: always; display: flex; flex-direction: column; min-height: 190mm; }
+    .pdf-page:last-child { page-break-after: auto; }
+    .page-header { padding-bottom: 6px; border-bottom: 2px solid #333; margin-bottom: 8px; font-size: 9px; color: #666; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+    .page-header strong { color: #222; font-size: 12px; }
+    .page-grid { flex: 1; display: grid; gap: 6mm; min-height: 0; }
+    .grid-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .grid-3 .size-half-top { grid-column: 1 / 3; grid-row: 1; }
+    .grid-3 .size-quarter { grid-row: 2; }
+    .grid-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .pdf-section { border: 1px solid #ccc; border-radius: 4px; padding: 6px; display: flex; flex-direction: column; overflow: hidden; page-break-inside: avoid; min-height: 0; min-width: 0; }
+    .section-title { font-size: 11px; font-weight: 800; text-align: center; text-transform: uppercase; letter-spacing: 0.02em; color: #222; flex-shrink: 0; }
+    .section-caption { font-size: 9px; color: #666; text-align: center; margin: 2px 0 4px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+    .section-svg-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 0; }
+    .section-svg-wrap svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+    @page { size: A3 landscape; margin: 0; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div>
-      <h1>Combined 2D Drawings — ${items.length} Products</h1>
-      <p>Generated by SmartMeasure CAD • ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
-    </div>
-    <p style="font-size:9px;color:#999">All dimensions in millimetres (mm) — standard/demo measurements per product</p>
-  </div>
-  <div class="grid">${cards}</div>
+  ${pagesHTML}
   <script>window.onload = () => { setTimeout(() => window.print(), 300); }</script>
 </body>
 </html>`;
@@ -337,6 +490,11 @@ export const ProductFlow: React.FC = () => {
   // the Measure/Drawing/Evidence workspace as normal.
   const [multiSelectIds, setMultiSelectIds] = useState<Set<ProductId>>(() => new Set());
   const [showMultiPanel, setShowMultiPanel] = useState(false);
+  // One entry per product ever visited or ticked — each product's own
+  // measurements/add-ons/status, entirely isolated from every other
+  // product's (never mixed), restored exactly when its product is reopened.
+  const [productSessions, setProductSessions] = useState<Partial<Record<ProductId, ProductSessionData>>>({});
+  const [completeErrors, setCompleteErrors] = useState<string[] | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>('measure');
   const [wardrobeDesign, setWardrobeDesign] = useState<WardrobeDesign | null>(null);
   const [previousProductId, setPreviousProductId] = useState<ProductId>('bed');
@@ -348,21 +506,59 @@ export const ProductFlow: React.FC = () => {
   const addons = PRODUCT_ADDONS[selectedId] ?? [];
   const groups = FIELD_GROUPS[selectedId] ?? [];
 
-  // When product changes, reset dims + addons
-  useEffect(() => {
-    const p = getProduct(selectedId);
-    if (p) {
-      setDims({ ...p.demoDimensions });
-      setActiveView(p.views[0]);
-      setSelectedAddons(new Set());
-      setAddonDims({});
-      setActiveWorkspace('measure');
+  // Marks the CURRENTLY active product in-progress the moment its
+  // measurements/add-ons are first touched — never merely because its
+  // measurement form was opened (that stays "not started" until edited).
+  const markInProgress = useCallback(() => {
+    setProductSessions((prev) => {
+      const cur = prev[selectedId];
+      if (cur && cur.status !== 'not-started') return prev;
+      if (!product) return prev;
+      return { ...prev, [selectedId]: cur ? { ...cur, status: 'in-progress' } : { ...freshSession(product), status: 'in-progress' } };
+    });
+  }, [selectedId, product]);
+
+  // The one place selectedId ever changes — saves the product being left
+  // (its live dims/add-ons, exactly as they stand) into its own session
+  // entry, then restores whichever session the next product already has
+  // (or a fresh one, seeded from its own demo dimensions, if this is the
+  // first time it's been opened this session). No product's data is ever
+  // read into another's, and nothing is lost switching back and forth.
+  const switchToProduct = useCallback((nextId: ProductId) => {
+    if (nextId === selectedId) return;
+    if (nextId === 'openable-wardrobe' || nextId === 'sliding-wardrobe') {
+      setPreviousProductId(selectedId);
     }
-  }, [selectedId]);
+    setWardrobeDesign(null);
+    const nextProduct = getProduct(nextId);
+    if (!nextProduct) return;
+    // nextId's own entry is never touched by anything that could have run
+    // just before this (e.g. handleMarkComplete only ever writes the
+    // OUTGOING product's own entry), so reading it from the closure here is
+    // safe — but the outgoing product's STATUS must come from the
+    // functional updater's own `prev`, not this closure, since
+    // handleMarkComplete calling switchToProduct immediately after marking
+    // the outgoing product "completed" would otherwise have that fresh
+    // status clobbered by a stale "in-progress" read from before it landed.
+    const nextSession = productSessions[nextId] ?? freshSession(nextProduct);
+    setProductSessions((prev) => ({
+      ...prev,
+      [selectedId]: { dims, selectedAddons, addonDims, status: prev[selectedId]?.status ?? 'not-started' },
+      [nextId]: nextSession,
+    }));
+    setDims(nextSession.dims);
+    setSelectedAddons(nextSession.selectedAddons);
+    setAddonDims(nextSession.addonDims);
+    setActiveView(nextProduct.views[0]);
+    setActiveWorkspace('measure');
+    setCompleteErrors(null);
+    setSelectedId(nextId);
+  }, [selectedId, dims, selectedAddons, addonDims, productSessions]);
 
   const handleDimChange = useCallback((key: string, val: number | string) => {
     setDims((prev) => ({ ...prev, [key]: val }));
-  }, []);
+    markInProgress();
+  }, [markInProgress]);
 
   const handleAddonToggle = useCallback((addonId: string, def: AddonDef) => {
     setSelectedAddons((prev) => {
@@ -378,9 +574,11 @@ export const ProductFlow: React.FC = () => {
       }
       return next;
     });
-  }, []);
+    markInProgress();
+  }, [markInProgress]);
 
   const handleAddonDimChange = useCallback((addonId: string, key: string, val: number) => {
+    markInProgress();
     setAddonDims((prev) => ({
       ...prev,
       [addonId]: { ...(prev[addonId] ?? {}), [key]: val },
@@ -410,13 +608,14 @@ export const ProductFlow: React.FC = () => {
   });
 
   const loadHistoryEntry = useCallback((entry: typeof recentHistory[number]) => {
-    setSelectedId(entry.productId as ProductId);
+    switchToProduct(entry.productId as ProductId);
     setDims(entry.dims);
     setActiveView('front');
     setSelectedAddons(new Set());
     setAddonDims({});
     setShowHistory(false);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [switchToProduct]);
 
   const validationIssues = (product?.measurementFields ?? []).flatMap((field) => {
     const value = Number(dims[field.key] ?? field.defaultValue);
@@ -452,67 +651,17 @@ export const ProductFlow: React.FC = () => {
 
   // Composite drawing logic
   const hasCompositeAddons = selectedAddons.size > 0 && addons.some((a) => selectedAddons.has(a.id) && a.placement === 'composite');
-  const bedHasSTL = selectedId === 'bed' && selectedAddons.has('side-table-left');
-  const bedHasSTR = selectedId === 'bed' && selectedAddons.has('side-table-right');
 
-  // Bed's LST/RST: D/W are user-entered addon fields, Height is always
-  // auto-fetched from the Bed's own H field (never independently entered) —
-  // shared by the on-screen drawing and the PDF's component table so they
-  // can never disagree.
-  const bedLST: SimpleSideTableInput = { enabled: bedHasSTL, depthMm: (addonDims['side-table-left']?.D) ?? 460, widthMm: (addonDims['side-table-left']?.W) ?? 560 };
-  const bedRST: SimpleSideTableInput = { enabled: bedHasSTR, depthMm: (addonDims['side-table-right']?.D) ?? 460, widthMm: (addonDims['side-table-right']?.W) ?? 560 };
-
-  // Profile Shutter: mounted on whichever side table the "Mounted On"
-  // dropdown picks — Width and Depth are never fields, they're always that
-  // table's own Width and Depth (auto-fetched, resolved inside
-  // simpleBedGeometry.ts). The light checkbox is stored as 0/1 like every
-  // other addonDims value.
-  const PS_SIDE_OPTS: ProfileShutterSide[] = ['left', 'right'];
-  const bedProfileShutter: ProfileShutterInput = {
-    enabled: selectedId === 'bed' && selectedAddons.has('profile-shutter'),
-    side: PS_SIDE_OPTS[(addonDims['profile-shutter']?.side) ?? 0] ?? 'left',
-    heightMm: (addonDims['profile-shutter']?.H) ?? 150,
-    light: ((addonDims['profile-shutter']?.light) ?? 0) === 1,
-  };
-
-  // Wardrobe's Dressing/Side Panel/Loft: one toggle each, with a Side (or
-  // Loft Type) dropdown stored as a numeric option index, decoded here.
+  // Bed's LST/RST/Profile Shutter, Wardrobe's Dressing/Side Panel/Loft, and
+  // Shoe Rack's two boxes — the same pure derivation used to reconstruct
+  // any OTHER selected product's inputs from its own saved session (see
+  // elementAndIssuesForSession above), called here with the live state for
+  // whichever product is currently active on screen.
+  const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
-  const SIDE_OPTS: WardrobeSide[] = ['left', 'right', 'both'];
-  const wardrobeDressing: WardrobeDressingInput = {
-    enabled: isWardrobe && selectedAddons.has('dressing'),
-    side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
-    widthMm: (addonDims['dressing']?.W) ?? 400,
-  };
-  const wardrobeSidePanel: WardrobeSidePanelInput = {
-    enabled: isWardrobe && selectedAddons.has('side-panel'),
-    side: SIDE_OPTS[(addonDims['side-panel']?.side) ?? 0] ?? 'left',
-    widthMm: (addonDims['side-panel']?.W) ?? 80,
-    depthMm: (addonDims['side-panel']?.D) ?? 600,
-  };
-  const wardrobeLoft: WardrobeLoftInput = {
-    enabled: isWardrobe && selectedAddons.has('loft'),
-    mode: ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door',
-    widthMm: n(dims.W),
-    heightMm: (addonDims['loft']?.H) ?? 400,
-    depthMm: (addonDims['loft']?.D) ?? 350,
-    doorCount: (addonDims['loft']?.doors) ?? 2,
-  };
-
-  // Shoe Rack: no base dims at all — both boxes are just addon toggles.
+  const { dressing: wardrobeDressing, sidePanel: wardrobeSidePanel, loft: wardrobeLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
   const isShoeRack = selectedId === 'shoe-rack';
-  const shoeRackTwoDoor: ShoeRackBoxInput = {
-    enabled: isShoeRack && selectedAddons.has('two-door-box'),
-    heightMm: (addonDims['two-door-box']?.H) ?? 1500,
-    widthMm: (addonDims['two-door-box']?.W) ?? 1050,
-    depthMm: (addonDims['two-door-box']?.D) ?? 450,
-  };
-  const shoeRackSingleDoor: ShoeRackBoxInput = {
-    enabled: isShoeRack && selectedAddons.has('single-door-box'),
-    heightMm: (addonDims['single-door-box']?.H) ?? 750,
-    widthMm: (addonDims['single-door-box']?.W) ?? 450,
-    depthMm: (addonDims['single-door-box']?.D) ?? 450,
-  };
+  const { twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor } = deriveShoeRackAddonInputs(selectedId, selectedAddons, addonDims);
 
   // Accepts an explicit view so the PDF exporter can render Front/Plan/Side
   // (or Internal) in turn without touching the on-screen activeView state —
@@ -570,20 +719,77 @@ export const ProductFlow: React.FC = () => {
     downloadPDF(product.name, views, cutlist);
   };
 
+  // Ticking a product seeds its session immediately (so the Todo list shows
+  // it as "Not Started" with its own real demo dims right away) rather than
+  // waiting until it's first opened.
   const toggleMultiSelect = useCallback((id: ProductId) => {
     setMultiSelectIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+    setProductSessions((prev) => {
+      if (prev[id]) return prev;
+      const p = getProduct(id);
+      return p ? { ...prev, [id]: freshSession(p) } : prev;
+    });
   }, []);
 
+  // Selected products, in the order they were ticked — the Todo order.
+  const todoProducts = PRODUCT_REGISTRY.filter((p) => multiSelectIds.has(p.id));
+  const statusOf = (id: ProductId): ProductTodoStatus => (id === selectedId ? (productSessions[id]?.status ?? 'not-started') : (productSessions[id]?.status ?? 'not-started'));
+  const completedCount = todoProducts.filter((p) => statusOf(p.id) === 'completed').length;
+  const allCompleted = todoProducts.length > 0 && completedCount === todoProducts.length;
+  const activeTodoIndex = todoProducts.findIndex((p) => p.id === selectedId);
+
+  const gotoAdjacentProduct = useCallback((dir: 1 | -1) => {
+    const idx = todoProducts.findIndex((p) => p.id === selectedId);
+    if (idx === -1) return;
+    const nextIdx = idx + dir;
+    if (nextIdx < 0 || nextIdx >= todoProducts.length) return;
+    switchToProduct(todoProducts[nextIdx].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todoProducts, selectedId, switchToProduct]);
+
+  // A product is only completable once its own real drawing resolves with
+  // no CRITICAL validation issue — never merely because the form was
+  // opened. On success, auto-advances to the next not-yet-completed
+  // selected product (looping back to the first one if the rest of the
+  // list, in order, is already done).
+  const handleMarkComplete = useCallback(() => {
+    if (!product) return;
+    const session: ProductSessionData = { dims, selectedAddons, addonDims, status: 'in-progress' };
+    const { criticalIssues } = elementAndIssuesForSession(product, session);
+    if (criticalIssues.length > 0) {
+      setCompleteErrors(criticalIssues);
+      return;
+    }
+    setCompleteErrors(null);
+    setProductSessions((prev) => ({ ...prev, [selectedId]: { ...session, status: 'completed' } }));
+    const idx = todoProducts.findIndex((p) => p.id === selectedId);
+    const rest = [...todoProducts.slice(idx + 1), ...todoProducts.slice(0, idx)];
+    const next = rest.find((p) => (p.id === selectedId ? 'completed' : productSessions[p.id]?.status ?? 'not-started') !== 'completed');
+    if (next) switchToProduct(next.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, dims, selectedAddons, addonDims, selectedId, todoProducts, productSessions, switchToProduct]);
+
   const handleDownloadCombinedPDF = () => {
-    const items: CombinedPdfItem[] = PRODUCT_REGISTRY
-      .filter((p) => multiSelectIds.has(p.id))
-      .map((p) => ({ name: p.name, icon: p.icon, svgHTML: svgHtmlOf(defaultDrawingElementFor(p)) }))
+    // The product currently on screen may have unsaved live edits that
+    // haven't been written back into productSessions yet (that only
+    // happens on switch) — fold them in here so the PDF always reflects
+    // exactly what's on screen right now for the active product too.
+    const liveSessions: Partial<Record<ProductId, ProductSessionData>> = {
+      ...productSessions,
+      [selectedId]: { dims, selectedAddons, addonDims, status: productSessions[selectedId]?.status ?? 'not-started' },
+    };
+    const items: CombinedPdfItem[] = todoProducts
+      .map((p) => {
+        const session = liveSessions[p.id] ?? freshSession(p);
+        const { element } = elementAndIssuesForSession(p, session);
+        return { id: p.id, name: p.name, icon: p.icon, caption: captionForSession(p, session.dims), svgHTML: svgHtmlOf(element) };
+      })
       .filter((it) => it.svgHTML);
-    downloadCombinedPDF(items);
+    downloadCombinedPDF(items, model.project.projectId, model.employeeName || 'Employee');
     setShowMultiPanel(false);
   };
 
@@ -665,6 +871,9 @@ export const ProductFlow: React.FC = () => {
                 {PRODUCT_REGISTRY.map((p) => {
                   const checked = multiSelectIds.has(p.id);
                   const active = p.id === selectedId;
+                  const status = statusOf(p.id);
+                  const statusIcon = status === 'completed' ? '✓' : status === 'in-progress' ? '●' : '○';
+                  const statusColor = status === 'completed' ? '#4ade80' : status === 'in-progress' ? '#fbbf24' : '#475569';
                   return (
                     <div
                       key={p.id}
@@ -679,34 +888,13 @@ export const ProductFlow: React.FC = () => {
                         className="w-4 h-4 flex-shrink-0"
                       />
                       <button
-                        onClick={() => {
-                          const nextId = p.id;
-                          if (nextId === 'openable-wardrobe' || nextId === 'sliding-wardrobe') {
-                            setPreviousProductId(selectedId);
-                          }
-                          setWardrobeDesign(null);
-                          setSelectedId(nextId);
-                          // Reset dims/view/addons synchronously, in the same
-                          // update as selectedId — otherwise there's one
-                          // render where the NEW product's resolver runs
-                          // against the OLD product's dims (missing keys ->
-                          // NaN geometry), before the selectedId-keyed
-                          // useEffect catches up a render later.
-                          const nextProduct = getProduct(nextId);
-                          if (nextProduct) {
-                            setDims({ ...nextProduct.demoDimensions });
-                            setActiveView(nextProduct.views[0]);
-                            setSelectedAddons(new Set());
-                            setAddonDims({});
-                            setActiveWorkspace('measure');
-                          }
-                          setShowMultiPanel(false);
-                        }}
+                        onClick={() => { switchToProduct(p.id); setShowMultiPanel(false); }}
                         className="flex-1 flex items-center gap-2 text-left"
                       >
                         <span className="text-base flex-shrink-0">{p.icon}</span>
                         <span className="text-sm" style={{ color: '#e2e8f0' }}>{p.name}</span>
-                        {active && <span className="text-[10px] ml-auto" style={{ color: '#60a5fa' }}>open</span>}
+                        {checked && <span className="text-xs ml-auto flex-shrink-0" style={{ color: statusColor }}>{statusIcon}</span>}
+                        {active && <span className="text-[10px]" style={{ color: '#60a5fa' }}>open</span>}
                       </button>
                     </div>
                   );
@@ -715,14 +903,16 @@ export const ProductFlow: React.FC = () => {
               {multiSelectIds.size > 0 && (
                 <>
                   <div className="text-[10px] mb-2" style={{ color: '#475569' }}>
-                    Each ticked product uses its own standard/demo measurements — not the currently open custom values.
+                    {allCompleted
+                      ? 'Every ticked product is completed — the PDF uses each one’s real entered measurements.'
+                      : `Uses each product's own real entered measurements as they stand now (${completedCount}/${todoProducts.length} marked complete) — untouched products fall back to standard/demo values.`}
                   </div>
                   <button
                     onClick={handleDownloadCombinedPDF}
                     className="w-full rounded-lg px-3 py-2 text-sm font-bold"
-                    style={{ background: '#4338ca', color: '#fff' }}
+                    style={{ background: allCompleted ? '#16a34a' : '#4338ca', color: '#fff' }}
                   >
-                    ⬇ Download Combined PDF ({multiSelectIds.size})
+                    {allCompleted ? `✓ Download Combined PDF (${multiSelectIds.size})` : `⬇ Download Draft PDF (${multiSelectIds.size})`}
                   </button>
                 </>
               )}
@@ -785,6 +975,61 @@ export const ProductFlow: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Multi-product Todo/progress bar — only appears once 2+ products are
+          ticked; a single product (or none ticked) behaves exactly like the
+          plain single-product workflow, unchanged. */}
+      {todoProducts.length > 1 && (
+        <div className="flex items-center gap-3 px-5 py-2 flex-shrink-0 flex-wrap" style={{ background: '#0b0f17', borderBottom: '1px solid #1e293b' }}>
+          <span className="text-xs font-bold uppercase tracking-wide flex-shrink-0" style={{ color: '#64748b' }}>
+            Product {activeTodoIndex + 1} of {todoProducts.length}
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {todoProducts.map((p) => {
+              const status = statusOf(p.id);
+              const icon = status === 'completed' ? '✓' : status === 'in-progress' ? '●' : '○';
+              const color = status === 'completed' ? '#4ade80' : status === 'in-progress' ? '#fbbf24' : '#475569';
+              const active = p.id === selectedId;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => switchToProduct(p.id)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold"
+                  style={{ background: active ? '#1d3a5f' : '#1e293b', color: active ? '#e2e8f0' : '#94a3b8', border: active ? '1px solid #3b82f6' : '1px solid transparent' }}
+                >
+                  <span style={{ color }}>{icon}</span>
+                  <span>{p.icon} {p.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-xs font-mono flex-shrink-0" style={{ color: allCompleted ? '#4ade80' : '#64748b' }}>
+            {allCompleted ? '✓ All products completed' : `${completedCount} / ${todoProducts.length} completed`}
+          </span>
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => gotoAdjacentProduct(-1)}
+              disabled={activeTodoIndex <= 0}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ background: '#1e293b', color: activeTodoIndex <= 0 ? '#334155' : '#cbd5e1', cursor: activeTodoIndex <= 0 ? 'not-allowed' : 'pointer' }}
+            >
+              ← Previous
+            </button>
+            <button
+              onClick={handleMarkComplete}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ background: '#16a34a', color: '#fff' }}
+            >
+              ✓ Mark Complete{activeTodoIndex < todoProducts.length - 1 ? ' & Next →' : ''}
+            </button>
+          </div>
+        </div>
+      )}
+      {completeErrors && completeErrors.length > 0 && (
+        <div className="px-5 py-2 flex-shrink-0 text-xs" style={{ background: '#3b0d0d', color: '#fca5a5', borderBottom: '1px solid #7f1d1d' }}>
+          <strong>Can't mark {product?.name} complete yet:</strong> {completeErrors.join(' · ')}
+        </div>
+      )}
 
       {/* Operational workflow tabs from the prototype drawing workspace */}
       <div className="flex items-center gap-1 px-4 py-2 flex-shrink-0 overflow-x-auto" style={{ background: '#111827', borderBottom: '1px solid #1e293b' }}>
