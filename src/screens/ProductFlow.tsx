@@ -524,6 +524,14 @@ export const ProductFlow: React.FC = () => {
   const [evidenceCaption, setEvidenceCaption] = useState('');
   const [evidenceTag, setEvidenceTag] = useState('General site condition');
   const drawingRef = useRef<HTMLDivElement>(null);
+  // The workspace tab strip scrolls horizontally on narrow screens (never
+  // the whole page) — this keeps whichever tab is active scrolled fully
+  // into view, so switching tabs (including programmatically, e.g. after
+  // Mark Complete) never leaves the active tab half-hidden off the edge.
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeWorkspace]);
   const { model, addEvidence, saveMeasurementSnapshot } = useApp();
   const product = getProduct(selectedId);
   const addons = PRODUCT_ADDONS[selectedId] ?? [];
@@ -864,14 +872,22 @@ export const ProductFlow: React.FC = () => {
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col" style={{ background: '#0d1117' }}>
-      {/* Top bar: product dropdown + title */}
-      <div className="flex items-center gap-4 px-5 py-3 flex-shrink-0"
+      {/* Top bar: product dropdown + title.
+          Mobile (<sm): stacks into two rows — dropdown full-width on its own
+          row, then the category/formula badges + action buttons wrap onto
+          the next — matching the spec's "Row 1: Product · Row 2: Actions"
+          layout instead of forcing everything onto one line, which used to
+          push Download PDF behind the History button (confirmed via a real
+          360px screenshot: only a sliver of the blue Download PDF button
+          was visible, clipped by History). Desktop/tablet (sm+) keeps the
+          original single-row layout unchanged. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 px-3 sm:px-5 py-3 flex-shrink-0"
         style={{ background: '#0d1117', borderBottom: '1px solid #1e293b' }}>
-        <div className="relative min-w-0">
+        <div className="relative min-w-0 w-full sm:w-auto">
           <button
             onClick={() => setShowMultiPanel((prev) => !prev)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold outline-none"
-            style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045', minWidth: 200 }}
+            className="flex w-full sm:w-auto items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold outline-none sm:min-w-[200px]"
+            style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045' }}
           >
             <span className="text-2xl flex-shrink-0">{product.icon}</span>
             <span className="flex-1 text-left truncate">{product.name}</span>
@@ -884,9 +900,11 @@ export const ProductFlow: React.FC = () => {
           {/* One dropdown does both jobs: click a row to open that product
               (same as the old <select>), tick its checkbox to include it in
               a combined multi-product PDF — no second "multi-product"
-              control, per the user's explicit direction. */}
+              control, per the user's explicit direction. Width is capped
+              against the viewport (not a fixed 320px) so it can never
+              extend past a narrow phone's right edge. */}
           {showMultiPanel && (
-            <div className="absolute left-0 top-full mt-2 w-80 rounded-xl border p-3 z-20" style={{ background: '#111827', borderColor: '#243045' }}>
+            <div className="absolute left-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border p-3 z-20" style={{ background: '#111827', borderColor: '#243045' }}>
               <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>
                 Click a product to open it · tick to include in a combined PDF
               </div>
@@ -903,16 +921,22 @@ export const ProductFlow: React.FC = () => {
                       className="flex items-center gap-2 rounded-lg px-2 py-1.5"
                       style={{ background: active ? '#1d3a5f' : checked ? '#1e1b4b' : '#0f172a' }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleMultiSelect(p.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-4 h-4 flex-shrink-0"
-                      />
+                      {/* The visible box stays 16px (unchanged theme), but
+                          its tap target is padded out toward the ~44px
+                          comfortable-touch minimum — a bare 16px checkbox
+                          is genuinely hard to hit accurately on a phone. */}
+                      <label className="flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32, margin: -6 }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleMultiSelect(p.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4"
+                        />
+                      </label>
                       <button
                         onClick={() => { switchToProduct(p.id); setShowMultiPanel(false); }}
-                        className="flex-1 flex items-center gap-2 text-left"
+                        className="flex-1 flex items-center gap-2 text-left py-1"
                       >
                         <span className="text-base flex-shrink-0">{p.icon}</span>
                         <span className="text-sm" style={{ color: '#e2e8f0' }}>{p.name}</span>
@@ -943,36 +967,42 @@ export const ProductFlow: React.FC = () => {
           )}
         </div>
 
-        <div className="hidden sm:flex items-center gap-2">
-          <span className="text-xs px-2 py-0.5 rounded font-semibold capitalize"
-            style={{ background: '#1e293b', color: '#64748b' }}>{product.category}</span>
-          <span className="text-xs px-2 py-0.5 rounded font-semibold"
-            style={{
-              background: product.isFormulaVerified ? '#14532d' : '#1a1000',
-              color: product.isFormulaVerified ? '#86efac' : '#fcd34d',
-            }}>
-            {product.isFormulaVerified ? '✓ Formula Verified' : '~ Demo Data'}
-          </span>
-        </div>
+        {/* Badges + action buttons: their own wrapping group so on mobile
+            they form row 2 under the full-width dropdown (row 1) instead of
+            fighting the dropdown for space on one line — that's what was
+            clipping Download PDF behind History before. Unchanged on sm+:
+            ml-auto pushes this whole group right, same as the old layout. */}
+        <div className="flex items-center gap-2 flex-wrap sm:ml-auto sm:flex-nowrap">
+          <div className="hidden sm:flex items-center gap-2">
+            <span className="text-xs px-2 py-0.5 rounded font-semibold capitalize"
+              style={{ background: '#1e293b', color: '#64748b' }}>{product.category}</span>
+            <span className="text-xs px-2 py-0.5 rounded font-semibold"
+              style={{
+                background: product.isFormulaVerified ? '#14532d' : '#1a1000',
+                color: product.isFormulaVerified ? '#86efac' : '#fcd34d',
+              }}>
+              {product.isFormulaVerified ? '✓ Formula Verified' : '~ Demo Data'}
+            </span>
+          </div>
 
-        <button
-          onClick={handleDownloadPDF}
-          className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0"
-          style={{ background: '#1d4ed8', color: '#fff' }}>
-          ⬇ Download PDF
-        </button>
-
-        <div className="relative">
           <button
-            onClick={() => setShowHistory((prev) => !prev)}
-            className="ml-2 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold flex-shrink-0"
-            style={{ background: '#1e293b', color: '#cbd5e1', border: '1px solid #243045' }}
-          >
-            🕘 10-Day History
+            onClick={handleDownloadPDF}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0"
+            style={{ background: '#1d4ed8', color: '#fff' }}>
+            ⬇ Download PDF
           </button>
 
-          {showHistory && recentHistory.length > 0 && (
-            <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border p-2 z-20" style={{ background: '#111827', borderColor: '#243045' }}>
+          <div className="relative">
+            <button
+              onClick={() => setShowHistory((prev) => !prev)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold flex-shrink-0"
+              style={{ background: '#1e293b', color: '#cbd5e1', border: '1px solid #243045' }}
+            >
+              🕘 10-Day History
+            </button>
+
+            {showHistory && recentHistory.length > 0 && (
+              <div className="absolute right-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border p-2 z-20" style={{ background: '#111827', borderColor: '#243045' }}>
               <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>
                 Recover previous measurements
               </div>
@@ -996,6 +1026,7 @@ export const ProductFlow: React.FC = () => {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -1071,7 +1102,12 @@ export const ProductFlow: React.FC = () => {
         </div>
       )}
 
-      {/* Operational workflow tabs from the prototype drawing workspace */}
+      {/* Operational workflow tabs — a horizontally-scrollable strip (never
+          the whole page) so MEASURE/DRAWING/EVIDENCE/VALIDATION/PDF/HISTORY
+          stay tappable and legible on a narrow phone instead of being
+          squeezed unreadably small to force all six onto one line.
+          flex-shrink-0 on each button keeps labels from being crushed;
+          whitespace-nowrap keeps them one line each. */}
       <div className="flex items-center gap-1 px-4 py-2 flex-shrink-0 overflow-x-auto" style={{ background: '#111827', borderBottom: '1px solid #1e293b' }}>
         {([
           ['measure', 'Measure'],
@@ -1083,14 +1119,15 @@ export const ProductFlow: React.FC = () => {
         ] as [WorkspaceTab, string][]).map(([tab, label]) => (
           <button
             key={tab}
+            ref={activeWorkspace === tab ? activeTabRef : undefined}
             onClick={() => setActiveWorkspace(tab)}
-            className="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wide"
+            className="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wide flex-shrink-0 whitespace-nowrap"
             style={{ background: activeWorkspace === tab ? '#1d4ed8' : '#1e293b', color: activeWorkspace === tab ? '#fff' : '#64748b' }}
           >
             {label}
           </button>
         ))}
-        <span className="ml-auto whitespace-nowrap text-xs" style={{ color: '#475569' }}>
+        <span className="ml-auto whitespace-nowrap text-xs flex-shrink-0" style={{ color: '#475569' }}>
           {model.lastSavedAt ? `Saved ${new Date(model.lastSavedAt).toLocaleTimeString('en-IN')}` : 'Not saved'}
         </span>
       </div>
@@ -1398,8 +1435,18 @@ export const ProductFlow: React.FC = () => {
                   {activeView.replace(/-/g, ' ').toUpperCase()} VIEW
                 </span>
               </div>
-              <div style={{ minWidth: 320 }}>
-                {renderMainDrawing()}
+              {/* The drawing keeps a real minimum width so dimension text
+                  never shrinks to unreadable — on a phone narrower than
+                  that, the OUTER wrapper here scrolls horizontally on its
+                  own (overflow-x-auto), never the page itself; the inner
+                  minWidth div is what's allowed to be wider than the
+                  screen. The SVG inside already scales via viewBox, so
+                  this only kicks in on the very narrowest phones where
+                  320px genuinely doesn't fit. */}
+              <div style={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <div style={{ minWidth: 320 }}>
+                  {renderMainDrawing()}
+                </div>
               </div>
             </div>
 
@@ -1416,8 +1463,10 @@ export const ProductFlow: React.FC = () => {
                     <span className="text-xs px-2 py-0.5 rounded font-mono ml-auto"
                       style={{ background: '#ede9fe', color: '#7c3aed' }}>ADD-ON DETAIL</span>
                   </div>
-                  <div style={{ minWidth: 280 }}>
-                    {renderSeparateAddon(addon)}
+                  <div style={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                    <div style={{ minWidth: 280 }}>
+                      {renderSeparateAddon(addon)}
+                    </div>
                   </div>
                 </div>
               );
