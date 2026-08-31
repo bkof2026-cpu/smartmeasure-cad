@@ -4,6 +4,8 @@ import { SimpleBedDrawing } from './bed/SimpleBedDrawing';
 import { simpleBedCutlist } from './bed/simpleBedGeometry';
 import { resolveSideTableFront, resolveSideTablePlan, resolveSideTableSide } from './sideTable/sideTableGeometry';
 import { computeSideTableCutlist } from './sideTable/sideTableFormulas';
+import { SimpleSideTableDrawing } from './sideTable/SimpleSideTableDrawing';
+import { simpleSideTableCutlist } from './sideTable/simpleSideTableGeometry';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { BoxTechnicalDrawing } from './loft/BoxTechnicalDrawing';
@@ -903,31 +905,34 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   },
 
   // ── SIDE TABLE ────────────────────────────────────────────────────────────────
+  // Simplified per the user's real site-measurement workflow (2026-08-31),
+  // same treatment as Bed/Wardrobe/Shoe Rack: a single real box (W x H)
+  // with Depth shown as the "/" diagonal leader, divided into equal door
+  // sections — every door's Width/Height/Depth equal by default, no
+  // separate per-door entry. One plan drawing only, matching Bed/Wardrobe/
+  // Shoe Rack (not the old Front/Plan/Side three-tab view). The detailed
+  // CALC_SIDE_TABLE engine (sideTableFormulas.ts / sideTableGeometry.ts /
+  // resolveSideTableFront/Plan/Side) is kept intact, just no longer the
+  // live drawing for this product entry.
   {
     id: 'side-table',
     name: 'Side Table',
     icon: '🪑',
     category: 'furniture',
     isFormulaVerified: true,
-    demoDimensions: { W: 500, D: 400, H: 550, drawers: 2, drawerH: 120, thk: 18 },
+    demoDimensions: { W: 500, H: 550, D: 400, doors: 2 },
     measurementFields: [
       { key: 'W', label: 'Width', unit: 'mm', defaultValue: 500, min: 300, max: 900 },
-      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 300, max: 600 },
       { key: 'H', label: 'Height', unit: 'mm', defaultValue: 550, min: 400, max: 900 },
-      { key: 'drawers', label: 'No. of Drawers', unit: 'count', defaultValue: 2, min: 1, max: 4 },
-      { key: 'drawerH', label: 'Drawer Height', unit: 'mm', defaultValue: 120, min: 80, max: 200 },
-      { key: 'thk', label: 'Material Thickness', unit: 'mm', defaultValue: 18, min: 12, max: 25 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 300, max: 600 },
+      { key: 'doors', label: 'No. of Doors', unit: 'count', defaultValue: 2, min: 1, max: 4 },
     ],
-    views: ['front', 'plan', 'side'],
-    // Real, verified cutlist — see docs/PRODUCT_STANDARDS.md "SIDE TABLE" (CALC_SIDE_TABLE).
+    views: ['plan'],
     computeCutlist: (dims) => {
-      const cutRows = computeSideTableCutlist({
-        W: n(dims.W), D: n(dims.D), H: n(dims.H), drawers: n(dims.drawers) || 0,
-        includeBackPanel: true, includeSkirting: true,
-      });
-      return cutRows.map((r, i) => row(i + 1, r.label, '18mm BWP Ply', r.cutWidth, r.cutHeight, r.qty, 18, '', r.source.formula));
+      const cutRows = simpleSideTableCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doors: n(dims.doors) || 1 });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
-    DrawingComponent: SideTableDrawing,
+    DrawingComponent: (props) => <SimpleSideTableDrawing dims={props.dims} />,
   },
 
   // ── OPENABLE WARDROBE ─────────────────────────────────────────────────────────

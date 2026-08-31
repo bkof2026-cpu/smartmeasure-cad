@@ -134,10 +134,6 @@ function AppHeader() {
       <span className="text-xs ml-auto truncate" style={{ color: '#4a5f7a', maxWidth: 160 }}>
         {model.project.clientName || 'New Project'}
       </span>
-      {model.isDemoData && (
-        <span className="px-2 py-0.5 rounded text-xs font-bold flex-shrink-0"
-          style={{ background: '#78350f', color: '#fcd34d' }}>DEMO</span>
-      )}
     </header>
   );
 }
