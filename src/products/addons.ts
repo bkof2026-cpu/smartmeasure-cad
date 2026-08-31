@@ -40,7 +40,7 @@ export interface FieldColorGroup {
 export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   bed: [
     { label: 'Bed', color: '#3b82f6', keys: ['W', 'L', 'H'] },
-    { label: 'Headboard', color: '#f59e0b', keys: ['headboardH'] },
+    { label: 'Headboard', color: '#f59e0b', keys: ['hasHeadboard', 'headboardH'] },
   ],
   'side-table': [
     { label: 'Cabinet Body',   color: '#3b82f6', keys: ['W', 'D', 'H', 'thk'] },

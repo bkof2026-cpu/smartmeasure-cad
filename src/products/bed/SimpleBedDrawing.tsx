@@ -19,6 +19,9 @@ export const SimpleBedDrawing: React.FC<Props> = ({ dims, lst, rst, profileShutt
   const H = n(dims.H);
   const inp: SimpleBedInputs = {
     W: n(dims.W), L: n(dims.L), H,
+    // Headboard is optional — defaults to shown (1) so existing saved
+    // measurements without this field keep their current drawing.
+    headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1,
     headboardH: n(dims.headboardH) || 900,
     lst: lst ?? DEFAULT_ST,
     rst: rst ?? DEFAULT_ST,

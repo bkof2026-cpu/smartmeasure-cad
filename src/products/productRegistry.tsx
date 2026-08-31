@@ -878,17 +878,21 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // BedTechnicalDrawing.tsx) is kept, unused, for a future "fabrication
     // detail" mode — nothing was deleted, this product entry just no
     // longer wires to it. See src/products/bed/simpleBedGeometry.ts.
-    demoDimensions: { W: 1800, L: 2000, H: 436, headboardH: 900 },
+    demoDimensions: { W: 1800, L: 2000, H: 436, hasHeadboard: 1, headboardH: 900 },
     measurementFields: [
       { key: 'W', label: 'Bed Width', unit: 'mm', defaultValue: 1800, min: 900, max: 2400 },
       { key: 'L', label: 'Bed Length', unit: 'mm', defaultValue: 2000, min: 1800, max: 2400 },
       { key: 'H', label: 'Bed Height', unit: 'mm', defaultValue: 436, min: 250, max: 600 },
+      // Headboard is optional — shown only when selected (default on, so
+      // existing behaviour doesn't change unless the user turns it off).
+      { key: 'hasHeadboard', label: 'Add Headboard', unit: 'bool', defaultValue: 1 },
       { key: 'headboardH', label: 'Headboard Height', unit: 'mm', defaultValue: 900, min: 400, max: 1500 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
       const cutRows = simpleBedCutlist({
-        W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardH: n(dims.headboardH) || 900,
+        W: n(dims.W), L: n(dims.L), H: n(dims.H),
+        headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900,
         lst: { enabled: false, depthMm: 460, widthMm: 560 },
         rst: { enabled: false, depthMm: 460, widthMm: 560 },
         profileShutter: { enabled: false, side: 'left', heightMm: 150, depthMm: 300, light: false },

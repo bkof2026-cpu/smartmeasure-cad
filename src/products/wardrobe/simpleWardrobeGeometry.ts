@@ -98,6 +98,21 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
 
 const DIAG = '#cc2200';
 
+/**
+ * A short "/" or "\" diagonal drawn INSIDE a component's own corner, rather
+ * than hovering small and outside it — per the user's explicit direction
+ * (matches the same helper in src/products/bed/simpleBedGeometry.ts).
+ * Inset is a fraction of the component's own size (capped) so it always
+ * stays clear of that component's centered caption regardless of size.
+ */
+function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, dir: 'right-down' | 'right-up' | 'left-down' | 'left-up') {
+  const insetX = Math.min(w * 0.35, 70);
+  const insetY = Math.min(h * 0.35, 55);
+  const dx = dir === 'left-down' || dir === 'left-up' ? -insetX : insetX;
+  const dy = dir === 'right-up' || dir === 'left-up' ? -insetY : insetY;
+  return { x2: cornerX + dx, y2: cornerY + dy };
+}
+
 export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDrawing {
   const { W, H, D, dressing, sidePanel, loft } = inp;
   const leaderMargin = 150; // room for the Wardrobe's own Depth "/" leader
@@ -146,7 +161,8 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       }
     }
     if (loft.mode === 'box') {
-      lines.push({ x1: loftX, y1: loftY, x2: loftX - 85, y2: loftY - 60, color: DIAG, label: `${Math.round(loft.depthMm)} mm (D)` });
+      const loftDiag = insideDiagonal(loftX, loftY, totalWidth, loftH, 'right-down');
+      lines.push({ x1: loftX, y1: loftY, x2: loftDiag.x2, y2: loftDiag.y2, color: DIAG, label: `${Math.round(loft.depthMm)} mm (D)` });
     }
   }
 
@@ -162,7 +178,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // the top-left corner is where Dressing/Side Panel/Loft all converge, so
   // the bottom-left (always open space, nothing else is ever positioned
   // there) keeps this leader clear regardless of which add-ons are active.
-  lines.push({ x1: wardrobeX, y1: wardrobeY + H, x2: wardrobeX - 90, y2: wardrobeY + H + 60, color: DIAG, label: `${Math.round(D)} mm (D)` });
+  // Drawn INSIDE the Wardrobe's own box (going up-right from that corner),
+  // per the user's explicit direction, in the Wardrobe's own colour.
+  {
+    const wardrobeDiag = insideDiagonal(wardrobeX, wardrobeY + H, W, H, 'right-up');
+    lines.push({ x1: wardrobeX, y1: wardrobeY + H, x2: wardrobeDiag.x2, y2: wardrobeDiag.y2, color: DIAG, label: `${Math.round(D)} mm (D)` });
+  }
 
   dimReqs.push({ axis: 'h', x1: wardrobeX, y1: wardrobeY + H, x2: wardrobeX + W, y2: wardrobeY + H, edge: 'bottom', componentIds: ['wardrobe'], label: `${Math.round(W)} mm (width)`, source: { formula: 'Wardrobe Width = W', constants: [] } });
   dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: wardrobeY, x2: wardrobeX + W, y2: wardrobeY + H, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(H)} mm (height)`, source: { formula: 'Wardrobe Height = H', constants: [] } });

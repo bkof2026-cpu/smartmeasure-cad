@@ -105,13 +105,21 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
   }
   const x = d.edge === 'left' ? Math.min(p.x1, p.x2) - off : Math.max(p.x1, p.x2) + off;
   const my = (p.y1 + p.y2) / 2;
+  // Standard CAD vertical-dimension convention: the label reads bottom-to-
+  // top, parallel to its own vertical dimension line — never left as
+  // horizontal text sitting sideways-on next to a vertical arrow. Rotating
+  // the label rect+text as its own nested group (not the whole <g>, which
+  // would also rotate the dimension line and its extension lines) is what
+  // keeps the arrow itself perfectly vertical while only the text turns.
   return (
     <g onClick={() => onSelect?.(d)} style={{ cursor: onSelect ? 'pointer' : undefined }}>
       <line x1={x} y1={p.y1} x2={x} y2={p.y2} stroke={DIM_COLOR} strokeWidth={0.8} markerStart="url(#canon-arrow)" markerEnd="url(#canon-arrow)" />
       <line x1={p.x1} y1={p.y1} x2={x} y2={p.y1} stroke={DIM_COLOR} strokeWidth={0.35} strokeDasharray="2 2" />
       <line x1={p.x2} y1={p.y2} x2={x} y2={p.y2} stroke={DIM_COLOR} strokeWidth={0.35} strokeDasharray="2 2" />
-      <rect x={x - lw / 2} y={my - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={DIM_COLOR} strokeWidth={0.4} rx={1} />
-      <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={DIM_COLOR}>{d.label}</text>
+      <g transform={`rotate(-90 ${x} ${my})`}>
+        <rect x={x - lw / 2} y={my - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={DIM_COLOR} strokeWidth={0.4} rx={1} />
+        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={DIM_COLOR}>{d.label}</text>
+      </g>
     </g>
   );
 }
@@ -134,7 +142,12 @@ interface RenderProps {
 /** The one renderer every product's technical drawing view goes through. */
 export function TechnicalDrawingSvg({
   worldWidth, worldHeight, title, components, dimensions, lines = [],
-  maxVw = 640, maxVh = 480, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension,
+  // Bumped from 640x480 — the densest drawings (e.g. Bed with both side
+  // tables + Profile Shutter, all their own dimension labels at a constant,
+  // legible font size regardless of scale) were compressing to a scale so
+  // small that even well-separated world-unit label positions ended up only
+  // a couple of screen px apart. More canvas area directly buys more scale.
+  maxVw = 760, maxVh = 560, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension,
 }: RenderProps) {
   // Extra pixel headroom per collision tier actually used, so nothing clips.
   // Bounded to a fraction of the requested viewport — at full size (640x480)
@@ -207,15 +220,34 @@ export function TechnicalDrawingSvg({
         );
       })}
       {lines.map((l, i) => {
-        const lx2 = ox + l.x2 * scale, ly2 = oy + l.y2 * scale;
+        const px1 = ox + l.x1 * scale, py1 = oy + l.y1 * scale;
+        const px2 = ox + l.x2 * scale, py2 = oy + l.y2 * scale;
+        // Diagonal leader labels (Depth "/" or "\" callouts, and anything
+        // else drawn via AnnotationLine) must read PARALLEL to their own
+        // line, at whatever angle that line actually has — never forced
+        // horizontal. Centered on the line's own midpoint (not its
+        // endpoint), offset only perpendicular to it (the -4 in y, applied
+        // before rotation) so the text sits just off the stroke rather than
+        // on top of it.
+        const mx = (px1 + px2) / 2, my = (py1 + py2) / 2;
+        let angleDeg = (Math.atan2(py2 - py1, px2 - px1) * 180) / Math.PI;
+        // Never let the label render upside-down — CAD dimension text stays
+        // readable left-to-right / bottom-to-top, so angles past vertical
+        // get flipped 180° rather than literally matching the line's
+        // direction vector.
+        if (angleDeg > 90) angleDeg -= 180;
+        if (angleDeg < -90) angleDeg += 180;
         return (
           <g key={i}>
             <line
-              x1={ox + l.x1 * scale} y1={oy + l.y1 * scale} x2={lx2} y2={ly2}
+              x1={px1} y1={py1} x2={px2} y2={py2}
               stroke={l.color ?? '#94a3b8'} strokeWidth={l.strokeWidth ?? 0.8} strokeDasharray={l.dashed ? '3 2' : undefined}
             />
             {l.label && (
-              <text x={lx2} y={ly2 - 4} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}>
+              <text
+                x={mx} y={my - 4} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}
+                transform={`rotate(${angleDeg} ${mx} ${my})`}
+              >
                 {l.label}
               </text>
             )}

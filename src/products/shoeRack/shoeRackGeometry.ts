@@ -63,6 +63,19 @@ export function shoeRackCutlist(inp: ShoeRackInputs): ShoeRackCutRow[] {
 
 const DIAG = '#cc2200';
 
+/**
+ * A short "/" or "\" diagonal drawn INSIDE a component's own corner, rather
+ * than hovering small and outside it — per the user's explicit direction
+ * (matches the same helper in src/products/bed/simpleBedGeometry.ts).
+ */
+function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, dir: 'right-down' | 'right-up' | 'left-down' | 'left-up') {
+  const insetX = Math.min(w * 0.35, 70);
+  const insetY = Math.min(h * 0.35, 55);
+  const dx = dir === 'left-down' || dir === 'left-up' ? -insetX : insetX;
+  const dy = dir === 'right-up' || dir === 'left-up' ? -insetY : insetY;
+  return { x2: cornerX + dx, y2: cornerY + dy };
+}
+
 export function resolveShoeRackPlan(inp: ShoeRackInputs): ResolvedDrawing {
   const { twoDoor, singleDoor } = inp;
   const leaderMargin = 100; // room for the 2 Door Box's own Depth "/" leader on the left
@@ -99,9 +112,10 @@ export function resolveShoeRackPlan(inp: ShoeRackInputs): ResolvedDrawing {
     lines.push({ x1: midX, y1: y + 4, x2: midX, y2: y + h - 4, color: '#333' });
     lines.push({ x1: midX - 16, y1: y + h / 2 - 10, x2: midX - 16, y2: y + h / 2 + 10, color: '#555' });
     lines.push({ x1: midX + 16, y1: y + h / 2 - 10, x2: midX + 16, y2: y + h / 2 + 10, color: '#555' });
-    // Depth — "/" diagonal leader at the box's own top-left corner (its
-    // outer, exposed corner — nothing else is ever positioned to its left).
-    lines.push({ x1: twoDoorX, y1: y, x2: twoDoorX - 60, y2: y - 55, color: DIAG, label: `${Math.round(d)} mm (D)` });
+    // Depth — "/" diagonal leader drawn INSIDE the box's own top-left
+    // corner, per the user's explicit direction.
+    const twoDoorDiag = insideDiagonal(twoDoorX, y, w, h, 'right-down');
+    lines.push({ x1: twoDoorX, y1: y, x2: twoDoorDiag.x2, y2: twoDoorDiag.y2, color: DIAG, label: `${Math.round(d)} mm (D)` });
     // Height — real straight dimension on the box's own outer (left) edge.
     dimReqs.push({ axis: 'v', x1: twoDoorX, y1: y, x2: twoDoorX, y2: bottomY, edge: 'left', componentIds: ['two-door-box'], label: `${Math.round(h)} mm (H)`, source: { formula: 'Height (entered)', constants: [] } });
     // Width — real straight dimension on the shared bottom baseline.
@@ -118,12 +132,12 @@ export function resolveShoeRackPlan(inp: ShoeRackInputs): ResolvedDrawing {
     // Single door pull-mark tick, matching the sketch's one "|" mark.
     const doorMidX = singleDoorX + w * 0.35;
     lines.push({ x1: doorMidX, y1: y + h / 2 - 10, x2: doorMidX, y2: y + h / 2 + 10, color: '#555' });
-    // Depth — anchored at this box's own top-RIGHT corner instead of its
+    // Depth — drawn INSIDE this box's own top-RIGHT corner instead of its
     // left: its left corner is the shared boundary with the 2 Door Box
-    // (whenever that one is also present and taller), so a leader there
-    // would cross back over that box's own fill. The top-right corner is
-    // always open — nothing is ever positioned beyond a box on the right.
-    lines.push({ x1: singleDoorX + w, y1: y, x2: singleDoorX + w + 60, y2: y - 55, color: DIAG, label: `${Math.round(d)} mm (D)` });
+    // (whenever that one is also present), so a leader there would overlap
+    // that box's own space. The top-right corner is always this box's own.
+    const singleDoorDiag = insideDiagonal(singleDoorX + w, y, w, h, 'left-down');
+    lines.push({ x1: singleDoorX + w, y1: y, x2: singleDoorDiag.x2, y2: singleDoorDiag.y2, color: DIAG, label: `${Math.round(d)} mm (D)` });
     // Height — real straight dimension on the box's own outer (right) edge.
     dimReqs.push({ axis: 'v', x1: singleDoorX + w, y1: y, x2: singleDoorX + w, y2: bottomY, edge: 'right', componentIds: ['single-door-box'], label: `${Math.round(h)} mm (H)`, source: { formula: 'Height (entered)', constants: [] } });
     // Width — real straight dimension on the shared bottom baseline.
