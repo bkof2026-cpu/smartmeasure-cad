@@ -1038,13 +1038,30 @@ export const ProductFlow: React.FC = () => {
             >
               ← Previous
             </button>
-            <button
-              onClick={handleMarkComplete}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold"
-              style={{ background: '#16a34a', color: '#fff' }}
-            >
-              ✓ Mark Complete{activeTodoIndex < todoProducts.length - 1 ? ' & Next →' : ''}
-            </button>
+            {allCompleted ? (
+              // Every ticked product is done — the natural next click right
+              // here is the combined PDF, not another "Mark Complete" (there
+              // is nothing left to complete). The dropdown panel still has
+              // the same button too, but this is the one a user actually
+              // sees immediately after finishing the last product, which is
+              // exactly where it was being missed (they were reaching for
+              // the single-product "Download PDF" button instead).
+              <button
+                onClick={handleDownloadCombinedPDF}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{ background: '#16a34a', color: '#fff' }}
+              >
+                ✓ Download Combined PDF ({todoProducts.length})
+              </button>
+            ) : (
+              <button
+                onClick={handleMarkComplete}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{ background: '#16a34a', color: '#fff' }}
+              >
+                ✓ Mark Complete{activeTodoIndex < todoProducts.length - 1 ? ' & Next →' : ''}
+              </button>
+            )}
           </div>
         </div>
       )}
