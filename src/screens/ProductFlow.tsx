@@ -12,6 +12,8 @@ import { simpleWardrobeCutlist, type WardrobeSide, type WardrobeDressingInput, t
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
+import { SimpleShoeRackDrawing } from '../products/shoeRack/SimpleShoeRackDrawing';
+import { shoeRackCutlist, type ShoeRackBoxInput } from '../products/shoeRack/shoeRackGeometry';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 const n = (v: number | string) => Number(v);
@@ -395,6 +397,21 @@ export const ProductFlow: React.FC = () => {
     doorCount: (addonDims['loft']?.doors) ?? 2,
   };
 
+  // Shoe Rack: no base dims at all — both boxes are just addon toggles.
+  const isShoeRack = selectedId === 'shoe-rack';
+  const shoeRackTwoDoor: ShoeRackBoxInput = {
+    enabled: isShoeRack && selectedAddons.has('two-door-box'),
+    heightMm: (addonDims['two-door-box']?.H) ?? 1500,
+    widthMm: (addonDims['two-door-box']?.W) ?? 1050,
+    depthMm: (addonDims['two-door-box']?.D) ?? 450,
+  };
+  const shoeRackSingleDoor: ShoeRackBoxInput = {
+    enabled: isShoeRack && selectedAddons.has('single-door-box'),
+    heightMm: (addonDims['single-door-box']?.H) ?? 750,
+    widthMm: (addonDims['single-door-box']?.W) ?? 450,
+    depthMm: (addonDims['single-door-box']?.D) ?? 450,
+  };
+
   // Accepts an explicit view so the PDF exporter can render Front/Plan/Side
   // (or Internal) in turn without touching the on-screen activeView state —
   // defaults to the currently-selected tab for normal on-screen rendering.
@@ -413,6 +430,11 @@ export const ProductFlow: React.FC = () => {
     // "/" diagonal leader, plus optional Side Dressing / Side Panel / Loft.
     if (isWardrobe) {
       return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} sidePanel={wardrobeSidePanel} loft={wardrobeLoft} />;
+    }
+
+    // Shoe Rack — no base dims; entirely the two optional boxes.
+    if (isShoeRack) {
+      return <SimpleShoeRackDrawing twoDoor={shoeRackTwoDoor} singleDoor={shoeRackSingleDoor} />;
     }
 
     // Standard drawing
@@ -439,6 +461,8 @@ export const ProductFlow: React.FC = () => {
       ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
       : isWardrobe
       ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, sidePanel: wardrobeSidePanel, loft: wardrobeLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+      : isShoeRack
+      ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
       : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
 
     downloadPDF(product.name, views, cutlist);
@@ -475,7 +499,8 @@ export const ProductFlow: React.FC = () => {
     selectedAddons.has(a.id) && a.placement === 'composite' &&
     !(
       (selectedId === 'bed' && (a.id === 'side-table-left' || a.id === 'side-table-right' || a.id === 'profile-shutter')) ||
-      (isWardrobe && (a.id === 'dressing' || a.id === 'side-panel' || a.id === 'loft'))
+      (isWardrobe && (a.id === 'dressing' || a.id === 'side-panel' || a.id === 'loft')) ||
+      (isShoeRack && (a.id === 'two-door-box' || a.id === 'single-door-box'))
     )
   );
 

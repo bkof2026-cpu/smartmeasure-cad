@@ -284,6 +284,37 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
   ],
+  // Shoe Rack has no base W/H/D of its own — it's built entirely from these
+  // two optional box types, per the user's own reference sketch. Both take
+  // a real Height x Width x Depth, and both can be added together (2 Door
+  // Box on the left, Single Door Box on the right, flush on the same
+  // bottom line) or on their own.
+  'shoe-rack': [
+    {
+      id: 'two-door-box',
+      label: 'Add 2 Door Box',
+      icon: '🚪',
+      description: 'Two-door shoe rack box — takes Height, Width, Depth',
+      placement: 'composite',
+      fields: [
+        { key: 'H', label: 'Height', defaultValue: 1500, min: 400, max: 2000 },
+        { key: 'W', label: 'Width', defaultValue: 1050, min: 400, max: 2000 },
+        { key: 'D', label: 'Depth', defaultValue: 450, min: 250, max: 600 },
+      ],
+    },
+    {
+      id: 'single-door-box',
+      label: 'Add Single Door Box',
+      icon: '🚪',
+      description: 'Single-door shoe rack box — takes Height, Width, Depth',
+      placement: 'composite',
+      fields: [
+        { key: 'H', label: 'Height', defaultValue: 750, min: 300, max: 1500 },
+        { key: 'W', label: 'Width', defaultValue: 450, min: 300, max: 1000 },
+        { key: 'D', label: 'Depth', defaultValue: 450, min: 250, max: 600 },
+      ],
+    },
+  ],
   'dining-table': [
     {
       id: 'crockery-unit',

@@ -146,7 +146,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       }
     }
     if (loft.mode === 'box') {
-      lines.push({ x1: loftX, y1: loftY, x2: loftX - 60, y2: loftY - 40, color: DIAG, label: `${Math.round(loft.depthMm)} mm (D)` });
+      lines.push({ x1: loftX, y1: loftY, x2: loftX - 85, y2: loftY - 60, color: DIAG, label: `${Math.round(loft.depthMm)} mm (D)` });
     }
   }
 
@@ -162,7 +162,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // the top-left corner is where Dressing/Side Panel/Loft all converge, so
   // the bottom-left (always open space, nothing else is ever positioned
   // there) keeps this leader clear regardless of which add-ons are active.
-  lines.push({ x1: wardrobeX, y1: wardrobeY + H, x2: wardrobeX - 70, y2: wardrobeY + H + 40, color: DIAG, label: `${Math.round(D)} mm (D)` });
+  lines.push({ x1: wardrobeX, y1: wardrobeY + H, x2: wardrobeX - 90, y2: wardrobeY + H + 60, color: DIAG, label: `${Math.round(D)} mm (D)` });
 
   dimReqs.push({ axis: 'h', x1: wardrobeX, y1: wardrobeY + H, x2: wardrobeX + W, y2: wardrobeY + H, edge: 'bottom', componentIds: ['wardrobe'], label: `${Math.round(W)} mm (width)`, source: { formula: 'Wardrobe Width = W', constants: [] } });
   dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: wardrobeY, x2: wardrobeX + W, y2: wardrobeY + H, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(H)} mm (height)`, source: { formula: 'Wardrobe Height = H', constants: [] } });
@@ -203,19 +203,35 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // Side Panel — per the user's own correction: not a box at all, just one
   // real horizontal line (a thin partition marker, real technical-drawing
   // convention for a panel whose thickness isn't worth drawing as a filled
-  // rectangle), top-aligned against the Wardrobe/Dressing edge. Its one real
-  // dimension — Depth, its length — is called out the same way every other
-  // out-of-plan value in this drawing is: a "/" diagonal leader anchored at
-  // the line's own left corner, not text sitting directly on the line.
+  // rectangle), top-aligned against the Wardrobe/Dressing edge. Depth (its
+  // length) is called out the same way every other out-of-plan value in
+  // this drawing is: a big "/" diagonal leader anchored at the line's own
+  // OUTER corner (away from the Wardrobe/Dressing it sits beside), never
+  // the inner one shared with them. Width gets its own real straight arrow
+  // — a short vertical dimension stub right beside the panel, spanning its
+  // actual Width value.
+  //
+  // Once a Loft is added, the Loft's own box visually spans directly above
+  // this same panel (it covers the full composite width), so the panel is
+  // drawn bold and in a distinct colour — otherwise it would read as just
+  // another thin line under the Loft's edge.
+  const panelLineColor = loft.enabled ? '#7c3aed' : '#222';
+  const panelLineWidth = loft.enabled ? 2.5 : 0.8;
   if (panelL > 0) {
     const px = wardrobeX - dressL - panelL;
-    lines.push({ x1: px, y1: wardrobeY, x2: px + panelL, y2: wardrobeY, color: '#222' });
-    lines.push({ x1: px, y1: wardrobeY, x2: px - 26, y2: wardrobeY - 26, color: DIAG, label: `${Math.round(panelL)} mm (D)` });
+    lines.push({ x1: px, y1: wardrobeY, x2: px + panelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
+    lines.push({ x1: px, y1: wardrobeY, x2: px - 60, y2: wardrobeY - 55, color: DIAG, label: `${Math.round(panelL)} mm (D)` });
+    dimReqs.push({ axis: 'v', x1: px, y1: wardrobeY, x2: px, y2: wardrobeY + sidePanel.widthMm, edge: 'left', componentIds: [], label: `${Math.round(sidePanel.widthMm)} mm (W)`, source: { formula: 'Side Panel Width (entered)', constants: [] } });
   }
   if (panelR > 0) {
     const px = wardrobeX + W + dressR;
-    lines.push({ x1: px, y1: wardrobeY, x2: px + panelR, y2: wardrobeY, color: '#222' });
-    lines.push({ x1: px, y1: wardrobeY, x2: px - 26, y2: wardrobeY - 26, color: DIAG, label: `${Math.round(panelR)} mm (D)` });
+    // Anchored at px + panelR (the line's own RIGHT/outer end) rather than
+    // px (its left end, which is the shared inner corner with the Wardrobe/
+    // Dressing) — leaning up-left from the inner corner would have crossed
+    // straight back over whatever sits immediately to this panel's left.
+    lines.push({ x1: px, y1: wardrobeY, x2: px + panelR, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
+    lines.push({ x1: px + panelR, y1: wardrobeY, x2: px + panelR + 60, y2: wardrobeY - 55, color: DIAG, label: `${Math.round(panelR)} mm (D)` });
+    dimReqs.push({ axis: 'v', x1: px + panelR, y1: wardrobeY, x2: px + panelR, y2: wardrobeY + sidePanel.widthMm, edge: 'right', componentIds: [], label: `${Math.round(sidePanel.widthMm)} mm (W)`, source: { formula: 'Side Panel Width (entered)', constants: [] } });
   }
 
   const worldWidth = Math.max(loftX + totalWidth, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));

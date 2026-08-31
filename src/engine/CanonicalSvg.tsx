@@ -212,7 +212,7 @@ export function TechnicalDrawingSvg({
           <g key={i}>
             <line
               x1={ox + l.x1 * scale} y1={oy + l.y1 * scale} x2={lx2} y2={ly2}
-              stroke={l.color ?? '#94a3b8'} strokeWidth={0.8} strokeDasharray={l.dashed ? '3 2' : undefined}
+              stroke={l.color ?? '#94a3b8'} strokeWidth={l.strokeWidth ?? 0.8} strokeDasharray={l.dashed ? '3 2' : undefined}
             />
             {l.label && (
               <text x={lx2} y={ly2 - 4} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}>

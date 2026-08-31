@@ -8,6 +8,7 @@ export type ProductId =
   | 'sliding-wardrobe'
   | 'tv-unit'
   | 'loft'
+  | 'shoe-rack'
   | 'dining-table'
   | 'bedroom'
   | '1bhk'

@@ -122,12 +122,30 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
 
   // Bed Height (h) — has no natural edge to dimension in a plan view (it's
   // the vertical axis, perpendicular to the page), so it's a diagonal
-  // corner leader/callout instead of an axis-aligned DimensionLine, anchored
-  // at the Bed's own top-left corner — matching the user's own hand-sketch
-  // convention exactly (the "/" leader marks depth/height for any box, at
-  // that box's left corner). Drawn as a long stroke through the headboard
-  // gap, not a short stub, so it reads as a real "big" callout line.
-  lines.push({ x1: bedX, y1: bedY, x2: bedX - 100, y2: headboardH + 30, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
+  // corner leader/callout instead of an axis-aligned DimensionLine. Drawn as
+  // a long stroke through the headboard gap, not a short stub, so it reads
+  // as a real "big" callout line — anchored at the Bed's own top-left corner
+  // by default, matching the user's hand-sketch convention (the "/" leader
+  // marks depth/height for any box, at that box's left corner).
+  //
+  // That left-side gap is only ever empty when nothing else claims it. A
+  // Profile Shutter mounted on the LST now fills the WHOLE gap column (see
+  // below) with a real box + caption, so the leader is routed to the
+  // opposite (right) corner instead whenever that's the case — the right
+  // gap is guaranteed clear unless a Profile Shutter sits on the RST too, in
+  // which case both gaps are occupied and the leader falls back to the
+  // Bed's own bottom-left corner (always open — nothing is ever positioned
+  // below the Bed itself), the same "always-open corner" fix already used
+  // for the Wardrobe's own Depth leader.
+  const psOnLeft = profileShutterActive(inp) && inp.profileShutter.side === 'left';
+  const psOnRight = profileShutterActive(inp) && inp.profileShutter.side === 'right';
+  if (psOnLeft && psOnRight) {
+    lines.push({ x1: bedX, y1: bedY + L, x2: bedX - 90, y2: bedY + L + 60, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
+  } else if (psOnLeft) {
+    lines.push({ x1: bedX + W, y1: bedY, x2: bedX + W + 100, y2: headboardH + 30, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
+  } else {
+    lines.push({ x1: bedX, y1: bedY, x2: bedX - 100, y2: headboardH + 30, color: '#cc2200', label: `${Math.round(H)} mm (h)` });
+  }
 
   if (lst.enabled) {
     const lw = lst.widthMm, ld = lst.depthMm;
@@ -144,7 +162,13 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     // edge) — per the user's own reference sketch, where the diagonal
     // marks Depth, not Height.
     dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + H, edge: 'left', componentIds: ['lst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'LST Height = Bed Height (auto-fetched)', constants: [] } });
-    lines.push({ x1: lx, y1: bedY + ld, x2: lx - 26, y2: bedY + ld + 26, color: '#cc2200', label: `${Math.round(ld)} mm (D)` });
+    // Reach extended (26 → 75) so the Depth label clears the Height
+    // dimension's own end point — Bed Height and LST Depth are often close
+    // in value (e.g. 436 vs 460mm by default), so their two labels would
+    // otherwise land almost on top of each other right at the table's
+    // bottom-left corner — and drawn bigger overall, matching the "big
+    // callout line" treatment used everywhere else.
+    lines.push({ x1: lx, y1: bedY + ld, x2: lx - 75, y2: bedY + ld + 60, color: '#cc2200', label: `${Math.round(ld)} mm (D)` });
   }
   if (rst.enabled) {
     const rw = rst.widthMm, rd = rst.depthMm;
@@ -156,8 +180,9 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     dimReqs.push({ axis: 'h', x1: rx, y1: bedY - 8, x2: rx + rw, y2: bedY - 8, edge: 'top', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] } });
     dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + H, edge: 'right', componentIds: ['rst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'RST Height = Bed Height (auto-fetched)', constants: [] } });
     // Same "/" convention as LST, anchored at RST's own left corner (its
-    // bottom-left, the corner shared with the Bed's edge).
-    lines.push({ x1: rx, y1: bedY + rd, x2: rx - 26, y2: bedY + rd + 26, color: '#cc2200', label: `${Math.round(rd)} mm (D)` });
+    // bottom-left, the corner shared with the Bed's edge), with the same
+    // extended, bigger reach.
+    lines.push({ x1: rx, y1: bedY + rd, x2: rx - 75, y2: bedY + rd + 60, color: '#cc2200', label: `${Math.round(rd)} mm (D)` });
   }
 
   // Profile Shutter — mounted flush on top of whichever side table it's
@@ -187,8 +212,8 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     // pointed toward the OUTER edge (away from the Bed) so it never crosses
     // into the LST/RST's own dimension lines on the inner side.
     const outerX = onLeft ? tableX : tableX + tableW;
-    const dxDir = onLeft ? -26 : 26;
-    lines.push({ x1: outerX, y1: bedY, x2: outerX + dxDir, y2: bedY + 26, color: '#cc2200', label: `${Math.round(psD)} mm (D)` });
+    const dxDir = onLeft ? -55 : 55;
+    lines.push({ x1: outerX, y1: bedY, x2: outerX + dxDir, y2: bedY + 55, color: '#cc2200', label: `${Math.round(psD)} mm (D)` });
     if (inp.profileShutter.light) {
       // Optional profile/spot light — a small light-cone callout just inside
       // the shutter's own top edge (two rays converging downward from the

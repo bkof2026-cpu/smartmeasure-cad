@@ -78,6 +78,11 @@ export interface AnnotationLine {
   x1: number; y1: number; x2: number; y2: number;
   dashed?: boolean;
   color?: string;
+  /** Defaults to a thin 0.8 if unset — set higher (e.g. 2.5) to draw a
+   * genuinely bold line, distinct from the usual thin annotation strokes
+   * (e.g. a Side Panel called out more prominently once a Loft sits above
+   * it and the two would otherwise read as the same weight of line). */
+  strokeWidth?: number;
   /** Optional leader-line caption, drawn near (x2, y2) — e.g. a diagonal
    * corner callout for a value that has no natural edge to dimension
    * against in this view (real hand-sketch convention, not a measured

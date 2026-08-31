@@ -10,6 +10,8 @@ import { BoxTechnicalDrawing } from './loft/BoxTechnicalDrawing';
 import { computeBoxCutlist } from './loft/boxFormulas';
 import { SimpleWardrobeDrawing } from './wardrobe/SimpleWardrobeDrawing';
 import { simpleWardrobeCutlist } from './wardrobe/simpleWardrobeGeometry';
+import { SimpleShoeRackDrawing } from './shoeRack/SimpleShoeRackDrawing';
+import { shoeRackCutlist } from './shoeRack/shoeRackGeometry';
 
 // ─── cutlist row helper ───────────────────────────────────────────────────────
 function row(
@@ -1050,6 +1052,30 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       return cutRows.map((r, i) => row(i + 1, r.label, r.type === 'BACK_PANEL' ? '9mm BWP Ply' : '18mm BWP Ply', r.cutWidth, r.cutHeight, r.qty, r.type === 'BACK_PANEL' ? 9 : 18, '', r.source.formula));
     },
     DrawingComponent: (props) => <BoxTechnicalDrawing dims={props.dims} activeView={props.activeView} />,
+  },
+
+  // ── SHOE RACK ─────────────────────────────────────────────────────────────────
+  {
+    id: 'shoe-rack',
+    name: 'Shoe Rack',
+    icon: '👞',
+    category: 'furniture',
+    isFormulaVerified: true,
+    // No base W/H/D — per the user's own reference sketch, Shoe Rack is
+    // built entirely from two optional box types (2 Door Box / Single Door
+    // Box), each with its own real Height x Width x Depth. See the
+    // "Add 2 Door Box" / "Add Single Door Box" add-ons below.
+    demoDimensions: {},
+    measurementFields: [],
+    views: ['plan'],
+    computeCutlist: () => {
+      const cutRows = shoeRackCutlist({
+        twoDoor: { enabled: false, heightMm: 1500, widthMm: 1050, depthMm: 450 },
+        singleDoor: { enabled: false, heightMm: 750, widthMm: 450, depthMm: 450 },
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: () => <SimpleShoeRackDrawing />,
   },
 
   // ── DINING TABLE ──────────────────────────────────────────────────────────────
