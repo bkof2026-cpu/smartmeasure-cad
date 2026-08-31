@@ -895,7 +895,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900,
         lst: { enabled: false, depthMm: 460, widthMm: 560 },
         rst: { enabled: false, depthMm: 460, widthMm: 560 },
-        profileShutter: { enabled: false, side: 'left', heightMm: 150, depthMm: 300, light: false },
+        profileShutter: { enabled: false, side: 'left', heightMm: 150, light: false },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },

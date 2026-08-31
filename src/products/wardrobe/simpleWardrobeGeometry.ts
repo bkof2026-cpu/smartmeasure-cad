@@ -106,8 +106,11 @@ const DIAG = '#cc2200';
  * stays clear of that component's centered caption regardless of size.
  */
 function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, dir: 'right-down' | 'right-up' | 'left-down' | 'left-up') {
-  const insetX = Math.min(w * 0.35, 70);
-  const insetY = Math.min(h * 0.35, 55);
+  // 2x the original reach, per the user's explicit request — still capped
+  // at 90% of the component's own size so it can never poke out the
+  // opposite edge on a genuinely small box.
+  const insetX = Math.min(Math.min(w * 0.35, 70) * 2, w * 0.9);
+  const insetY = Math.min(Math.min(h * 0.35, 55) * 2, h * 0.9);
   const dx = dir === 'left-down' || dir === 'left-up' ? -insetX : insetX;
   const dy = dir === 'right-up' || dir === 'left-up' ? -insetY : insetY;
   return { x2: cornerX + dx, y2: cornerY + dy };
@@ -140,7 +143,10 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // topmost element (loft, or the Wardrobe itself if no loft) for its own
   // "/" diagonal leader — never a straight arrow, same convention as the
   // Bed's own height.
-  const topPad = 70;
+  // Bumped from 70 — the Side Panel's own Depth leader (below) now reaches
+  // 110 units up from wardrobeY, which needs more headroom above it than
+  // before to stay on-canvas when no Loft pushes wardrobeY down further.
+  const topPad = 130;
   const totalWidth = leftExtra + W + rightExtra;
   const loftX = leaderMargin;
   let loftH = 0;
@@ -241,7 +247,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   if (panelL > 0) {
     const px = wardrobeX - dressL - panelL;
     lines.push({ x1: px, y1: wardrobeY, x2: px + panelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
-    lines.push({ x1: px, y1: wardrobeY, x2: px - 60, y2: wardrobeY - 55, color: DIAG, label: `${Math.round(panelL)} mm (D)` });
+    lines.push({ x1: px, y1: wardrobeY, x2: px - 120, y2: wardrobeY - 110, color: DIAG, label: `${Math.round(panelL)} mm (D)` });
     dimReqs.push({ axis: 'v', x1: px, y1: wardrobeY, x2: px, y2: wardrobeY + sidePanel.widthMm, edge: 'left', componentIds: [], label: `${Math.round(sidePanel.widthMm)} mm (W)`, source: { formula: 'Side Panel Width (entered)', constants: [] } });
   }
   if (panelR > 0) {
@@ -251,7 +257,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // Dressing) — leaning up-left from the inner corner would have crossed
     // straight back over whatever sits immediately to this panel's left.
     lines.push({ x1: px, y1: wardrobeY, x2: px + panelR, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
-    lines.push({ x1: px + panelR, y1: wardrobeY, x2: px + panelR + 60, y2: wardrobeY - 55, color: DIAG, label: `${Math.round(panelR)} mm (D)` });
+    lines.push({ x1: px + panelR, y1: wardrobeY, x2: px + panelR + 120, y2: wardrobeY - 110, color: DIAG, label: `${Math.round(panelR)} mm (D)` });
     dimReqs.push({ axis: 'v', x1: px + panelR, y1: wardrobeY, x2: px + panelR, y2: wardrobeY + sidePanel.widthMm, edge: 'right', componentIds: [], label: `${Math.round(sidePanel.widthMm)} mm (W)`, source: { formula: 'Side Panel Width (entered)', constants: [] } });
   }
 

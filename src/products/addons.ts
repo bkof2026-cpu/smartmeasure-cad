@@ -143,12 +143,11 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'profile-shutter',
       label: 'Profile Shutter',
       icon: '💡',
-      description: 'Light shutter box mounted above a side table — Width auto-fetched from that table\'s Width',
+      description: 'Light shutter box mounted above a side table — Width and Depth both auto-fetched from that table',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Mounted On', defaultValue: 0, min: 0, max: 1, options: ['Left Side Table (LST)', 'Right Side Table (RST)'] },
         { key: 'H', label: 'Height', defaultValue: 150, min: 50, max: 400 },
-        { key: 'D', label: 'Depth', defaultValue: 300, min: 100, max: 600 },
         { key: 'light', label: 'Add Profile Light', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
       ],
     },

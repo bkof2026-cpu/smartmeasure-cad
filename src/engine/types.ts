@@ -56,6 +56,10 @@ export interface DimensionLine {
   /** Which component(s) this dimension measures, for traceability. */
   componentIds: string[];
   source: ComponentSource;
+  /** Defaults to the shared dimension red if unset. Set to match the
+   * measured component's own box colour, so a viewer can visually pair a
+   * dimension with the exact component it belongs to at a glance. */
+  color?: string;
 }
 
 export type ValidationSeverity = 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';

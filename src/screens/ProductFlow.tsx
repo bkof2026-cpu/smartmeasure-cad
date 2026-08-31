@@ -361,15 +361,15 @@ export const ProductFlow: React.FC = () => {
   const bedRST: SimpleSideTableInput = { enabled: bedHasSTR, depthMm: (addonDims['side-table-right']?.D) ?? 460, widthMm: (addonDims['side-table-right']?.W) ?? 560 };
 
   // Profile Shutter: mounted on whichever side table the "Mounted On"
-  // dropdown picks — Width is never a field, it's always that table's own
-  // Width (auto-fetched, resolved inside simpleBedGeometry.ts). The light
-  // checkbox is stored as 0/1 like every other addonDims value.
+  // dropdown picks — Width and Depth are never fields, they're always that
+  // table's own Width and Depth (auto-fetched, resolved inside
+  // simpleBedGeometry.ts). The light checkbox is stored as 0/1 like every
+  // other addonDims value.
   const PS_SIDE_OPTS: ProfileShutterSide[] = ['left', 'right'];
   const bedProfileShutter: ProfileShutterInput = {
     enabled: selectedId === 'bed' && selectedAddons.has('profile-shutter'),
     side: PS_SIDE_OPTS[(addonDims['profile-shutter']?.side) ?? 0] ?? 'left',
     heightMm: (addonDims['profile-shutter']?.H) ?? 150,
-    depthMm: (addonDims['profile-shutter']?.D) ?? 300,
     light: ((addonDims['profile-shutter']?.light) ?? 0) === 1,
   };
 
@@ -878,6 +878,13 @@ export const ProductFlow: React.FC = () => {
                                     {target.enabled
                                       ? `Auto-fetched from ${onLeft ? 'LST' : 'RST'} Width`
                                       : `⚠ ${onLeft ? 'Left' : 'Right'} Side Table isn't added yet — enable it too`}
+                                  </span>
+                                  <label className="text-xs font-semibold mt-1" style={{ color: '#a78bfa' }}>Depth (mm)</label>
+                                  <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
+                                    {Math.round(target.depthMm)} mm
+                                  </div>
+                                  <span className="text-xs" style={{ color: target.enabled ? '#334155' : '#f59e0b' }}>
+                                    {target.enabled ? `Auto-fetched from ${onLeft ? 'LST' : 'RST'} Depth` : ' '}
                                   </span>
                                 </div>
                               );

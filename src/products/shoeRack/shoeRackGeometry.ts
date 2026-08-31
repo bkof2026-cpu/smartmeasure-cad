@@ -69,8 +69,11 @@ const DIAG = '#cc2200';
  * (matches the same helper in src/products/bed/simpleBedGeometry.ts).
  */
 function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, dir: 'right-down' | 'right-up' | 'left-down' | 'left-up') {
-  const insetX = Math.min(w * 0.35, 70);
-  const insetY = Math.min(h * 0.35, 55);
+  // 2x the original reach, per the user's explicit request — still capped
+  // at 90% of the component's own size so it can never poke out the
+  // opposite edge on a genuinely small box.
+  const insetX = Math.min(Math.min(w * 0.35, 70) * 2, w * 0.9);
+  const insetY = Math.min(Math.min(h * 0.35, 55) * 2, h * 0.9);
   const dx = dir === 'left-down' || dir === 'left-up' ? -insetX : insetX;
   const dy = dir === 'right-up' || dir === 'left-up' ? -insetY : insetY;
   return { x2: cornerX + dx, y2: cornerY + dy };

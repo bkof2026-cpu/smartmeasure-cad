@@ -90,16 +90,20 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
   const fs = 8;
   const lw = d.label.length * fs * 0.62 + 6;
 
+  // Falls back to the shared dimension red when a product hasn't set a
+  // component-matched colour — every existing product keeps its current
+  // look; only dimensions that opt in (via DimensionRequest.color) change.
+  const dc = d.color ?? DIM_COLOR;
   if (d.axis === 'h') {
     const y = d.edge === 'top' ? Math.min(p.y1, p.y2) - off : Math.max(p.y1, p.y2) + off;
     const mx = (p.x1 + p.x2) / 2;
     return (
       <g onClick={() => onSelect?.(d)} style={{ cursor: onSelect ? 'pointer' : undefined }}>
-        <line x1={p.x1} y1={y} x2={p.x2} y2={y} stroke={DIM_COLOR} strokeWidth={0.8} markerStart="url(#canon-arrow)" markerEnd="url(#canon-arrow)" />
-        <line x1={p.x1} y1={p.y1} x2={p.x1} y2={y} stroke={DIM_COLOR} strokeWidth={0.35} strokeDasharray="2 2" />
-        <line x1={p.x2} y1={p.y2} x2={p.x2} y2={y} stroke={DIM_COLOR} strokeWidth={0.35} strokeDasharray="2 2" />
-        <rect x={mx - lw / 2} y={y - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={DIM_COLOR} strokeWidth={0.4} rx={1} />
-        <text x={mx} y={y + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={DIM_COLOR}>{d.label}</text>
+        <line x1={p.x1} y1={y} x2={p.x2} y2={y} stroke={dc} strokeWidth={0.8} markerStart="url(#canon-arrow)" markerEnd="url(#canon-arrow)" />
+        <line x1={p.x1} y1={p.y1} x2={p.x1} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
+        <line x1={p.x2} y1={p.y2} x2={p.x2} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
+        <rect x={mx - lw / 2} y={y - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
+        <text x={mx} y={y + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc}>{d.label}</text>
       </g>
     );
   }
@@ -113,12 +117,12 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
   // keeps the arrow itself perfectly vertical while only the text turns.
   return (
     <g onClick={() => onSelect?.(d)} style={{ cursor: onSelect ? 'pointer' : undefined }}>
-      <line x1={x} y1={p.y1} x2={x} y2={p.y2} stroke={DIM_COLOR} strokeWidth={0.8} markerStart="url(#canon-arrow)" markerEnd="url(#canon-arrow)" />
-      <line x1={p.x1} y1={p.y1} x2={x} y2={p.y1} stroke={DIM_COLOR} strokeWidth={0.35} strokeDasharray="2 2" />
-      <line x1={p.x2} y1={p.y2} x2={x} y2={p.y2} stroke={DIM_COLOR} strokeWidth={0.35} strokeDasharray="2 2" />
+      <line x1={x} y1={p.y1} x2={x} y2={p.y2} stroke={dc} strokeWidth={0.8} markerStart="url(#canon-arrow)" markerEnd="url(#canon-arrow)" />
+      <line x1={p.x1} y1={p.y1} x2={x} y2={p.y1} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
+      <line x1={p.x2} y1={p.y2} x2={x} y2={p.y2} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
       <g transform={`rotate(-90 ${x} ${my})`}>
-        <rect x={x - lw / 2} y={my - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={DIM_COLOR} strokeWidth={0.4} rx={1} />
-        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={DIM_COLOR}>{d.label}</text>
+        <rect x={x - lw / 2} y={my - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
+        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc}>{d.label}</text>
       </g>
     </g>
   );

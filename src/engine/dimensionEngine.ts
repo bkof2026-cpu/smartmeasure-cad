@@ -19,6 +19,8 @@ export interface DimensionRequest {
   label?: string;
   componentIds: string[];
   source: ComponentSource;
+  /** Matches the measured component's own box colour when set — see DimensionLine.color. */
+  color?: string;
 }
 
 /**
@@ -42,6 +44,7 @@ export function buildDimensionLine(req: DimensionRequest): DimensionLine {
     tier: 0,
     componentIds: req.componentIds,
     source: req.source,
+    color: req.color,
   };
 }
 
