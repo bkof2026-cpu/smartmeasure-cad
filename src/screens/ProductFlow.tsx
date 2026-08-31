@@ -296,13 +296,29 @@ function pdfSectionHTML(it: CombinedPdfItem, sizeClass: string): string {
 }
 
 /**
+ * The exactly-2-products layout: two equal-width columns split by a plain
+ * vertical rule, each headed by a simple underlined product name (no icon,
+ * no caption line, no card border) — matching the user's own reference
+ * layout for "these products together are one project," as distinct from
+ * the weighted half/quarter treatment used for 3+ products.
+ */
+function pdfSectionHTMLColumn(it: CombinedPdfItem): string {
+  return `<div class="pdf-section size-column">
+    <div class="section-title-plain">${it.name}</div>
+    <div class="section-svg-wrap">${it.svgHTML}</div>
+  </div>`;
+}
+
+/**
  * One page's worth of sections (at most 4), arranged per the user's own
- * spec: 1 product = full page; 2 = stacked halves; 3 = one half-page
- * "large" product (if any is flagged) over two quarter-page ones; 4 = an
- * even 2x2 grid. This is the actual layout decision — expressed as a CSS
- * grid template per page rather than hand-computed pixel coordinates,
- * which is a correct, robust way to implement "automatically choose the
- * most appropriate layout" in an HTML/print document.
+ * spec: 1 product = full page; 2 = two equal side-by-side columns split by
+ * a vertical rule (their own reference layout — "one complete project" on
+ * one page); 3 = one half-page "large" product (if any is flagged) over
+ * two quarter-page ones; 4 = an even 2x2 grid. This is the actual layout
+ * decision — expressed as a CSS grid template per page rather than
+ * hand-computed pixel coordinates, which is a correct, robust way to
+ * implement "automatically choose the most appropriate layout" in an
+ * HTML/print document.
  */
 function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: number, projectId: string, employeeName: string): string {
   const n = pageItems.length;
@@ -312,8 +328,8 @@ function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: n
     gridClass = 'grid-1';
     sectionsHTML = pdfSectionHTML(pageItems[0], 'size-full');
   } else if (n === 2) {
-    gridClass = 'grid-2';
-    sectionsHTML = pageItems.map((it) => pdfSectionHTML(it, 'size-half')).join('');
+    gridClass = 'grid-2col';
+    sectionsHTML = pageItems.map((it) => pdfSectionHTMLColumn(it)).join('');
   } else if (n === 3) {
     gridClass = 'grid-3';
     const largeIdx = pageItems.findIndex((it) => LARGE_PDF_PRODUCTS.has(it.id));
@@ -360,6 +376,7 @@ function downloadCombinedPDF(items: CombinedPdfItem[], projectId: string, employ
     .page-grid { flex: 1; display: grid; gap: 6mm; min-height: 0; }
     .grid-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
     .grid-2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .grid-2col { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; gap: 0; }
     .grid-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
     .grid-3 .size-half-top { grid-column: 1 / 3; grid-row: 1; }
     .grid-3 .size-quarter { grid-row: 2; }
@@ -369,6 +386,12 @@ function downloadCombinedPDF(items: CombinedPdfItem[], projectId: string, employ
     .section-caption { font-size: 9px; color: #666; text-align: center; margin: 2px 0 4px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
     .section-svg-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 0; }
     .section-svg-wrap svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+    /* Exactly-2-products layout: two equal columns, one plain vertical
+       rule between them (not a bordered card each) — the two drawings
+       read as one combined project sheet rather than two separate tiles. */
+    .pdf-section.size-column { border: none; border-radius: 0; padding: 10px 22px; }
+    .grid-2col .pdf-section.size-column:first-child { border-right: 1.5px solid #222; }
+    .section-title-plain { font-size: 13px; font-weight: 700; font-style: italic; text-align: center; text-decoration: underline; text-underline-offset: 4px; color: #111; flex-shrink: 0; margin-bottom: 6px; }
     @page { size: A3 landscape; margin: 0; }
   </style>
 </head>
