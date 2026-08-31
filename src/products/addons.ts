@@ -123,18 +123,6 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
     {
-      id: 'wardrobe',
-      label: 'Wardrobe',
-      icon: '🚪',
-      description: 'Openable wardrobe for the bedroom',
-      placement: 'separate',
-      fields: [
-        { key: 'W', label: 'Width',  defaultValue: 1800, min: 900,  max: 3600 },
-        { key: 'H', label: 'Height', defaultValue: 2100, min: 1800, max: 2750 },
-        { key: 'D', label: 'Depth',  defaultValue: 600,  min: 400,  max: 750 },
-      ],
-    },
-    {
       // Width is not a field here — always auto-fetched from whichever side
       // table (LST/RST) it's mounted on, per the user's own reference
       // sketch: the profile shutter sits flush on top of that table, sharing
