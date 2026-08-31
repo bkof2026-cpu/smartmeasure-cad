@@ -78,7 +78,52 @@ function componentTableHTML(rows: PdfCutRow[]): string {
  * limited to whichever single tab happened to be open when Download was
  * clicked.
  */
-function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]) {
+// Real project identity carried into every generated PDF (single or
+// combined) — never a hardcoded/demo value. `products` is the ordered
+// list of product names the PDF actually covers (one entry for a single
+// download, every selected product's name in selection order for a
+// combined one).
+interface PdfProjectInfo {
+  projectId: string;
+  clientName: string;
+  employeeName: string;
+  products: string[];
+}
+
+/** Meaningful, non-demo filename: SmartMeasure_<ProjectId>_<Products>. Falls back to "Combined" when the product-name list would make the filename unreasonably long. */
+function pdfFileName(projectId: string, products: string[]): string {
+  const idPart = (projectId.trim() || 'Project').replace(/[^a-z0-9]+/gi, '');
+  const prodPart = products.map((p) => p.replace(/[^a-z0-9]+/gi, '')).join('_');
+  const namePart = (prodPart.length > 40 || products.length > 3) ? 'Combined' : (prodPart || 'Drawing');
+  return `SmartMeasure_${idPart}_${namePart}`;
+}
+
+/** Compact project-information block — Project ID / Client / Employee /
+ * Product(s) / Date / Time — placed at the top of every generated PDF,
+ * ABOVE and separate from the drawing area so it can never overlap a
+ * drawing or its dimensions. */
+function projectInfoBlockHTML(info: PdfProjectInfo): string {
+  const now = new Date();
+  const row = (label: string, value: string) => `<div class="pinfo-row"><span class="pinfo-label">${label}</span><span class="pinfo-value">${value || '—'}</span></div>`;
+  return `<div class="pinfo">
+    <div class="pinfo-brand">SmartMeasure CAD</div>
+    ${row('Project ID', info.projectId)}
+    ${row('Client', info.clientName)}
+    ${row('Employee', info.employeeName)}
+    ${row(info.products.length > 1 ? 'Products' : 'Product', info.products.join(', '))}
+    ${row('Date', now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }))}
+    ${row('Time', now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }))}
+  </div>`;
+}
+
+const PINFO_CSS = `
+    .pinfo { border: 1px solid #ccc; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; display: inline-flex; flex-direction: column; gap: 2px; min-width: 220px; page-break-inside: avoid; }
+    .pinfo-brand { font-size: 11px; font-weight: 900; color: #1d4ed8; margin-bottom: 3px; }
+    .pinfo-row { display: flex; gap: 6px; font-size: 9px; }
+    .pinfo-label { color: #888; min-width: 56px; flex-shrink: 0; }
+    .pinfo-value { color: #111; font-weight: 700; word-break: break-word; }`;
+
+function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[], info: PdfProjectInfo) {
   if (views.length === 0) return;
   // Each view gets its own page, forced with page-break-before so a view
   // never starts mid-page with too little room left — and the SVG itself
@@ -109,6 +154,7 @@ function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]
     table.comp-table td:nth-child(3), table.comp-table td:nth-child(4), table.comp-table td:nth-child(5), table.comp-table td:nth-child(6) { text-align: right; font-family: 'JetBrains Mono', monospace; }
     @page { size: A3 landscape; margin: 10mm; }
     @media print { .no-print { display: none !important; } }
+${PINFO_CSS}
   </style>
 </head>
 <body>
@@ -119,6 +165,7 @@ function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]
     </div>
     <p style="font-size:9px;color:#999">All dimensions in millimetres (mm)</p>
   </div>
+  ${projectInfoBlockHTML(info)}
   ${svgHTML}
   ${cutlist.length ? `<h2 class="section-title">Component Table — every part's real size, quantity and formula</h2>${componentTableHTML(cutlist)}` : ''}
   <script>window.onload = () => { setTimeout(() => window.print(), 300); }</script>
@@ -129,7 +176,9 @@ function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[]
   // Direct file download to the device (no new tab / print-dialog step) —
   // an <a download> click is what actually saves a file in the browser;
   // window.open() only opened a viewable tab the user had to Ctrl+P from.
-  const safeName = productName.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'drawing';
+  // Filename carries the real Project ID + product name(s), never a
+  // "demo"/"test"/"sample" placeholder.
+  const safeName = pdfFileName(info.projectId, info.products);
   const a = document.createElement('a');
   a.href = url;
   a.download = `${safeName}-2D-Drawing.html`;
@@ -320,7 +369,7 @@ function pdfSectionHTMLColumn(it: CombinedPdfItem): string {
  * implement "automatically choose the most appropriate layout" in an
  * HTML/print document.
  */
-function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: number, projectId: string, employeeName: string): string {
+function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: number, info: PdfProjectInfo): string {
   const n = pageItems.length;
   let gridClass: string;
   let sectionsHTML: string;
@@ -340,11 +389,13 @@ function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: n
     gridClass = 'grid-4';
     sectionsHTML = pageItems.map((it) => pdfSectionHTML(it, 'size-quarter')).join('');
   }
+  // Project-information block sits in its own header strip — ABOVE and
+  // entirely separate from the drawing grid below it, on every page (not
+  // just page 1), so it can never overlap a drawing or its dimensions.
   return `<div class="pdf-page">
     <div class="page-header">
-      <div><strong>SmartMeasure CAD</strong> — Combined 2D Drawings</div>
-      <div>Project: ${projectId} &nbsp;·&nbsp; Employee: ${employeeName} &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-      <div>Page ${pageNum} of ${pageCount}</div>
+      ${projectInfoBlockHTML(info)}
+      <div class="page-num">Page ${pageNum} of ${pageCount}</div>
     </div>
     <div class="page-grid ${gridClass}">${sectionsHTML}</div>
   </div>`;
@@ -354,13 +405,15 @@ function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: n
  * One PDF, every selected product's REAL drawing (same canonical SVG as its
  * own on-screen view — never a re-simplified redraw) laid out with the
  * half/quarter-page weighting from the user's own spec, paginated at a
- * maximum of 4 sections per page.
+ * maximum of 4 sections per page. Returns ok:false with a reason instead of
+ * throwing/silently no-op'ing, so the caller can show it inline.
  */
-function downloadCombinedPDF(items: CombinedPdfItem[], projectId: string, employeeName: string) {
-  if (items.length === 0) return;
+function downloadCombinedPDF(items: CombinedPdfItem[], info: PdfProjectInfo): { ok: boolean; error?: string } {
+  if (items.length === 0) return { ok: false, error: 'No product drawings to include.' };
+  if (!info.clientName.trim()) return { ok: false, error: 'Client Name is required before a PDF can be generated.' };
   const pages: CombinedPdfItem[][] = [];
   for (let i = 0; i < items.length; i += 4) pages.push(items.slice(i, i + 4));
-  const pagesHTML = pages.map((page, i) => pdfPageHTML(page, i + 1, pages.length, projectId, employeeName)).join('\n');
+  const pagesHTML = pages.map((page, i) => pdfPageHTML(page, i + 1, pages.length, info)).join('\n');
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -371,8 +424,9 @@ function downloadCombinedPDF(items: CombinedPdfItem[], projectId: string, employ
     body { background: white; font-family: 'Segoe UI', system-ui, sans-serif; }
     .pdf-page { padding: 8mm; page-break-after: always; display: flex; flex-direction: column; min-height: 190mm; }
     .pdf-page:last-child { page-break-after: auto; }
-    .page-header { padding-bottom: 6px; border-bottom: 2px solid #333; margin-bottom: 8px; font-size: 9px; color: #666; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
-    .page-header strong { color: #222; font-size: 12px; }
+    .page-header { padding-bottom: 6px; border-bottom: 2px solid #333; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+    .page-num { font-size: 9px; color: #666; flex-shrink: 0; }
+${PINFO_CSS}
     .page-grid { flex: 1; display: grid; gap: 6mm; min-height: 0; }
     .grid-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
     .grid-2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
@@ -404,11 +458,12 @@ function downloadCombinedPDF(items: CombinedPdfItem[], projectId: string, employ
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Combined-2D-Drawings-${items.length}-Products.html`;
+  a.download = `${pdfFileName(info.projectId, info.products)}-2D-Drawings.html`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return { ok: true };
 }
 
 // ─── Add-on detail views (generic / not yet migrated to the real engine) ──────
@@ -523,6 +578,11 @@ export const ProductFlow: React.FC = () => {
   const [previousProductId, setPreviousProductId] = useState<ProductId>('bed');
   const [evidenceCaption, setEvidenceCaption] = useState('');
   const [evidenceTag, setEvidenceTag] = useState('General site condition');
+  // PDF page: Client Name is the one mandatory identity field — nothing
+  // downloads (single or combined) until it's actually entered. Kept as
+  // its own error state (not reused from completeErrors) since it guards
+  // a different action and shouldn't be cleared by Mark Complete.
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const drawingRef = useRef<HTMLDivElement>(null);
   // The workspace tab strip scrolls horizontally on narrow screens (never
   // the whole page) — this keeps whichever tab is active scrolled fully
@@ -532,7 +592,7 @@ export const ProductFlow: React.FC = () => {
   useEffect(() => {
     activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeWorkspace]);
-  const { model, addEvidence, saveMeasurementSnapshot } = useApp();
+  const { model, addEvidence, saveMeasurementSnapshot, updateProject } = useApp();
   const product = getProduct(selectedId);
   const addons = PRODUCT_ADDONS[selectedId] ?? [];
   const groups = FIELD_GROUPS[selectedId] ?? [];
@@ -729,6 +789,11 @@ export const ProductFlow: React.FC = () => {
   // component table — never just whichever single tab was open on screen.
   const handleDownloadPDF = () => {
     if (!product) return;
+    if (!model.project.clientName.trim()) {
+      setPdfError('Client Name is required before a PDF can be generated.');
+      return;
+    }
+    setPdfError(null);
     const views: PdfView[] = product.views
       .map((v) => {
         const markup = renderToStaticMarkup(<>{renderMainDrawing(v)}</>);
@@ -747,7 +812,12 @@ export const ProductFlow: React.FC = () => {
       ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
       : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
 
-    downloadPDF(product.name, views, cutlist);
+    downloadPDF(product.name, views, cutlist, {
+      projectId: model.project.projectId,
+      clientName: model.project.clientName,
+      employeeName: model.employeeName || '',
+      products: [product.name],
+    });
   };
 
   // Ticking a product seeds its session immediately (so the Todo list shows
@@ -766,8 +836,13 @@ export const ProductFlow: React.FC = () => {
     });
   }, []);
 
-  // Selected products, in the order they were ticked — the Todo order.
-  const todoProducts = PRODUCT_REGISTRY.filter((p) => multiSelectIds.has(p.id));
+  // Selected products, in the order they were TICKED — not registry order.
+  // A JS Set iterates in insertion order, so mapping over multiSelectIds
+  // directly (rather than filtering PRODUCT_REGISTRY) preserves "user
+  // selected Bed, then Wardrobe, then Shoe Rack" exactly, and this same
+  // order then drives the PDF page's product list and the combined PDF's
+  // section order, per the user's explicit requirement that they match.
+  const todoProducts = [...multiSelectIds].map((id) => getProduct(id)).filter((p): p is ProductTemplate => !!p);
   const statusOf = (id: ProductId): ProductTodoStatus => (id === selectedId ? (productSessions[id]?.status ?? 'not-started') : (productSessions[id]?.status ?? 'not-started'));
   const completedCount = todoProducts.filter((p) => statusOf(p.id) === 'completed').length;
   const allCompleted = todoProducts.length > 0 && completedCount === todoProducts.length;
@@ -805,6 +880,16 @@ export const ProductFlow: React.FC = () => {
   }, [product, dims, selectedAddons, addonDims, selectedId, todoProducts, productSessions, switchToProduct]);
 
   const handleDownloadCombinedPDF = () => {
+    // Step 1 of the required validation order: Client Name, before doing
+    // any of the (heavier) drawing-resolution work below.
+    if (!model.project.clientName.trim()) {
+      setPdfError('Client Name is required before a PDF can be generated.');
+      return;
+    }
+    if (!model.employeeName) {
+      setPdfError('Employee session not found — please log in again.');
+      return;
+    }
     // The product currently on screen may have unsaved live edits that
     // haven't been written back into productSessions yet (that only
     // happens on switch) — fold them in here so the PDF always reflects
@@ -820,7 +905,17 @@ export const ProductFlow: React.FC = () => {
         return { id: p.id, name: p.name, icon: p.icon, caption: captionForSession(p, session.dims), svgHTML: svgHtmlOf(element) };
       })
       .filter((it) => it.svgHTML);
-    downloadCombinedPDF(items, model.project.projectId, model.employeeName || 'Employee');
+    const result = downloadCombinedPDF(items, {
+      projectId: model.project.projectId,
+      clientName: model.project.clientName,
+      employeeName: model.employeeName,
+      products: todoProducts.map((p) => p.name),
+    });
+    if (!result.ok) {
+      setPdfError(result.error ?? 'Unable to generate Combined PDF.');
+      return;
+    }
+    setPdfError(null);
     setShowMultiPanel(false);
   };
 
@@ -1547,16 +1642,105 @@ export const ProductFlow: React.FC = () => {
         </div>
       )}
 
-      {activeWorkspace === 'pdf' && (
-        <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
-          <div className="max-w-3xl rounded-xl border p-5" style={{ background: '#111827', borderColor: '#243045' }}>
-            <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>PDF Package</div>
-            <div className="mt-1 text-xs" style={{ color: '#64748b' }}>The same live SVG scene shown in Drawing will be included.</div>
-            <div className="mt-5 grid gap-2 md:grid-cols-2">{[['Project ID', model.project.projectId], ['Client', model.project.clientName || 'Not entered'], ['Employee', model.employeeName || 'Employee'], ['Product', product.name]].map(([label, value]) => <div key={label} className="rounded-lg px-3 py-2" style={{ background: '#0f172a' }}><div className="text-[10px] uppercase" style={{ color: '#64748b' }}>{label}</div><div className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>{value}</div></div>)}</div>
-            <button onClick={handleDownloadPDF} className="mt-5 rounded-xl px-4 py-3 text-sm font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>⬇ Download Current Drawing PDF</button>
+      {activeWorkspace === 'pdf' && (() => {
+        const hasMultiple = todoProducts.length > 1;
+        const clientMissing = !model.project.clientName.trim();
+        return (
+          <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
+            <div className="max-w-3xl rounded-xl border p-5" style={{ background: '#111827', borderColor: '#243045' }}>
+              <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>Project Details</div>
+              <div className="mt-1 text-xs" style={{ color: '#64748b' }}>The same live SVG scene shown in Drawing will be included.</div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {/* Project ID — editable, never mandatory, never a fake default. */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Project ID</label>
+                  <input
+                    value={model.project.projectId}
+                    onChange={(e) => updateProject({ projectId: e.target.value })}
+                    placeholder="Enter Project ID"
+                    className="rounded-lg px-3 py-2 text-sm font-mono outline-none"
+                    style={{ background: '#0f172a', color: '#e2e8f0', border: '1px solid #243045' }}
+                  />
+                </div>
+
+                {/* Client Name — editable AND mandatory; the only field that blocks PDF generation. */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wide" style={{ color: clientMissing ? '#f87171' : '#64748b' }}>Client Name *</label>
+                  <input
+                    value={model.project.clientName}
+                    onChange={(e) => { updateProject({ clientName: e.target.value }); if (e.target.value.trim()) setPdfError(null); }}
+                    placeholder="Enter Client Name"
+                    className="rounded-lg px-3 py-2 text-sm outline-none"
+                    style={{ background: '#0f172a', color: '#e2e8f0', border: `1px solid ${clientMissing ? '#7f1d1d' : '#243045'}` }}
+                  />
+                  {clientMissing && <span className="text-[10px]" style={{ color: '#f87171' }}>❌ Client Name is required.</span>}
+                </div>
+
+                {/* Employee — read-only, straight from the login session. Never editable here. */}
+                <div className="rounded-lg px-3 py-2" style={{ background: '#0f172a', border: '1px solid #243045' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Employee</div>
+                  {model.employeeName ? (
+                    <div className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>{model.employeeName}</div>
+                  ) : (
+                    <div className="text-sm font-semibold" style={{ color: '#f87171' }}>⚠ Employee session not found.</div>
+                  )}
+                </div>
+
+                {/* Product(s) — auto-populated from the real product selection,
+                    never manually typed, never a bare count. Single product
+                    shows its name; multiple show every selected product in
+                    the exact order they were selected, matching the combined
+                    PDF's own section order. */}
+                <div className="rounded-lg px-3 py-2" style={{ background: '#0f172a', border: '1px solid #243045' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>{hasMultiple ? 'Products' : 'Product'}</div>
+                  {hasMultiple ? (
+                    <div className="mt-0.5 flex flex-col gap-0.5">
+                      {todoProducts.map((p, i) => (
+                        <div key={p.id} className="text-sm font-semibold flex items-center gap-1.5" style={{ color: '#e2e8f0' }}>
+                          <span style={{ color: statusOf(p.id) === 'completed' ? '#4ade80' : '#475569' }}>{statusOf(p.id) === 'completed' ? '✓' : `${i + 1}.`}</span>
+                          {p.icon} {p.name}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>{product.name}</div>
+                  )}
+                </div>
+              </div>
+
+              {pdfError && (
+                <div className="mt-4 rounded-lg border px-3 py-2 text-xs" style={{ background: '#3b0d0d', color: '#fca5a5', borderColor: '#7f1d1d' }}>
+                  ⚠ {pdfError}
+                </div>
+              )}
+
+              {/* Buttons stack vertically on narrow screens (mobile), sit
+                  side by side once there's room — never forced onto one
+                  cramped row. Combined PDF becomes the visually primary
+                  action once multiple products are selected, matching the
+                  Todo bar's own convention, but "Download Current Drawing
+                  PDF" (the single active product) always stays available —
+                  neither button replaces the other. */}
+              <div className="mt-5 flex flex-col sm:flex-row gap-2">
+                <button onClick={handleDownloadPDF} className="rounded-xl px-4 py-3 text-sm font-bold" style={{ background: hasMultiple ? '#1e293b' : '#1d4ed8', color: hasMultiple ? '#cbd5e1' : '#fff', border: hasMultiple ? '1px solid #243045' : 'none' }}>
+                  ⬇ Download Current Drawing PDF
+                </button>
+                {hasMultiple && (
+                  <button onClick={handleDownloadCombinedPDF} className="rounded-xl px-4 py-3 text-sm font-bold" style={{ background: allCompleted ? '#16a34a' : '#4338ca', color: '#fff' }}>
+                    {allCompleted ? `✓ Download Combined PDF (${todoProducts.length})` : `⬇ Download Draft PDF (${todoProducts.length})`}
+                  </button>
+                )}
+              </div>
+              {hasMultiple && !allCompleted && (
+                <div className="mt-2 text-[10px]" style={{ color: '#64748b' }}>
+                  ⚠ {todoProducts.length - completedCount} product{todoProducts.length - completedCount === 1 ? '' : 's'} not yet completed — Combined PDF above uses each product's current entered measurements as a draft; complete every product in the Todo bar for the final version.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {activeWorkspace === 'history' && (
         <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>

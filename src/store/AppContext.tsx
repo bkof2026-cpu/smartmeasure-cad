@@ -265,12 +265,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginEmployee = useCallback((employeeName: string) => {
     const name = employeeName.trim();
     if (!name) return;
-    setModel((prev) => ({
-      ...prev,
-      employeeName: name,
-      isLoggedIn: true,
-      lastSavedAt: new Date().toISOString(),
-    }));
+    setModel((prev) => {
+      // A real employee's session starting is the actual moment "demo" ends
+      // — the illustrative sample project (DEMO_PROJECT's clientName/
+      // projectId, e.g. "Arc. Rutuja Joshi" / "XXXXX-9038") must never
+      // silently carry into a real employee's PDF/measurement work. Only
+      // clears when the project is still exactly the untouched demo
+      // values — if a real project was already being edited this session
+      // (isDemoData already false, or the identity fields were already
+      // changed), logging back in never wipes real entered data.
+      const isUntouchedDemo = prev.isDemoData && prev.project.clientName === DEMO_PROJECT.project.clientName && prev.project.projectId === DEMO_PROJECT.project.projectId;
+      return {
+        ...prev,
+        employeeName: name,
+        isLoggedIn: true,
+        lastSavedAt: new Date().toISOString(),
+        ...(isUntouchedDemo ? { isDemoData: false, project: { ...prev.project, clientName: '', projectId: '' } } : {}),
+      };
+    });
   }, []);
 
   const logoutEmployee = useCallback(() => {
