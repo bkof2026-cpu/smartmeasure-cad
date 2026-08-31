@@ -6,7 +6,9 @@ import type { ProductId } from '../products/productTypes';
 import type { AddonDef } from '../products/addons';
 import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSelection';
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
-import { simpleBedCutlist, type SimpleSideTableInput } from '../products/bed/simpleBedGeometry';
+import { simpleBedCutlist, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
+import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
+import { simpleWardrobeCutlist, type WardrobeSide, type WardrobeDressingInput, type WardrobeSidePanelInput, type WardrobeLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
@@ -348,7 +350,6 @@ export const ProductFlow: React.FC = () => {
   const hasCompositeAddons = selectedAddons.size > 0 && addons.some((a) => selectedAddons.has(a.id) && a.placement === 'composite');
   const bedHasSTL = selectedId === 'bed' && selectedAddons.has('side-table-left');
   const bedHasSTR = selectedId === 'bed' && selectedAddons.has('side-table-right');
-  const wardHasLoft = (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && selectedAddons.has('loft');
 
   // Bed's LST/RST: D/W are user-entered addon fields, Height is always
   // auto-fetched from the Bed's own H field (never independently entered) —
@@ -356,6 +357,43 @@ export const ProductFlow: React.FC = () => {
   // can never disagree.
   const bedLST: SimpleSideTableInput = { enabled: bedHasSTL, depthMm: (addonDims['side-table-left']?.D) ?? 460, widthMm: (addonDims['side-table-left']?.W) ?? 560 };
   const bedRST: SimpleSideTableInput = { enabled: bedHasSTR, depthMm: (addonDims['side-table-right']?.D) ?? 460, widthMm: (addonDims['side-table-right']?.W) ?? 560 };
+
+  // Profile Shutter: mounted on whichever side table the "Mounted On"
+  // dropdown picks — Width is never a field, it's always that table's own
+  // Width (auto-fetched, resolved inside simpleBedGeometry.ts). The light
+  // checkbox is stored as 0/1 like every other addonDims value.
+  const PS_SIDE_OPTS: ProfileShutterSide[] = ['left', 'right'];
+  const bedProfileShutter: ProfileShutterInput = {
+    enabled: selectedId === 'bed' && selectedAddons.has('profile-shutter'),
+    side: PS_SIDE_OPTS[(addonDims['profile-shutter']?.side) ?? 0] ?? 'left',
+    heightMm: (addonDims['profile-shutter']?.H) ?? 150,
+    depthMm: (addonDims['profile-shutter']?.D) ?? 300,
+    light: ((addonDims['profile-shutter']?.light) ?? 0) === 1,
+  };
+
+  // Wardrobe's Dressing/Side Panel/Loft: one toggle each, with a Side (or
+  // Loft Type) dropdown stored as a numeric option index, decoded here.
+  const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
+  const SIDE_OPTS: WardrobeSide[] = ['left', 'right', 'both'];
+  const wardrobeDressing: WardrobeDressingInput = {
+    enabled: isWardrobe && selectedAddons.has('dressing'),
+    side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
+    widthMm: (addonDims['dressing']?.W) ?? 400,
+  };
+  const wardrobeSidePanel: WardrobeSidePanelInput = {
+    enabled: isWardrobe && selectedAddons.has('side-panel'),
+    side: SIDE_OPTS[(addonDims['side-panel']?.side) ?? 0] ?? 'left',
+    widthMm: (addonDims['side-panel']?.W) ?? 80,
+    depthMm: (addonDims['side-panel']?.D) ?? 600,
+  };
+  const wardrobeLoft: WardrobeLoftInput = {
+    enabled: isWardrobe && selectedAddons.has('loft'),
+    mode: ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door',
+    widthMm: n(dims.W),
+    heightMm: (addonDims['loft']?.H) ?? 400,
+    depthMm: (addonDims['loft']?.D) ?? 350,
+    doorCount: (addonDims['loft']?.doors) ?? 2,
+  };
 
   // Accepts an explicit view so the PDF exporter can render Front/Plan/Side
   // (or Internal) in turn without touching the on-screen activeView state —
@@ -367,28 +405,14 @@ export const ProductFlow: React.FC = () => {
     // Bed — single simplified plan view; LST/RST height always auto-fetched
     // from the Bed's own H field, never independently entered.
     if (selectedId === 'bed') {
-      return <SimpleBedDrawing dims={dims} lst={bedLST} rst={bedRST} />;
+      return <SimpleBedDrawing dims={dims} lst={bedLST} rst={bedRST} profileShutter={bedProfileShutter} />;
     }
 
-    // Wardrobe + loft composite (front view)
-    if (wardHasLoft && (view === 'front' || view === 'elevation')) {
-      const ld = addonDims['loft'] ?? {};
-      return (
-        <WardrobeWithLoftFront
-          wardW={n(dims.W)} wardH={n(dims.H)}
-          sections={(n(dims.verticals) || n(dims.shutters) || 2) + 1}
-          loftH={ld.H ?? 400} loftD={ld.D ?? 350}
-          thk={n(dims.thk) || 18}
-          isSliding={selectedId === 'sliding-wardrobe'}
-        />
-      );
-    }
-
-    // Every wardrobe design (all 25 catalog entries) now goes through the
-    // real zone-based engine — replacing the old special-case that only drew
-    // 1 of 25 designs correctly (see docs/GAP_REPORT.md).
-    if ((selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && wardrobeDesign) {
-      return <WardrobeTechnicalDrawing designId={wardrobeDesign.id} dims={dims} activeView={view} />;
+    // Wardrobe — single simplified plan view, same real site-measurement
+    // treatment as the Bed: a plain W x H carcass with Depth shown as the
+    // "/" diagonal leader, plus optional Side Dressing / Side Panel / Loft.
+    if (isWardrobe) {
+      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} sidePanel={wardrobeSidePanel} loft={wardrobeLoft} />;
     }
 
     // Standard drawing
@@ -411,10 +435,10 @@ export const ProductFlow: React.FC = () => {
       })
       .filter((v) => v.svgHTML);
 
-    const cutlist: PdfCutRow[] = wardrobeDesign && (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe')
-      ? computeWardrobeCutlist(wardrobeDesign.id, wardrobeDimsFrom(dims))
-      : selectedId === 'bed'
-      ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+    const cutlist: PdfCutRow[] = selectedId === 'bed'
+      ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+      : isWardrobe
+      ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, sidePanel: wardrobeSidePanel, loft: wardrobeLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
       : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
 
     downloadPDF(product.name, views, cutlist);
@@ -450,8 +474,8 @@ export const ProductFlow: React.FC = () => {
   const compositeAddonsAsSeparate = addons.filter((a) =>
     selectedAddons.has(a.id) && a.placement === 'composite' &&
     !(
-      (selectedId === 'bed' && (a.id === 'side-table-left' || a.id === 'side-table-right')) ||
-      (wardHasLoft && a.id === 'loft')
+      (selectedId === 'bed' && (a.id === 'side-table-left' || a.id === 'side-table-right' || a.id === 'profile-shutter')) ||
+      (isWardrobe && (a.id === 'dressing' || a.id === 'side-panel' || a.id === 'loft'))
     )
   );
 
@@ -459,36 +483,11 @@ export const ProductFlow: React.FC = () => {
 
   if (!product) return null;
 
-  if ((selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && !wardrobeDesign) {
-    return (
-      <WardrobeDesignSelection
-        onBack={() => {
-          setWardrobeDesign(null);
-          setSelectedId(previousProductId);
-        }}
-        onSelect={(design) => {
-          setWardrobeDesign(design);
-          setActiveView('front');
-          setActiveWorkspace('measure');
-          setSelectedId(design.id.startsWith('sliding') ? 'sliding-wardrobe' : 'openable-wardrobe');
-          const def = getWardrobeDesignDef(design.id);
-          setDims((current) => ({
-            ...current,
-            shutters: design.shutterCount ?? current.shutters ?? 4,
-            drawers: design.internalConfiguration.toLowerCase().includes('drawer') ? Math.max(2, Number(current.drawers) || 2) : 0,
-            shelves: design.internalConfiguration.toLowerCase().includes('shelf') ? Math.max(4, Number(current.shelves) || 4) : 0,
-            ...(def?.hasLoft ? { loftH: current.loftH ?? 450, loftShutters: current.loftShutters ?? (design.shutterCount ?? 4) } : {}),
-            ...(def?.hasPlinth ? { plinthH: current.plinthH ?? 100 } : {}),
-            ...(def?.useExplicitZoneWidths ? {
-              leftSectionW: current.leftSectionW ?? Math.round(Number(current.W ?? 2290) / 3),
-              centerSectionW: current.centerSectionW ?? Math.round(Number(current.W ?? 2290) / 3),
-              rightSectionW: current.rightSectionW ?? Math.round(Number(current.W ?? 2290) / 3),
-            } : {}),
-          }));
-        }}
-      />
-    );
-  }
+  // Wardrobe used to require picking one of 25 design-catalog cards before
+  // showing any measurement fields — simplified per the user's real
+  // site-measurement workflow (2026-08-30) to go straight to measurements,
+  // same as every other product. WardrobeDesignSelection.tsx is kept intact
+  // for a future "fabrication detail" mode.
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col" style={{ background: '#0d1117' }}>
@@ -782,22 +781,45 @@ export const ProductFlow: React.FC = () => {
                           <div className="px-3 pb-3 flex flex-col gap-2 border-t" style={{ borderColor: '#2d1f4a' }}>
                             {addon.fields.map((field) => (
                               <div key={field.key} className="flex flex-col gap-0.5 mt-2">
-                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>{field.label} (mm)</label>
-                                <div className="flex gap-1">
-                                  <input
-                                    type="number"
+                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>{field.label}{!field.options && field.kind !== 'checkbox' && ' (mm)'}</label>
+                                {field.kind === 'checkbox' ? (
+                                  <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer"
+                                    style={{ background: '#1e293b', border: '1px solid #3b1f6a', color: '#e2e8f0' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={(adDims[field.key] ?? field.defaultValue) === 1}
+                                      onChange={(e) => handleAddonDimChange(addon.id, field.key, e.target.checked ? 1 : 0)}
+                                      className="w-4 h-4"
+                                    />
+                                    {(adDims[field.key] ?? field.defaultValue) === 1 ? 'Yes' : 'No'}
+                                  </label>
+                                ) : field.options ? (
+                                  <select
                                     value={adDims[field.key] ?? field.defaultValue}
-                                    min={field.min} max={field.max} step={field.step ?? 1}
                                     onChange={(e) => handleAddonDimChange(addon.id, field.key, Number(e.target.value))}
-                                    className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
-                                    style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
-                                  />
-                                  <span className="flex items-center text-xs px-1.5 rounded"
-                                    style={{ background: '#131b27', color: '#475569' }}>mm</span>
-                                </div>
-                                <span className="text-xs font-mono" style={{ color: '#334155' }}>
-                                  {field.min}–{field.max}mm
-                                </span>
+                                    className="px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                    style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}>
+                                    {field.options.map((opt, i) => <option key={opt} value={i}>{opt}</option>)}
+                                  </select>
+                                ) : (
+                                  <>
+                                    <div className="flex gap-1">
+                                      <input
+                                        type="number"
+                                        value={adDims[field.key] ?? field.defaultValue}
+                                        min={field.min} max={field.max} step={field.step ?? 1}
+                                        onChange={(e) => handleAddonDimChange(addon.id, field.key, Number(e.target.value))}
+                                        className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                        style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
+                                      />
+                                      <span className="flex items-center text-xs px-1.5 rounded"
+                                        style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                    </div>
+                                    <span className="text-xs font-mono" style={{ color: '#334155' }}>
+                                      {field.min}–{field.max}mm
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             ))}
                             {(addon.id === 'side-table-left' || addon.id === 'side-table-right') && (
@@ -809,6 +831,32 @@ export const ProductFlow: React.FC = () => {
                                 <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from Bed Height</span>
                               </div>
                             )}
+                            {addon.id === 'dressing' && (
+                              <div className="flex flex-col gap-0.5 mt-2">
+                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Height (mm)</label>
+                                <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
+                                  {Number(dims.H ?? 0)} mm
+                                </div>
+                                <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from Wardrobe Height</span>
+                              </div>
+                            )}
+                            {addon.id === 'profile-shutter' && (() => {
+                              const onLeft = (adDims['side'] ?? 0) === 0;
+                              const target = onLeft ? bedLST : bedRST;
+                              return (
+                                <div className="flex flex-col gap-0.5 mt-2">
+                                  <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width (mm)</label>
+                                  <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
+                                    {Math.round(target.widthMm)} mm
+                                  </div>
+                                  <span className="text-xs" style={{ color: target.enabled ? '#334155' : '#f59e0b' }}>
+                                    {target.enabled
+                                      ? `Auto-fetched from ${onLeft ? 'LST' : 'RST'} Width`
+                                      : `⚠ ${onLeft ? 'Left' : 'Right'} Side Table isn't added yet — enable it too`}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -837,14 +885,6 @@ export const ProductFlow: React.FC = () => {
                 {v.replace(/-/g, ' ')}
               </button>
             ))}
-            {/* Composite views */}
-            {wardHasLoft && (
-              <button onClick={() => setActiveView('front')}
-                className="px-3 py-1 rounded-md text-xs font-bold"
-                style={{ background: '#1e293b', color: '#a855f7', border: '1px solid #3b1f6a' }}>
-                ✦ Front with Loft
-              </button>
-            )}
             <span className="ml-auto text-xs" style={{ color: '#334155' }}>
               All dims in mm
             </span>

@@ -23,6 +23,16 @@ export interface SimpleSideTableInput {
   widthMm: number;
 }
 
+export type ProfileShutterSide = 'left' | 'right';
+
+export interface ProfileShutterInput {
+  enabled: boolean;
+  side: ProfileShutterSide; // which side table (LST/RST) it's mounted on — Width is always that table's Width (auto)
+  heightMm: number;
+  depthMm: number;
+  light: boolean; // optional profile/spot light, drawn as a small light-cone callout
+}
+
 export interface SimpleBedInputs {
   W: number; // bed width
   L: number; // bed length
@@ -30,6 +40,7 @@ export interface SimpleBedInputs {
   headboardH: number; // standard default 900mm, editable
   lst: SimpleSideTableInput;
   rst: SimpleSideTableInput;
+  profileShutter: ProfileShutterInput;
 }
 
 export interface SimpleBedCutRow {
@@ -40,12 +51,19 @@ export interface SimpleBedCutRow {
   remark: string;
 }
 
-/** "BED WITHOUT SIDE TABLE" / "BED WITH LEFT SIDE TABLE" / "BED WITH RIGHT SIDE TABLE" / "BED WITH SIDE TABLES". */
+function profileShutterActive(inp: SimpleBedInputs): boolean {
+  const { profileShutter: ps, lst, rst } = inp;
+  return ps.enabled && (ps.side === 'left' ? lst.enabled : rst.enabled);
+}
+
+/** "BED WITHOUT SIDE TABLE" / "BED WITH LEFT SIDE TABLE" / "BED WITH RIGHT SIDE TABLE" / "BED WITH SIDE TABLES",
+ *  with " + PROFILE SHUTTER" appended when one is mounted and active. */
 export function simpleBedTitle(inp: SimpleBedInputs): string {
-  if (inp.lst.enabled && inp.rst.enabled) return 'BED WITH SIDE TABLES';
-  if (inp.lst.enabled) return 'BED WITH LEFT SIDE TABLE';
-  if (inp.rst.enabled) return 'BED WITH RIGHT SIDE TABLE';
-  return 'BED WITHOUT SIDE TABLE';
+  const base = inp.lst.enabled && inp.rst.enabled ? 'BED WITH SIDE TABLES'
+    : inp.lst.enabled ? 'BED WITH LEFT SIDE TABLE'
+    : inp.rst.enabled ? 'BED WITH RIGHT SIDE TABLE'
+    : 'BED WITHOUT SIDE TABLE';
+  return profileShutterActive(inp) ? `${base} + PROFILE SHUTTER` : base;
 }
 
 /** Same data used for both the screen and the PDF — single source of truth. */
@@ -59,6 +77,14 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
   }
   if (inp.rst.enabled) {
     rows.push({ component: 'Right Side Table (RST)', width: inp.rst.widthMm, height: inp.rst.depthMm, qty: 1, remark: `Depth × Width entered; Height = Bed Height (auto-fetched, ${Math.round(inp.H)}mm)` });
+  }
+  if (profileShutterActive(inp)) {
+    const targetW = inp.profileShutter.side === 'left' ? inp.lst.widthMm : inp.rst.widthMm;
+    const sideLabel = inp.profileShutter.side === 'left' ? 'LST' : 'RST';
+    rows.push({
+      component: `Profile Shutter (on ${sideLabel})`, width: targetW, height: inp.profileShutter.heightMm, qty: 1,
+      remark: `Height × Depth entered (${Math.round(inp.profileShutter.heightMm)} × ${Math.round(inp.profileShutter.depthMm)}mm); Width = ${sideLabel} Width (auto-fetched, ${Math.round(targetW)}mm)${inp.profileShutter.light ? ' | Profile light included' : ''}`,
+    });
   }
   return rows;
 }
@@ -134,6 +160,48 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     lines.push({ x1: rx, y1: bedY + rd, x2: rx - 26, y2: bedY + rd + 26, color: '#cc2200', label: `${Math.round(rd)} mm (D)` });
   }
 
+  // Profile Shutter — mounted flush on top of whichever side table it's
+  // assigned to (per the user's own reference sketch: it sits directly
+  // above the LST/RST, sharing that table's full Width — never independently
+  // entered). Its rendered box fills the WHOLE Headboard-row band (y=0 down
+  // to the table's own top edge) — the same "real gap, not to scale" move
+  // already used for HEADBOARD_GAP — so it reads clearly next to the full-
+  // height Headboard, rather than as a sliver sized to a genuinely small
+  // real-world light-box height. The entered Height/Depth stay exactly what
+  // the user typed; they're just shown in the caption (H×D) rather than
+  // controlling how tall the box is drawn.
+  const psActive = profileShutterActive(inp);
+  if (psActive) {
+    const onLeft = inp.profileShutter.side === 'left';
+    const tableW = onLeft ? lst.widthMm : rst.widthMm;
+    const tableX = onLeft ? bedX - tableW : bedX + W;
+    const psH = inp.profileShutter.heightMm;
+    const psD = inp.profileShutter.depthMm;
+    components.push({
+      id: 'profile-shutter', type: 'PROFILE_SHUTTER', label: `Profile Shutter ${Math.round(psH)}×${Math.round(psD)}`,
+      x: tableX, y: 0, width: tableW, height: bedY, qty: 1, visible: true,
+      source: { formula: `Height = ${Math.round(psH)}mm (entered) | Depth = ${Math.round(psD)}mm (entered) | Width = ${onLeft ? 'LST' : 'RST'} Width (auto-fetched, ${Math.round(tableW)}mm)`, constants: [] },
+    });
+    // Depth — same "/" diagonal convention as every other out-of-plan value,
+    // anchored at the shutter's own bottom corner (shared with the table),
+    // pointed toward the OUTER edge (away from the Bed) so it never crosses
+    // into the LST/RST's own dimension lines on the inner side.
+    const outerX = onLeft ? tableX : tableX + tableW;
+    const dxDir = onLeft ? -26 : 26;
+    lines.push({ x1: outerX, y1: bedY, x2: outerX + dxDir, y2: bedY + 26, color: '#cc2200', label: `${Math.round(psD)} mm (D)` });
+    if (inp.profileShutter.light) {
+      // Optional profile/spot light — a small light-cone callout just inside
+      // the shutter's own top edge (two rays converging downward from the
+      // top corners), matching the user's own reference sketch — drawn
+      // inward rather than above, since the box's top now sits flush with
+      // the very top of the drawing (y=0), leaving no external headroom.
+      const apexX = tableX + tableW / 2;
+      const apexY = 50;
+      lines.push({ x1: tableX + 8, y1: 0, x2: apexX, y2: apexY, color: '#f59e0b', label: 'SPOT LIGHT' });
+      lines.push({ x1: apexX, y1: apexY, x2: tableX + tableW - 8, y2: 0, color: '#f59e0b' });
+    }
+  }
+
   // Include every leader-line endpoint so nothing (e.g. the LST/RST Height
   // callouts, which extend slightly past their table's own bounds) risks
   // being clipped at the edge of the drawing.
@@ -150,6 +218,8 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     ]),
     ...(lst.enabled ? validateMeasurements({ D: lst.depthMm, W: lst.widthMm }, [{ key: 'D', label: 'LST Depth', min: 1 }, { key: 'W', label: 'LST Width', min: 1 }]) : []),
     ...(rst.enabled ? validateMeasurements({ D: rst.depthMm, W: rst.widthMm }, [{ key: 'D', label: 'RST Depth', min: 1 }, { key: 'W', label: 'RST Width', min: 1 }]) : []),
+    ...(psActive ? validateMeasurements({ H: inp.profileShutter.heightMm, D: inp.profileShutter.depthMm }, [{ key: 'H', label: 'Profile Shutter Height', min: 1 }, { key: 'D', label: 'Profile Shutter Depth', min: 1 }]) : []),
+    ...(inp.profileShutter.enabled && !psActive ? [{ id: `val-ps-${inp.profileShutter.side}`, severity: 'WARNING' as const, code: 'PROFILE_SHUTTER_NO_TABLE', message: `Profile Shutter is set to mount on the ${inp.profileShutter.side === 'left' ? 'Left' : 'Right'} Side Table, but that side table isn't added — enable it first.` }] : []),
     ...validateComponentBounds(components, worldWidth, worldHeight),
     ...validateDimensionIntegrity(dimensions),
   ];

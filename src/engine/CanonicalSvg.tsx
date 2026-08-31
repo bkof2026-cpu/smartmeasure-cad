@@ -152,7 +152,15 @@ export function TechnicalDrawingSvg({
   const vw = worldWidth * scale + dimRoom * 2;
   const vh = worldHeight * scale + dimRoom * 2 + titleRoom + footerRoom;
   const ox = dimRoom, oy = dimRoom + titleRoom;
-  const titleFs = Math.min(11, Math.max(7, titleRoom * 0.5));
+  // Clamped by height (titleRoom) as before, but ALSO by the actual title
+  // string's width against the SVG's own vw — a long compound title (e.g.
+  // "BED WITH RIGHT SIDE TABLE + PROFILE SHUTTER — ...") on a product whose
+  // drawing itself is narrow (small worldWidth → small vw) would otherwise
+  // render past the SVG's edge, since the <svg> is `overflow="visible"` on
+  // purpose (so leader lines/components at the edges never get clipped).
+  const titleFsByHeight = Math.min(11, Math.max(7, titleRoom * 0.5));
+  const titleFsByWidth = title.length > 0 ? (vw * 0.96) / (title.length * 0.58) : titleFsByHeight;
+  const titleFs = Math.max(5, Math.min(titleFsByHeight, titleFsByWidth));
   const footerFs = Math.min(7, Math.max(5, footerRoom * 0.42));
   const footerY = vh - footerRoom * 0.4;
 

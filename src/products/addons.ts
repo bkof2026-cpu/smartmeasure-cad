@@ -6,6 +6,17 @@ export interface AddonField {
   min: number;
   max: number;
   step?: number;
+  /** When set, this field renders as a dropdown instead of a number input —
+   * the stored value is the selected option's index (0-based), decoded back
+   * to its real meaning (e.g. 'left'/'right'/'both', or 'door'/'box') by
+   * the product's own geometry resolver. Keeps the shared addonDims state
+   * as plain numbers everywhere, no separate string-valued state needed. */
+  options?: string[];
+  /** When set to 'checkbox', this field renders as a real checkbox instead
+   * of a number input or dropdown — the stored value is 0 (unchecked) or 1
+   * (checked), decoded to a boolean by the product's own geometry resolver.
+   * Same "plain numbers everywhere" convention as `options` above. */
+  kind?: 'checkbox';
 }
 
 // placement: 'composite' = shown INSIDE the main drawing
@@ -36,13 +47,10 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Drawer Details', color: '#22c55e', keys: ['drawers', 'drawerH'] },
   ],
   'openable-wardrobe': [
-    { label: 'Carcass',         color: '#3b82f6', keys: ['W', 'H', 'D', 'thk'] },
-    { label: 'Internal Layout', color: '#22c55e', keys: ['verticals', 'shelves'] },
+    { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
   ],
   'sliding-wardrobe': [
-    { label: 'Carcass',         color: '#3b82f6', keys: ['W', 'H', 'D'] },
-    { label: 'Shutters',        color: '#f59e0b', keys: ['shutters'] },
-    { label: 'Internal Layout', color: '#22c55e', keys: ['verticals', 'shelves'] },
+    { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
   ],
   'tv-unit': [
     { label: 'Overall Size',    color: '#3b82f6', keys: ['W', 'H', 'D'] },
@@ -126,6 +134,24 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'D', label: 'Depth',  defaultValue: 600,  min: 400,  max: 750 },
       ],
     },
+    {
+      // Width is not a field here — always auto-fetched from whichever side
+      // table (LST/RST) it's mounted on, per the user's own reference
+      // sketch: the profile shutter sits flush on top of that table, sharing
+      // its full width. Height and Depth are entered; the optional profile
+      // light is a real checkbox, not a dropdown, since it's a plain on/off.
+      id: 'profile-shutter',
+      label: 'Profile Shutter',
+      icon: '💡',
+      description: 'Light shutter box mounted above a side table — Width auto-fetched from that table\'s Width',
+      placement: 'composite',
+      fields: [
+        { key: 'side', label: 'Mounted On', defaultValue: 0, min: 0, max: 1, options: ['Left Side Table (LST)', 'Right Side Table (RST)'] },
+        { key: 'H', label: 'Height', defaultValue: 150, min: 50, max: 400 },
+        { key: 'D', label: 'Depth', defaultValue: 300, min: 100, max: 600 },
+        { key: 'light', label: 'Add Profile Light', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
+      ],
+    },
   ],
   'side-table': [
     {
@@ -142,49 +168,80 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
   ],
   'openable-wardrobe': [
     {
-      id: 'loft',
-      label: 'Loft Above Wardrobe',
-      icon: '📦',
-      description: 'Storage loft unit mounted flush above the wardrobe',
+      // Height is not a field here — always auto-fetched from the
+      // Wardrobe's own Height (see simpleWardrobeGeometry.ts), matching
+      // the same "H = auto" convention as the Bed's LST/RST.
+      id: 'dressing',
+      label: 'Side Dressing',
+      icon: '🪟',
+      description: 'Extra dressing panel beside the wardrobe — Height auto-fetched from Wardrobe Height',
       placement: 'composite',
       fields: [
-        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 250, max: 650 },
-        { key: 'D', label: 'Loft Depth',  defaultValue: 350, min: 250, max: 500 },
+        { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
+        { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
       ],
     },
     {
-      id: 'skirting-box',
-      label: 'Raised Skirting / Plinth Box',
-      icon: '▬',
-      description: 'Raised plinth at the base of the wardrobe',
+      id: 'side-panel',
+      label: 'Side Panel',
+      icon: '▥',
+      description: 'Extra end panel beside the wardrobe (or dressing, if both are added)',
       placement: 'composite',
       fields: [
-        { key: 'H', label: 'Plinth Height', defaultValue: 150, min: 80, max: 250 },
+        { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
+        { key: 'W', label: 'Width', defaultValue: 80, min: 30, max: 300 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 300, max: 800 },
+      ],
+    },
+    {
+      id: 'loft',
+      label: 'Loft Above Wardrobe',
+      icon: '📦',
+      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box',
+      placement: 'composite',
+      fields: [
+        { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
+        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 250, max: 650 },
+        { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 8 },
       ],
     },
   ],
   'sliding-wardrobe': [
     {
-      id: 'loft',
-      label: 'Loft Above Wardrobe',
-      icon: '📦',
-      description: 'Storage loft unit mounted flush above the wardrobe',
+      id: 'dressing',
+      label: 'Side Dressing',
+      icon: '🪟',
+      description: 'Extra dressing panel beside the wardrobe — Height auto-fetched from Wardrobe Height',
       placement: 'composite',
       fields: [
-        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 250, max: 650 },
-        { key: 'D', label: 'Loft Depth',  defaultValue: 350, min: 250, max: 500 },
+        { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
+        { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
       ],
     },
     {
-      id: 'storage-box',
-      label: 'Storage Box (standalone)',
-      icon: '📦',
-      description: 'Extra freestanding storage box next to the wardrobe',
-      placement: 'separate',
+      id: 'side-panel',
+      label: 'Side Panel',
+      icon: '▥',
+      description: 'Extra end panel beside the wardrobe (or dressing, if both are added)',
+      placement: 'composite',
       fields: [
-        { key: 'H', label: 'Height', defaultValue: 800, min: 300, max: 1500 },
-        { key: 'W', label: 'Width',  defaultValue: 600, min: 300, max: 1200 },
-        { key: 'D', label: 'Depth',  defaultValue: 450, min: 250, max: 700 },
+        { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
+        { key: 'W', label: 'Width', defaultValue: 80, min: 30, max: 300 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 300, max: 800 },
+      ],
+    },
+    {
+      id: 'loft',
+      label: 'Loft Above Wardrobe',
+      icon: '📦',
+      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box',
+      placement: 'composite',
+      fields: [
+        { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
+        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 250, max: 650 },
+        { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 8 },
       ],
     },
   ],

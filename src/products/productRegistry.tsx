@@ -8,6 +8,8 @@ import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { BoxTechnicalDrawing } from './loft/BoxTechnicalDrawing';
 import { computeBoxCutlist } from './loft/boxFormulas';
+import { SimpleWardrobeDrawing } from './wardrobe/SimpleWardrobeDrawing';
+import { simpleWardrobeCutlist } from './wardrobe/simpleWardrobeGeometry';
 
 // ─── cutlist row helper ───────────────────────────────────────────────────────
 function row(
@@ -887,6 +889,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardH: n(dims.headboardH) || 900,
         lst: { enabled: false, depthMm: 460, widthMm: 560 },
         rst: { enabled: false, depthMm: 460, widthMm: 560 },
+        profileShutter: { enabled: false, side: 'left', heightMm: 150, depthMm: 300, light: false },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -928,52 +931,30 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     icon: '🚪',
     category: 'furniture',
     isFormulaVerified: true,
-    demoDimensions: { W: 2290, H: 2090, D: 600, shutters: 4, verticals: 2, shelves: 6, drawers: 2, hasSkirting: 1, hasLoft: 0, thk: 18, backThk: 9 },
+    // Simplified per the user's real site-measurement workflow (2026-08-30),
+    // same treatment as the Bed: a plain W x H carcass, Depth shown as the
+    // "/" diagonal leader, plus optional Side Dressing / Side Panel / Loft.
+    // The 25-design zone system (wardrobeFormulas.ts, wardrobeGeometry.ts,
+    // WardrobeTechnicalDrawing.tsx) is kept intact for a future
+    // "fabrication detail" mode — nothing deleted, this entry and
+    // ProductFlow.tsx's design-selection gate just no longer require it.
+    demoDimensions: { W: 2290, H: 2090, D: 600 },
     measurementFields: [
-      { key: 'W', label: 'Overall Width', unit: 'mm', defaultValue: 2290, min: 900, max: 3600 },
-      { key: 'H', label: 'Overall Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
-      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
-      { key: 'shutters', label: 'No. of Shutters', unit: 'count', defaultValue: 4, min: 2, max: 6 },
-      { key: 'verticals', label: 'Vertical Divisions', unit: 'count', defaultValue: 2, min: 1, max: 4 },
-      { key: 'shelves', label: 'Total Shelves', unit: 'count', defaultValue: 6, min: 2, max: 12 },
-      { key: 'drawers', label: 'Drawers', unit: 'count', defaultValue: 2, min: 0, max: 6 },
-      { key: 'thk', label: 'Carcass Thickness', unit: 'mm', defaultValue: 18, min: 12, max: 25 },
-      { key: 'backThk', label: 'Back Panel Thickness', unit: 'mm', defaultValue: 9, min: 6, max: 12 },
+      { key: 'W', label: 'Wardrobe Width', unit: 'mm', defaultValue: 2290, min: 900, max: 3600 },
+      { key: 'H', label: 'Wardrobe Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
+      { key: 'D', label: 'Wardrobe Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
     ],
-    views: ['front', 'plan', 'internal'],
+    views: ['plan'],
     computeCutlist: (dims) => {
-      const W = n(dims.W), H = n(dims.H), D = n(dims.D);
-      const shutters = n(dims.shutters), verticals = n(dims.verticals);
-      const shelves = n(dims.shelves), drawers = n(dims.drawers);
-      const thk = n(dims.thk), backThk = n(dims.backThk);
-      const sections = verticals + 1;
-      const secW = (W - thk * (verticals + 2)) / sections;
-      const doorW = W / shutters - 2;
-      const ds = 50;
-      const rows: CutlistRow[] = [
-        row(1,  'TOP',                 '18mm BWP Ply', W,             D,          1,        thk),
-        row(2,  'BOTTOM',              '18mm BWP Ply', W,             D,          1,        thk),
-        row(3,  'SIDE LHS',            '18mm BWP Ply', D,             H,          1,        thk),
-        row(4,  'SIDE RHS',            '18mm BWP Ply', D,             H,          1,        thk),
-        row(5,  'VERTICAL',            '18mm BWP Ply', D,             H - thk*2,  verticals, thk),
-        row(6,  'SELF TOP',            '18mm BWP Ply', secW - thk,    D - thk,    sections, thk, '', 'Top shelf per section'),
-        row(7,  'SMALL SELF',          '18mm BWP Ply', secW - thk,    D - thk,    shelves,  thk, '', 'Fixed shelf'),
-        row(8,  'SMALL VERTICAL',      '18mm BWP Ply', D * 0.5,       H * 0.5,    sections, thk, '', 'Half-height divider (per section)'),
-        row(9,  'CHANNEL PATTA',       '18mm BWP Ply', secW - thk,    80,         sections, thk, '', 'Drawer channel support'),
-        row(10, 'CENTER VERTICAL',     '18mm BWP Ply', D,             H - thk*2,  1,        thk, '', 'Center partition (if 3+ sections)'),
-        row(11, 'DRAWER LHS',          '18mm BWP Ply', D - ds,        120,        drawers,  thk, '', 'Drawer box side'),
-        row(12, 'DRAWER RHS',          '18mm BWP Ply', D - ds,        120,        drawers,  thk, '', 'Drawer box side'),
-        row(13, 'DR FRNT',             '18mm BWP Ply', secW - 60,     120,        drawers,  thk, '', 'Drawer front panel'),
-        row(14, 'DR BACK',             '18mm BWP Ply', secW - 60,     120,        drawers,  thk, '', 'Drawer back panel'),
-        row(15, 'DR FACIA',            '18mm MDF',     secW - 5,      130,        drawers,  thk, '', 'Drawer facia / visible face'),
-        row(16, 'WARDROBE SCRTING',    '18mm BWP Ply', W,             100,        1,        thk, '', 'Kickboard / skirting'),
-        row(17, 'WARDROBE BACK PANEL', `${backThk}mm BWP Ply`, W - thk, H - thk, 1,      backThk, '', '9mm/12mm back panel'),
-        row(18, 'DR BACK PANEL',       '9mm BWP Ply',  secW - ds,     120,        drawers,  9,   '', 'Drawer box bottom'),
-        row(19, 'WARDROBE DOOR',       '18mm MDF',     doorW,         H - 105,    shutters, thk, '', 'Shutter / door leaf'),
-      ];
-      return rows;
+      const cutRows = simpleWardrobeCutlist({
+        W: n(dims.W), H: n(dims.H), D: n(dims.D),
+        dressing: { enabled: false, side: 'left', widthMm: 400 },
+        sidePanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
+        loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
-    DrawingComponent: OpenableWardrobeDrawing,
+    DrawingComponent: (props) => <SimpleWardrobeDrawing dims={props.dims} />,
   },
 
   // ── SLIDING WARDROBE ──────────────────────────────────────────────────────────
@@ -983,50 +964,23 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     icon: '🪞',
     category: 'furniture',
     isFormulaVerified: true,
-    demoDimensions: { W: 2400, H: 2090, D: 600, shutters: 3, verticals: 2, shelves: 4, drawers: 2, thk: 18, backThk: 9 },
+    demoDimensions: { W: 2400, H: 2090, D: 600 },
     measurementFields: [
-      { key: 'W', label: 'Overall Width', unit: 'mm', defaultValue: 2400, min: 1200, max: 5400 },
-      { key: 'H', label: 'Overall Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
-      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
-      { key: 'shutters', label: 'Sliding Shutters', unit: 'select', defaultValue: 3, options: ['2', '3', '4'] },
-      { key: 'verticals', label: 'Vertical Divisions', unit: 'count', defaultValue: 2, min: 1, max: 4 },
-      { key: 'shelves', label: 'Total Shelves', unit: 'count', defaultValue: 4, min: 2, max: 10 },
-      { key: 'drawers', label: 'Drawers', unit: 'count', defaultValue: 2, min: 0, max: 6 },
-      { key: 'thk', label: 'Carcass Thickness', unit: 'mm', defaultValue: 18, min: 12, max: 25 },
-      { key: 'backThk', label: 'Back Panel Thickness', unit: 'mm', defaultValue: 9, min: 6, max: 12 },
+      { key: 'W', label: 'Wardrobe Width', unit: 'mm', defaultValue: 2400, min: 1200, max: 5400 },
+      { key: 'H', label: 'Wardrobe Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
+      { key: 'D', label: 'Wardrobe Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
     ],
-    views: ['front', 'plan', 'internal'],
+    views: ['plan'],
     computeCutlist: (dims) => {
-      const W = n(dims.W), H = n(dims.H), D = n(dims.D);
-      const shutters = n(dims.shutters), verticals = n(dims.verticals);
-      const shelves = n(dims.shelves), drawers = n(dims.drawers);
-      const thk = n(dims.thk), backThk = n(dims.backThk);
-      const sections = verticals + 1;
-      const secW = (W - thk * (verticals + 2)) / sections;
-      const shutterW = W / shutters;
-      const ds = 50;
-      return [
-        row(1,  'TOP',              '18mm BWP Ply', W,          D,         1,        thk),
-        row(2,  'BOTTOM',           '18mm BWP Ply', W,          D,         1,        thk),
-        row(3,  'SIDE LHS',         '18mm BWP Ply', D,          H,         1,        thk),
-        row(4,  'SIDE RHS',         '18mm BWP Ply', D,          H,         1,        thk),
-        row(5,  'VERTICAL',         '18mm BWP Ply', D,          H - thk*2, verticals, thk),
-        row(6,  'SELF TOP',         '18mm BWP Ply', secW - thk, D - thk,   sections, thk, '', 'Top shelf per section'),
-        row(7,  'SMALL SELF',       '18mm BWP Ply', secW - thk, D - thk,   shelves,  thk),
-        row(8,  'SMALL VERTICAL',   '18mm BWP Ply', D * 0.5,   H * 0.5,   sections, thk, '', 'Half divider'),
-        row(9,  'CHANNEL PATTA',    '18mm BWP Ply', secW - thk, 80,        sections, thk),
-        row(10, 'CENTER VERTICAL',  '18mm BWP Ply', D,          H - thk*2, 1,        thk),
-        row(11, 'DRAWER LHS',       '18mm BWP Ply', D - ds,    120,        drawers,  thk),
-        row(12, 'DRAWER RHS',       '18mm BWP Ply', D - ds,    120,        drawers,  thk),
-        row(13, 'DRAWER FRNT',      '18mm BWP Ply', secW - 60, 120,        drawers,  thk),
-        row(14, 'DRAWER BACK',      '18mm BWP Ply', secW - 60, 120,        drawers,  thk),
-        row(15, 'DRAWER FACIA',     '18mm MDF',     secW - 5,  130,        drawers,  thk),
-        row(16, 'WARDROBE SCRTING', '18mm BWP Ply', W,          100,       1,        thk),
-        row(17, 'BACK PANEL',       `${backThk}mm BWP Ply`, W - thk, H - thk, 1, backThk),
-        row(18, 'BORDER PATTI',     '18mm MDF',     shutterW - 10, 80,    shutters * 2, thk, '', 'Shutter frame border — top & bottom'),
-      ];
+      const cutRows = simpleWardrobeCutlist({
+        W: n(dims.W), H: n(dims.H), D: n(dims.D),
+        dressing: { enabled: false, side: 'left', widthMm: 400 },
+        sidePanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
+        loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
-    DrawingComponent: SlidingWardrobeDrawing,
+    DrawingComponent: (props) => <SimpleWardrobeDrawing dims={props.dims} />,
   },
 
   // ── TV UNIT ───────────────────────────────────────────────────────────────────
