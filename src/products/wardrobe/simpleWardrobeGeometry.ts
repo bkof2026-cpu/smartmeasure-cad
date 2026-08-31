@@ -197,11 +197,20 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // "Total width" / "total height" outer dimensions, only shown when a side
   // panel or loft actually changes the overall footprint — matching the
   // reference sketch's "total width (if side panel exist)" label.
+  // "Total width"/"total height" sit on the SAME base edge as the
+  // Wardrobe's own width/height dim (not a hand-added world-mm offset,
+  // e.g. "+40") — that offset shrinks to almost nothing once a dense
+  // composite drawing gets scaled down for its canvas, letting the two
+  // labels collide. The stacked-offset tier system (collisionEngine.ts,
+  // fixed screen-px per tier, scale-independent) is what actually keeps
+  // them apart; forcing totalWidthTier/totalHeightTier one tier further
+  // out than the inner dimension makes the real-CAD "overall dimension is
+  // the outermost line" convention explicit rather than incidental.
   if (leftExtra + rightExtra > 0) {
-    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + H + 40, x2: loftX + totalWidth, y2: wardrobeY + H + 40, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth)} mm (total width)`, source: { formula: 'Total Width = Side Panel + Dressing + Wardrobe Width + Dressing + Side Panel', constants: [] } });
+    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + H, x2: loftX + totalWidth, y2: wardrobeY + H, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth)} mm (total width)`, source: { formula: 'Total Width = Side Panel + Dressing + Wardrobe Width + Dressing + Side Panel', constants: [] } });
   }
   if (loftH > 0) {
-    dimReqs.push({ axis: 'v', x1: wardrobeX + W + 40, y1: topPad, x2: wardrobeX + W + 40, y2: wardrobeY + H, edge: 'right', componentIds: [], label: `${Math.round(loftH + H)} mm (total height)`, source: { formula: 'Total Height = Loft Height + Wardrobe Height', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: topPad, x2: wardrobeX + W, y2: wardrobeY + H, edge: 'right', componentIds: [], label: `${Math.round(loftH + H)} mm (total height)`, source: { formula: 'Total Height = Loft Height + Wardrobe Height', constants: [] } });
   }
 
   // Side Dressing — flush against the Wardrobe (or the Side Panel line, if
@@ -271,9 +280,24 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // it's labeling. Forcing it out to tier 1 (36px) is scale-independent —
   // unlike widening dressLeaderGap, which is a world-mm value that shrinks
   // to almost nothing once scaled down for a large composite drawing.
-  const dimensions = resolveDimensions(dimReqs).map((d) => {
+  const resolvedDims = resolveDimensions(dimReqs);
+  // "total width"/"total height" share the Wardrobe's own width/height
+  // base edge (see above) so the collisionEngine's span-overlap tiering
+  // is what actually separates them on screen — but the engine sorts by
+  // span START, and the total-* span (Side Panel/Dressing to Side Panel/
+  // Dressing) always starts at or before the Wardrobe's own narrower
+  // span, so auto-tiering alone can put it on the INNER tier instead of
+  // the outer one. Real CAD convention: the overall dimension always
+  // reads outside the individual one it encloses — so pin it explicitly,
+  // one tier past whatever the wardrobe's own width/height landed on.
+  const ownWidthTier = resolvedDims.find((d) => d.label.includes('(width)'))?.tier ?? 0;
+  const ownHeightTier = resolvedDims.find((d) => d.label.includes('(height)'))?.tier ?? 0;
+  const dimensions = resolvedDims.map((d) => {
     const isDressingHeight = (d.componentIds.includes('dress-l') || d.componentIds.includes('dress-r')) && (d.edge === 'left' || d.edge === 'right');
-    return isDressingHeight ? { ...d, tier: Math.max(d.tier, 1) } : d;
+    if (isDressingHeight) return { ...d, tier: Math.max(d.tier, 1) };
+    if (d.label.includes('total width')) return { ...d, tier: Math.max(d.tier, ownWidthTier + 1) };
+    if (d.label.includes('total height')) return { ...d, tier: Math.max(d.tier, ownHeightTier + 1) };
+    return d;
   });
   const issues = [
     ...validateMeasurements({ W, H, D }, [
