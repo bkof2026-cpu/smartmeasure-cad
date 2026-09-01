@@ -107,7 +107,10 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   const topLineY = tableY;
   lines.push({ x1: tableX + W * 0.32, y1: topLineY, x2: tableX + W * 0.46, y2: topLineY - 42, color: '#111827', label: 'Top', arrowAtStart: true });
 
-  const trayY = tableY + Math.min(10, H * 0.02);
+  // Real visible gap between the box's own top edge and the Tray bar —
+  // per the user's own reference sketch, these are two clearly separate
+  // parallel lines with white space between them, not touching.
+  const trayY = tableY + Math.max(48, H * 0.09);
   const trayInset = W * 0.06;
   lines.push({ x1: tableX + trayInset, y1: trayY, x2: tableX + W - trayInset, y2: trayY, color: '#2563eb', strokeWidth: 3 });
   lines.push({ x1: tableX + W * 0.5, y1: trayY, x2: tableX + W * 0.62, y2: trayY + 38, color: '#2563eb', label: 'Tray', arrowAtStart: true });
