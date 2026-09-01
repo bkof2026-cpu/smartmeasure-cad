@@ -108,7 +108,10 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   const topInnerY = tableY + topPanelThk;
   lines.push({ x1: tableX, y1: topLineY, x2: tableX + W * 0.62, y2: topLineY, color: '#111827', strokeWidth: 2.5 });
   lines.push({ x1: tableX + W * 0.06, y1: topInnerY, x2: tableX + W * 0.6, y2: topInnerY, color: '#111827', strokeWidth: 1.2 });
-  lines.push({ x1: tableX + W * 0.4, y1: topLineY - 16, x2: tableX + W * 0.46, y2: topLineY - 4, color: '#111827', label: 'Top' });
+  // Enlarged from a 12x12-unit diagonal (rendered as only a few screen px
+  // — too cramped for the label to sit on cleanly) to a real, legible
+  // leader reaching well up into the clear space above the box.
+  lines.push({ x1: tableX + W * 0.42, y1: topLineY - 45, x2: tableX + W * 0.32, y2: topLineY - 2, color: '#111827', label: 'Top' });
   // Tray — dead-center horizontally (exactly W/2, equal distance from both
   // edges) hanging from the top panel's own lower line, with a short,
   // fixed drop so it never reads as an oversized gap on a tall table.
@@ -168,7 +171,13 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   function drawSidePanel(side: 'left' | 'right') {
     const px = side === 'left' ? (hasLeftStorage ? leftStorageX - panelW : tableX - panelW) : (hasRightStorage ? rightStorageEndX : tableX + W);
     lines.push({ x1: px, y1: tableY, x2: px, y2: tableY + H, color: '#7c3aed', strokeWidth: 2.5 });
-    lines.push({ x1: px + panelW / 2, y1: tableY + H / 2, x2: px + (side === 'left' ? -50 : panelW + 50), y2: tableY + H / 2, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})` });
+    // Anchored at 25% down the panel (was the exact vertical center,
+    // H/2) — the Height dimension's own label is ALSO centered at H/2 on
+    // this same left side, so the two collided. This clears it while
+    // staying on the panel's own real edge, and reaches further out (70,
+    // not 50) so the label sits in clean space past the H dimension too.
+    const leaderY = tableY + H * 0.25;
+    lines.push({ x1: px + panelW / 2, y1: leaderY, x2: px + (side === 'left' ? -70 : panelW + 70), y2: leaderY - 25, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})` });
   }
   if (hasLeftPanel) drawSidePanel('left');
   if (hasRightPanel) drawSidePanel('right');
