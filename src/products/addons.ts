@@ -42,8 +42,9 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Bed', color: '#3b82f6', keys: ['W', 'L', 'H'] },
     { label: 'Headboard', color: '#f59e0b', keys: ['hasHeadboard', 'headboardH'] },
   ],
-  'side-table': [
-    { label: 'Side Table', color: '#3b82f6', keys: ['W', 'H', 'D', 'doors'] },
+  'separate-side-table': [
+    { label: 'Mirror', color: '#111827', keys: ['mirrorW', 'mirrorH'] },
+    { label: 'Base Storage', color: '#0891b2', keys: ['baseH', 'baseW', 'baseD'] },
   ],
   'separate-dressing': [
     { label: 'Total',         color: '#ea580c', keys: ['H', 'W', 'D'] },
@@ -65,9 +66,18 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   'center-table': [
     { label: 'Center Table', color: '#3b82f6', keys: ['L', 'W'] },
   ],
-  loft: [
-    { label: 'Cabinet',  color: '#3b82f6', keys: ['W', 'H', 'D', 'thk'] },
-    { label: 'Layout',   color: '#22c55e', keys: ['boxes', 'hasDoor'] },
+  'loft-box': [
+    { label: 'Loft Box', color: '#3b82f6', keys: ['H', 'W', 'D'] },
+    { label: 'Shutters', color: '#22c55e', keys: ['onlyShutter', 'shutterCount'] },
+    { label: 'Top Panel', color: '#7c3aed', keys: ['topPanel', 'topPanelSide', 'topPanelWidth'] },
+  ],
+  'study-table': [
+    { label: 'Study Table', color: '#3b82f6', keys: ['H', 'W', 'D'] },
+    { label: 'Storage', color: '#0891b2', keys: ['storage', 'storageW'] },
+    { label: 'Side Panel', color: '#7c3aed', keys: ['sidePanel'] },
+  ],
+  partition: [
+    { label: 'Partition', color: '#111827', keys: ['type', 'H', 'W', 'D', 'side'] },
   ],
   'dining-table': [
     { label: 'Table Top', color: '#f59e0b', keys: ['L', 'W', 'topThick'] },
@@ -145,19 +155,6 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'side', label: 'Mounted On', defaultValue: 0, min: 0, max: 1, options: ['Left Side Table (LST)', 'Right Side Table (RST)'] },
         { key: 'H', label: 'Height', defaultValue: 150, min: 50, max: 400 },
         { key: 'light', label: 'Add Profile Light', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
-      ],
-    },
-  ],
-  'side-table': [
-    {
-      id: 'mirror',
-      label: 'Wall Mirror Above',
-      icon: '🪞',
-      description: 'Decorative mirror mounted above the side table',
-      placement: 'separate',
-      fields: [
-        { key: 'W', label: 'Mirror Width',  defaultValue: 600, min: 300, max: 1000 },
-        { key: 'H', label: 'Mirror Height', defaultValue: 800, min: 400, max: 1200 },
       ],
     },
   ],
@@ -262,20 +259,6 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'H', label: 'Height', defaultValue: 450, min: 200, max: 900 },
         { key: 'W', label: 'Width',  defaultValue: 600, min: 300, max: 1200 },
         { key: 'D', label: 'Depth',  defaultValue: 350, min: 200, max: 600 },
-      ],
-    },
-  ],
-  loft: [
-    {
-      id: 'storage-box',
-      label: 'Storage Box',
-      icon: '📦',
-      description: 'Standalone storage box to complement the loft',
-      placement: 'separate',
-      fields: [
-        { key: 'H', label: 'Height', defaultValue: 400, min: 200, max: 800 },
-        { key: 'W', label: 'Width',  defaultValue: 600, min: 300, max: 1200 },
-        { key: 'D', label: 'Depth',  defaultValue: 300, min: 200, max: 600 },
       ],
     },
   ],

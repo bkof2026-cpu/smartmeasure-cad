@@ -2,18 +2,28 @@ import React from 'react';
 import type { ProductTemplate, CutlistRow, ProductId } from './productTypes';
 import { SimpleBedDrawing } from './bed/SimpleBedDrawing';
 import { simpleBedCutlist } from './bed/simpleBedGeometry';
+// Old Side Table (Front/Plan/Side, drawer-front) and Loft Cabinet
+// (box-count) engines are no longer wired to any live product entry —
+// replaced by "Separate Side Table" (Mirror + Base Storage) and "Loft Box"
+// (shutters + Top Panel) per the user's own Product Library spec. Their
+// source files (sideTable/sideTableGeometry.ts, sideTable/
+// sideTableFormulas.ts, loft/BoxTechnicalDrawing.tsx, loft/boxFormulas.ts)
+// are left on disk, unimported, rather than deleted.
 import { resolveSideTableFront, resolveSideTablePlan, resolveSideTableSide } from './sideTable/sideTableGeometry';
-import { computeSideTableCutlist } from './sideTable/sideTableFormulas';
-import { SimpleSideTableDrawing } from './sideTable/SimpleSideTableDrawing';
-import { simpleSideTableCutlist } from './sideTable/simpleSideTableGeometry';
 import { SeparateDressingDrawing } from './separateDressing/SeparateDressingDrawing';
 import { separateDressingCutlist } from './separateDressing/separateDressingGeometry';
 import { LabeledBoxDrawing } from './simpleBox/LabeledBoxDrawing';
 import { labeledBoxCutlist, type LabeledBoxConfig } from './simpleBox/labeledBoxGeometry';
+import { SeparateSideTableDrawing } from './separateSideTable/SeparateSideTableDrawing';
+import { separateSideTableCutlist } from './separateSideTable/separateSideTableGeometry';
+import { LoftBoxDrawing } from './loftBox/LoftBoxDrawing';
+import { loftBoxCutlist } from './loftBox/loftBoxGeometry';
+import { StudyTableDrawing } from './studyTable/StudyTableDrawing';
+import { studyTableCutlist } from './studyTable/studyTableGeometry';
+import { PartitionDrawing } from './partition/PartitionDrawing';
+import { partitionCutlist } from './partition/partitionGeometry';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
-import { BoxTechnicalDrawing } from './loft/BoxTechnicalDrawing';
-import { computeBoxCutlist } from './loft/boxFormulas';
 import { SimpleWardrobeDrawing } from './wardrobe/SimpleWardrobeDrawing';
 import { simpleWardrobeCutlist } from './wardrobe/simpleWardrobeGeometry';
 import { SimpleShoeRackDrawing } from './shoeRack/SimpleShoeRackDrawing';
@@ -908,37 +918,6 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     DrawingComponent: (props) => <SimpleBedDrawing dims={props.dims} />,
   },
 
-  // ── SIDE TABLE ────────────────────────────────────────────────────────────────
-  // Simplified per the user's real site-measurement workflow (2026-08-31),
-  // same treatment as Bed/Wardrobe/Shoe Rack: a single real box (W x H)
-  // with Depth shown as the "/" diagonal leader, divided into equal door
-  // sections — every door's Width/Height/Depth equal by default, no
-  // separate per-door entry. One plan drawing only, matching Bed/Wardrobe/
-  // Shoe Rack (not the old Front/Plan/Side three-tab view). The detailed
-  // CALC_SIDE_TABLE engine (sideTableFormulas.ts / sideTableGeometry.ts /
-  // resolveSideTableFront/Plan/Side) is kept intact, just no longer the
-  // live drawing for this product entry.
-  {
-    id: 'side-table',
-    name: 'Side Table',
-    icon: '🪑',
-    category: 'furniture',
-    isFormulaVerified: true,
-    demoDimensions: { W: 500, H: 550, D: 400, doors: 2 },
-    measurementFields: [
-      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 500, min: 300, max: 900 },
-      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 550, min: 400, max: 900 },
-      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 300, max: 600 },
-      { key: 'doors', label: 'No. of Doors', unit: 'count', defaultValue: 2, min: 1, max: 4 },
-    ],
-    views: ['plan'],
-    computeCutlist: (dims) => {
-      const cutRows = simpleSideTableCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doors: n(dims.doors) || 1 });
-      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
-    },
-    DrawingComponent: (props) => <SimpleSideTableDrawing dims={props.dims} />,
-  },
-
   // ── OPENABLE WARDROBE ─────────────────────────────────────────────────────────
   {
     id: 'openable-wardrobe',
@@ -1030,36 +1009,6 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         cfg={{ productType: 'tv-unit', boxLabel: 'T.V.', title: 'T.V.', color: '#3b82f6' }}
       />
     ),
-  },
-
-  // ── LOFT ──────────────────────────────────────────────────────────────────────
-  {
-    id: 'loft',
-    name: 'Loft Cabinet',
-    icon: '📦',
-    category: 'furniture',
-    isFormulaVerified: true,
-    demoDimensions: { W: 3000, H: 400, D: 350, boxes: 6, hasDoor: 1, thk: 18 },
-    measurementFields: [
-      { key: 'W', label: 'Overall Width', unit: 'mm', defaultValue: 3000, min: 600, max: 5400 },
-      { key: 'H', label: 'Overall Height', unit: 'mm', defaultValue: 400, min: 300, max: 600 },
-      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 350, min: 250, max: 500 },
-      { key: 'boxes', label: 'Number of Boxes', unit: 'count', defaultValue: 6, min: 2, max: 12 },
-      { key: 'hasDoor', label: 'Has Doors', unit: 'bool', defaultValue: 1 },
-      { key: 'thk', label: 'Material Thickness', unit: 'mm', defaultValue: 18, min: 12, max: 25 },
-    ],
-    views: ['front', 'plan', 'side'],
-    // Real, verified cutlist — see docs/PRODUCT_STANDARDS.md "BOX family"
-    // (CALC_BOX, verified exactly against 2 real historical orders).
-    computeCutlist: (dims) => {
-      const cutRows = computeBoxCutlist({
-        W: n(dims.W), H: n(dims.H), D: n(dims.D), thk: n(dims.thk) || 18,
-        verticalQty: Math.max(0, n(dims.boxes) - 1), shelfQty: 0,
-        includeBack: true, includeDoor: n(dims.hasDoor) === 1,
-      });
-      return cutRows.map((r, i) => row(i + 1, r.label, r.type === 'BACK_PANEL' ? '9mm BWP Ply' : '18mm BWP Ply', r.cutWidth, r.cutHeight, r.qty, r.type === 'BACK_PANEL' ? 9 : 18, '', r.source.formula));
-    },
-    DrawingComponent: (props) => <BoxTechnicalDrawing dims={props.dims} activeView={props.activeView} />,
   },
 
   // ── SHOE RACK ─────────────────────────────────────────────────────────────────
@@ -1328,6 +1277,123 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         cfg={{ productType: 'center-table', boxLabel: 'CENTER TABLE', title: 'CENTER TABLE', color: '#0891b2' }}
       />
     ),
+  },
+
+  // ── SEPARATE SIDE TABLE ───────────────────────────────────────────────────────
+  // Replaces the old "Side Table" entry (removed per the user's explicit
+  // instruction) — Mirror + Base Storage with a real, visible gap between
+  // them, matching the user's own reference sketch.
+  {
+    id: 'separate-side-table',
+    name: 'Separate Side Table',
+    icon: '🪞',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { mirrorW: 500, mirrorH: 700, baseH: 600, baseW: 500, baseD: 400 },
+    measurementFields: [
+      { key: 'mirrorW', label: 'Mirror Width', unit: 'mm', defaultValue: 500, min: 300, max: 900 },
+      { key: 'mirrorH', label: 'Mirror Height', unit: 'mm', defaultValue: 700, min: 400, max: 1200 },
+      { key: 'baseH', label: 'Base Storage Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
+      { key: 'baseW', label: 'Base Storage Width', unit: 'mm', defaultValue: 500, min: 300, max: 900 },
+      { key: 'baseD', label: 'Base Storage Depth', unit: 'mm', defaultValue: 400, min: 300, max: 600 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cutRows = separateSideTableCutlist({ mirrorW: n(dims.mirrorW), mirrorH: n(dims.mirrorH), baseH: n(dims.baseH), baseW: n(dims.baseW), baseD: n(dims.baseD) });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <SeparateSideTableDrawing dims={props.dims} />,
+  },
+
+  // ── LOFT BOX ──────────────────────────────────────────────────────────────────
+  // Replaces the old "Loft Cabinet" entry (removed per the user's explicit
+  // instruction) — shutter-divided box (exact deduction formula from the
+  // spec) + optional Top Panel (Left/Right), matching the reference sketch.
+  {
+    id: 'loft-box',
+    name: 'Loft Box',
+    icon: '📦',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 6, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
+    measurementFields: [
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1000, min: 600, max: 3600 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
+      { key: 'onlyShutter', label: 'Only Shutter', unit: 'bool', defaultValue: 1 },
+      { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 6, min: 1, max: 12 },
+      { key: 'topPanel', label: 'Top Panel', unit: 'bool', defaultValue: 0 },
+      { key: 'topPanelSide', label: 'Top Panel Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
+      { key: 'topPanelWidth', label: 'Top Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 1200 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cutRows = loftBoxCutlist({
+        H: n(dims.H), W: n(dims.W), D: n(dims.D),
+        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount: n(dims.shutterCount) || 6,
+        topPanel: Number(dims.topPanel ?? 0) === 1, topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left', topPanelWidth: n(dims.topPanelWidth) || 300,
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <LoftBoxDrawing dims={props.dims} />,
+  },
+
+  // ── STUDY TABLE ───────────────────────────────────────────────────────────────
+  {
+    id: 'study-table',
+    name: 'Study Table',
+    icon: '📖',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { H: 750, W: 1200, D: 600, storage: 'None', storageW: 450, sidePanel: 'None' },
+    measurementFields: [
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 750, min: 600, max: 900 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1200, min: 600, max: 2400 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 600, min: 400, max: 900 },
+      { key: 'storage', label: 'Add Storage', unit: 'select', defaultValue: 'None', options: ['None', 'Left', 'Right', 'Both'] },
+      { key: 'storageW', label: 'Storage Width', unit: 'mm', defaultValue: 450, min: 250, max: 900 },
+      { key: 'sidePanel', label: 'Add Side Panel', unit: 'select', defaultValue: 'None', options: ['None', 'Left', 'Right', 'Both'] },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const storage = String(dims.storage ?? 'None').toLowerCase();
+      const sidePanel = String(dims.sidePanel ?? 'None').toLowerCase();
+      const cutRows = studyTableCutlist({
+        H: n(dims.H), W: n(dims.W), D: n(dims.D),
+        storage: (storage === 'left' || storage === 'right' || storage === 'both' ? storage : 'none'),
+        storageW: n(dims.storageW) || 450,
+        sidePanel: (sidePanel === 'left' || sidePanel === 'right' || sidePanel === 'both' ? sidePanel : 'none'),
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <StudyTableDrawing dims={props.dims} />,
+  },
+
+  // ── PARTITION ─────────────────────────────────────────────────────────────────
+  {
+    id: 'partition',
+    name: 'Partition',
+    icon: '🧱',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { type: 'With Framing', H: 2100, W: 900, D: 400, side: 'Left' },
+    measurementFields: [
+      { key: 'type', label: 'Partition Type', unit: 'select', defaultValue: 'With Framing', options: ['With Framing', 'With Partition'] },
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 2100, min: 1800, max: 2700 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 900, min: 400, max: 2400 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 200, max: 700 },
+      { key: 'side', label: 'Partition Position', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cutRows = partitionCutlist({
+        type: String(dims.type ?? 'With Framing').toLowerCase().includes('partition') ? 'partition' : 'framing',
+        H: n(dims.H), W: n(dims.W), D: n(dims.D),
+        side: String(dims.side ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left',
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <PartitionDrawing dims={props.dims} />,
   },
 ];
 
