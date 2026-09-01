@@ -124,6 +124,18 @@ export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
       });
       cursorX += sw + gapMm;
     }
+  } else {
+    // Even without "Only Shutter" active, the box still shows real
+    // divided panels — matching the user's own second reference sketch
+    // (a plain "Loft Box" with 4 equal columns, no per-column numbers
+    // since no shutter formula is in effect). A blank, undivided
+    // rectangle read as an unfinished drawing rather than a real Loft Box.
+    const defaultPanels = 4;
+    const panelW = W / defaultPanels;
+    for (let i = 1; i < defaultPanels; i++) {
+      const lx = boxX + panelW * i;
+      lines.push({ x1: lx, y1: boxY + 2, x2: lx, y2: boxY + H - 2, color: BOX_COLOR, strokeWidth: 1 });
+    }
   }
 
   // Depth — "/" diagonal leader at the box's own top-left corner.

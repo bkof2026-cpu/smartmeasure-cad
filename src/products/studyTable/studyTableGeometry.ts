@@ -98,16 +98,23 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   const lines: AnnotationLine[] = [];
   const dimReqs: DimensionRequest[] = [];
 
-  // "Top" surface line near the top edge + downward "Tray" leader, matching
-  // the reference sketch exactly.
+  // "Top" surface line near the top edge — symmetric margins on both sides
+  // (was 6%-70%, biased left) so it reads as the table's own centered top
+  // surface, not an off-center stripe.
   const topLineY = tableY + H * 0.08;
-  lines.push({ x1: tableX + W * 0.06, y1: topLineY, x2: tableX + W * 0.7, y2: topLineY, color: '#111827', strokeWidth: 2 });
+  lines.push({ x1: tableX + W * 0.06, y1: topLineY, x2: tableX + W * 0.94, y2: topLineY, color: '#111827', strokeWidth: 2 });
   lines.push({ x1: tableX + W * 0.4, y1: topLineY - 14, x2: tableX + W * 0.46, y2: topLineY - 3, color: '#111827', label: 'Top' });
-  // Real vertical line pointing down from the Top surface, matching the
-  // reference sketch's "↓ Tray" callout — the label rides on this same
-  // line rather than a separate zero-length one.
-  const trayX = tableX + W * 0.4;
-  lines.push({ x1: trayX, y1: topLineY, x2: trayX, y2: topLineY + H * 0.18, color: '#111827', strokeWidth: 1, label: 'Tray' });
+  // Tray — dead-center horizontally (exactly W/2, equal distance from both
+  // edges, was 40% from the left before) and a short drop (was 0.18*H,
+  // now a fixed, modest reach so it doesn't read as an oversized gap).
+  const trayX = tableX + W * 0.5;
+  lines.push({ x1: trayX, y1: topLineY, x2: trayX, y2: topLineY + Math.min(60, H * 0.1), color: '#111827', strokeWidth: 1, label: 'Tray' });
+
+  // Base — a bold line right on the table's own bottom edge, matching the
+  // Top line's treatment (the box's own thin rect stroke there reads as
+  // just a border, not a distinct "this is the base/floor edge" marker
+  // like the reference sketch shows).
+  lines.push({ x1: tableX, y1: tableY + H, x2: tableX + W, y2: tableY + H, color: '#111827', strokeWidth: 2.5 });
 
   // Depth — "/" diagonal leader at the table's own top-left corner.
   const diag = insideDiagonal(tableX, tableY, W, H);
