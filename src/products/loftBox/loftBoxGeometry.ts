@@ -110,9 +110,15 @@ export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
     const sw = loftShutterWidth(W, count);
     const gapMm = 2;
     let cursorX = boxX;
+    // Every shutter shows its own computed Width — matching the user's own
+    // reference sketch, which writes the per-shutter result (e.g. "331")
+    // inside EACH column, not just one of them. The overall drawing title
+    // already reads "LOFT BOX — N SHUTTERS", so a separate "Only shutter"
+    // callout on one box would be redundant with that; this is the real
+    // per-shutter formula RESULT instead, exactly like the sketch.
     for (let i = 0; i < count; i++) {
       components.push({
-        id: `shutter-${i}`, type: 'DOOR', label: i === Math.floor(count / 2) ? 'Only shutter' : '',
+        id: `shutter-${i}`, type: 'DOOR', label: `${Math.round(sw)}`,
         x: cursorX, y: boxY + 2, width: sw, height: H - 4, qty: 1, visible: true,
         source: { formula: `Shutter ${i + 1} of ${count} — Width = (W − ${count}×2) / ${count} = ${sw.toFixed(2)}mm`, constants: [] },
       });
