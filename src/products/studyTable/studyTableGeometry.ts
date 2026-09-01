@@ -113,13 +113,14 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   const trayY = tableY + Math.max(48, H * 0.09);
   const trayInset = W * 0.06;
   lines.push({ x1: tableX + trayInset, y1: trayY, x2: tableX + W - trayInset, y2: trayY, color: '#2563eb', strokeWidth: 3 });
-  lines.push({ x1: tableX + W * 0.5, y1: trayY, x2: tableX + W * 0.62, y2: trayY + 38, color: '#2563eb', label: 'Tray', arrowAtStart: true });
+  // Leader reaches out to the RIGHT side of the bar, well clear of "Top"'s
+  // own leader and the Depth diagonal's label, which both sit in the
+  // left-of-center area — avoids the three labels crowding one spot.
+  lines.push({ x1: tableX + W * 0.78, y1: trayY, x2: tableX + W * 0.92, y2: trayY + 34, color: '#2563eb', label: 'Tray', arrowAtStart: true });
 
-  // Base — a bold line right on the table's own bottom edge, matching the
-  // Top line's treatment (the box's own thin rect stroke there reads as
-  // just a border, not a distinct "this is the base/floor edge" marker
-  // like the reference sketch shows).
-  lines.push({ x1: tableX, y1: tableY + H, x2: tableX + W, y2: tableY + H, color: '#111827', strokeWidth: 2.5 });
+  // Base — per the user's own correction, no separate line is drawn on the
+  // bottom edge at all (the box's own thin rect stroke there is enough) —
+  // the earlier bold black bottom line has been removed.
 
   // Depth — "/" diagonal leader at the table's own top-left corner.
   const diag = insideDiagonal(tableX, tableY, W, H);
@@ -154,10 +155,11 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
     components.push({ id: `${id}-fascia`, type: 'FESIA', label: 'Fesia', x: sx + 2, y: tableY + 2, width: inp.storageW - 4, height: fesiaH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
     components.push({ id: `${id}-shutter`, type: 'SHUTTER', label: 'Shutter', x: sx + 2, y: tableY + fesiaH, width: inp.storageW - 4, height: shutterH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
     components.push({ id: `${id}-skirting`, type: 'SKIRT', label: 'Skirting', x: sx + 2, y: tableY + fesiaH + shutterH, width: inp.storageW - 4, height: skirtH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
-    // "Storage" itself still reads as an external leader — it names the
-    // whole assembly, not one specific band.
-    const labelX = side === 'left' ? sx - 55 : sx + inp.storageW + 55;
-    lines.push({ x1: side === 'left' ? sx : sx + inp.storageW, y1: tableY + fesiaH / 2, x2: labelX, y2: tableY - 30, color: STORAGE_COLOR, label: 'Storage' });
+    // "Storage" — a clean horizontal heading centered directly above the
+    // whole assembly (matching the readable, non-rotated style used for
+    // the drawing's own title), replacing the earlier cramped diagonal
+    // corner leader that read sideways and was hard to make out.
+    lines.push({ x1: sx + inp.storageW / 2, y1: tableY - 14, x2: sx + inp.storageW / 2, y2: tableY - 14, color: STORAGE_COLOR, label: 'Storage' });
     dimReqs.push({ axis: 'h', x1: sx, y1: tableY + H + 26, x2: sx + inp.storageW, y2: tableY + H + 26, edge: 'bottom', componentIds: [id], label: `${Math.round(inp.storageW)} mm (Storage W)`, source: { formula: 'Storage Width (entered)', constants: [] }, color: STORAGE_COLOR });
     return sx;
   }
@@ -170,21 +172,18 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   function drawSidePanel(side: 'left' | 'right') {
     const px = side === 'left' ? (hasLeftStorage ? leftStorageX - panelW : tableX - panelW) : (hasRightStorage ? rightStorageEndX : tableX + W);
     lines.push({ x1: px, y1: tableY, x2: px, y2: tableY + H, color: '#7c3aed', strokeWidth: 2.5 });
-    // Anchored at 25% down the panel (was the exact vertical center,
-    // H/2) — the Height dimension's own label is ALSO centered at H/2 on
-    // this same left side, so the two collided. This clears it while
-    // staying on the panel's own real edge.
-    // The leader itself is long (reaches well out past the H dimension),
-    // with the arrowhead at the panel edge and the label sitting at the
-    // OTHER end — the arrow's own starting point, out in clear space —
-    // rather than floating at the line's midpoint on top of the line.
-    const leaderY = tableY + H * 0.25;
-    const farX = px + (side === 'left' ? -140 : panelW + 140);
-    const farY = leaderY - 55;
+    // Per the user's own annotated correction: the leader now runs from
+    // low on the panel DOWN into the blank space below the whole drawing
+    // (matching the reference's long diagonal to a lower "Side panel
+    // (left)" caption), instead of angling up past the Height dimension.
+    const leaderY = tableY + H * 0.82;
+    const farX = px + (side === 'left' ? -55 : panelW + 55);
+    const farY = tableY + H + 130;
     // x1/y1 is the far/outer end — the arrow's own starting point, where
-    // the label anchors (labelAtStart) — and x2/y2 is the panel edge,
-    // where the arrowhead lands (arrowAtEnd).
-    lines.push({ x1: farX, y1: farY, x2: px + panelW / 2, y2: leaderY, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})`, labelAtStart: true, arrowAtEnd: true });
+    // the label anchors (labelAtStart) — and x2/y2 lands exactly ON the
+    // bold outer panel line itself (drawn at x=px above), not the panel's
+    // own mid-width, which pointed into blank space just short of it.
+    lines.push({ x1: farX, y1: farY, x2: px, y2: leaderY, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})`, labelAtStart: true, arrowAtEnd: true });
   }
   if (hasLeftPanel) drawSidePanel('left');
   if (hasRightPanel) drawSidePanel('right');
@@ -197,7 +196,11 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   // same pattern already used for Loft Box's Top Panel W vs overall W.
   const outerLeft = hasLeftPanel ? (hasLeftStorage ? leftStorageX - panelW : tableX - panelW) : (hasLeftStorage ? leftStorageX : tableX);
   const outerRight = hasRightPanel ? rightStorageEndX + panelW : rightStorageEndX;
-  const showTotalWidth = outerLeft !== tableX || outerRight !== tableX + W;
+  // Gated on the actual reported VALUE differing from W (not just the
+  // drawing's outer pixels shifting) — a Side Panel alone moves the outer
+  // edges but doesn't change totalWidth(inp) (Side Panel isn't counted in
+  // it), so it must not trigger a "total width" that would just repeat W.
+  const showTotalWidth = Math.round(totalWidth(inp)) !== Math.round(W);
   if (showTotalWidth) {
     dimReqs.push({ axis: 'h', x1: outerLeft, y1: tableY + H, x2: outerRight, y2: tableY + H, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth(inp))} mm (total width)`, source: { formula: 'Total Width = Table Width + Storage Width(s)', constants: [] } });
   }

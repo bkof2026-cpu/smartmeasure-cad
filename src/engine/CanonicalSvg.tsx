@@ -103,7 +103,7 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
         <line x1={p.x1} y1={p.y1} x2={p.x1} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
         <line x1={p.x2} y1={p.y2} x2={p.x2} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
         <rect x={mx - lw / 2} y={y - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
-        <text x={mx} y={y + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc}>{d.label}</text>
+        <text x={mx} y={y + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700}>{d.label}</text>
       </g>
     );
   }
@@ -122,7 +122,7 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
       <line x1={p.x2} y1={p.y2} x2={x} y2={p.y2} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
       <g transform={`rotate(-90 ${x} ${my})`}>
         <rect x={x - lw / 2} y={my - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
-        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc}>{d.label}</text>
+        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700}>{d.label}</text>
       </g>
     </g>
   );
@@ -257,12 +257,22 @@ export function TechnicalDrawingSvg({
               markerEnd={l.arrowAtEnd ? 'url(#canon-arrow)' : undefined}
             />
             {l.label && (
-              <text
-                x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}
-                transform={`rotate(${angleDeg} ${mx} ${my})`}
-              >
-                {l.label}
-              </text>
+              <g transform={`rotate(${angleDeg} ${mx} ${my})`}>
+                {/* White backing plate behind the label — matches the real
+                    DimensionLineView convention — so it stays fully
+                    readable even where another line crosses behind it,
+                    never partially hidden underneath. */}
+                <rect
+                  x={mx - (l.label.length * 8 * 0.62 + 4) / 2} y={my - 1.5 - 8 * 0.72}
+                  width={l.label.length * 8 * 0.62 + 4} height={8 * 1.15}
+                  fill="white" opacity={0.85}
+                />
+                <text
+                  x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}
+                >
+                  {l.label}
+                </text>
+              </g>
             )}
           </g>
         );
