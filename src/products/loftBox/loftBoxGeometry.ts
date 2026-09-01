@@ -83,7 +83,17 @@ export function loftBoxTitle(inp: LoftBoxInputs): string {
 export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
   const { H, W, D } = inp;
   const leaderMargin = 90;
-  const topPad = 90;
+  // Loft Box is a genuinely SHORT, WIDE product (H is typically much less
+  // than W) — the Depth diagonal reaches DOWN-RIGHT into the box from its
+  // top-left corner (never up above it), so this only needs to clear the
+  // title text, not a diagonal's own reach. The previous 90 (same value
+  // used for taller products like Bed) was a disproportionately large
+  // fixed padding relative to a short box's own real Height, visually
+  // inflating how tall the drawing reads once the shared engine scales
+  // the whole canvas to fit its viewport. Trimmed to 45 so the rendered
+  // canvas's own proportions track the box's real W:H ratio more closely
+  // — the entered Height value and its dimension label are untouched.
+  const topPad = 35;
 
   const boxX = leaderMargin;
   const boxY = topPad;
@@ -130,7 +140,7 @@ export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
     dimReqs.push({ axis: 'h', x1: topPanelX, y1: boxY + H, x2: topPanelX + inp.topPanelWidth, y2: boxY + H, edge: 'bottom', componentIds: [], label: `${Math.round(inp.topPanelWidth)} mm (Top Panel W)`, source: { formula: 'Top Panel Width (entered)', constants: [] }, color: TOP_PANEL_COLOR });
     const cornerX = inp.topPanelSide === 'left' ? topPanelX : topPanelX + inp.topPanelWidth;
     lines.push({
-      x1: cornerX, y1: boxY + H, x2: cornerX + (inp.topPanelSide === 'left' ? -45 : 45), y2: boxY + H + 45,
+      x1: cornerX, y1: boxY + H, x2: cornerX + (inp.topPanelSide === 'left' ? -32 : 32), y2: boxY + H + 32,
       color: TOP_PANEL_COLOR, label: `Top Panel (${inp.topPanelSide === 'left' ? 'Left' : 'Right'})`,
     });
   }
