@@ -117,18 +117,20 @@ export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
   // Height — real dimension on the box's own left edge.
   dimReqs.push({ axis: 'v', x1: boxX, y1: boxY, x2: boxX, y2: boxY + H, edge: 'left', componentIds: ['loft-box'], label: `${Math.round(H)} mm (H)`, source: { formula: 'Height (entered)', constants: [] }, color: BOX_COLOR });
 
-  // Width — Top Panel Width shown separately just above the box's own top
-  // edge when active (a real, distinct dimension, not folded into the
-  // overall Width) with the overall Width below the box, matching the
-  // reference sketch's own two-line layout.
+  // Top Panel — despite the name, its own marker line, Width dimension,
+  // and position leader all sit at the box's BOTTOM edge, matching the
+  // reference sketch exactly (the box's own overall Width dimension reads
+  // outside it, further down, real-CAD "overall dimension outside the
+  // specific one" convention — same stacked-tier fix already used for
+  // Wardrobe's total-width/width).
   let topPanelX = boxX;
   if (inp.topPanel) {
     topPanelX = inp.topPanelSide === 'left' ? boxX : boxX + W - inp.topPanelWidth;
-    lines.push({ x1: topPanelX, y1: boxY, x2: topPanelX + inp.topPanelWidth, y2: boxY, color: TOP_PANEL_COLOR, strokeWidth: 2.5 });
-    dimReqs.push({ axis: 'h', x1: topPanelX, y1: boxY - 22, x2: topPanelX + inp.topPanelWidth, y2: boxY - 22, edge: 'top', componentIds: [], label: `${Math.round(inp.topPanelWidth)} mm (Top Panel W)`, source: { formula: 'Top Panel Width (entered)', constants: [] }, color: TOP_PANEL_COLOR });
+    lines.push({ x1: topPanelX, y1: boxY + H, x2: topPanelX + inp.topPanelWidth, y2: boxY + H, color: TOP_PANEL_COLOR, strokeWidth: 2.5 });
+    dimReqs.push({ axis: 'h', x1: topPanelX, y1: boxY + H, x2: topPanelX + inp.topPanelWidth, y2: boxY + H, edge: 'bottom', componentIds: [], label: `${Math.round(inp.topPanelWidth)} mm (Top Panel W)`, source: { formula: 'Top Panel Width (entered)', constants: [] }, color: TOP_PANEL_COLOR });
+    const cornerX = inp.topPanelSide === 'left' ? topPanelX : topPanelX + inp.topPanelWidth;
     lines.push({
-      x1: inp.topPanelSide === 'left' ? topPanelX : topPanelX + inp.topPanelWidth,
-      y1: boxY, x2: (inp.topPanelSide === 'left' ? topPanelX : topPanelX + inp.topPanelWidth) - (inp.topPanelSide === 'left' ? 45 : -45), y2: boxY - 45,
+      x1: cornerX, y1: boxY + H, x2: cornerX + (inp.topPanelSide === 'left' ? -45 : 45), y2: boxY + H + 45,
       color: TOP_PANEL_COLOR, label: `Top Panel (${inp.topPanelSide === 'left' ? 'Left' : 'Right'})`,
     });
   }
@@ -137,7 +139,15 @@ export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
   const worldWidth = Math.max(boxX + W + 20, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
   const worldHeight = Math.max(boxY + H + 30, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
-  const dimensions = resolveDimensions(dimReqs);
+  // Both "Top Panel W" and the overall "W" now share the box's bottom
+  // edge — force the overall Width one tier further out than whatever
+  // Top Panel Width resolved to, so it always reads OUTSIDE (below) the
+  // more specific one, matching the reference sketch's stacked layout
+  // regardless of drawing scale (same fix already used for Wardrobe's
+  // total-width/width).
+  const resolvedDims = resolveDimensions(dimReqs);
+  const topPanelTier = resolvedDims.find((d) => d.label.includes('Top Panel W'))?.tier ?? 0;
+  const dimensions = resolvedDims.map((d) => (d.label.includes('(W)') ? { ...d, tier: Math.max(d.tier, topPanelTier + 1) } : d));
   const issues = [
     ...validateMeasurements({ H, W, D }, [
       { key: 'H', label: 'Height', min: 1 },
