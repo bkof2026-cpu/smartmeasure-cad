@@ -57,9 +57,13 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
   ],
   'tv-unit': [
-    { label: 'Overall Size',    color: '#3b82f6', keys: ['W', 'H', 'D'] },
-    { label: 'TV Screen',       color: '#22c55e', keys: ['tvW', 'tvH'] },
-    { label: 'Cabinet Layout',  color: '#f59e0b', keys: ['baseCabs', 'wallCabs', 'openBoxes'] },
+    { label: 'T.V.', color: '#3b82f6', keys: ['H', 'W'] },
+  ],
+  sofa: [
+    { label: 'Sofa', color: '#3b82f6', keys: ['H', 'W', 'D'] },
+  ],
+  'center-table': [
+    { label: 'Center Table', color: '#3b82f6', keys: ['L', 'W'] },
   ],
   loft: [
     { label: 'Cabinet',  color: '#3b82f6', keys: ['W', 'H', 'D', 'thk'] },

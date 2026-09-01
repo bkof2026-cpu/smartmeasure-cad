@@ -8,6 +8,8 @@ import { SimpleSideTableDrawing } from './sideTable/SimpleSideTableDrawing';
 import { simpleSideTableCutlist } from './sideTable/simpleSideTableGeometry';
 import { SeparateDressingDrawing } from './separateDressing/SeparateDressingDrawing';
 import { separateDressingCutlist } from './separateDressing/separateDressingGeometry';
+import { LabeledBoxDrawing } from './simpleBox/LabeledBoxDrawing';
+import { labeledBoxCutlist, type LabeledBoxConfig } from './simpleBox/labeledBoxGeometry';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { BoxTechnicalDrawing } from './loft/BoxTechnicalDrawing';
@@ -997,42 +999,37 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   },
 
   // ── TV UNIT ───────────────────────────────────────────────────────────────────
+  // Simplified in place per the user's own Product Library spec's "T.V."
+  // entry (H x W plain labeled box, no depth, no cabinet breakdown) — the
+  // user explicitly asked to edit this existing entry rather than add a
+  // separate "T.V." product to the dropdown. The old base/wall-cabinet
+  // TvUnitDrawing component above is kept intact (unused, not deleted),
+  // same "kept for a future detailed-fabrication mode" treatment already
+  // used for Side Table's old Front/Plan/Side view and Wardrobe's old
+  // 25-design system.
   {
     id: 'tv-unit',
     name: 'TV Unit',
     icon: '📺',
     category: 'furniture',
-    isFormulaVerified: false,
-    demoDimensions: { W: 2400, H: 2100, D: 450, tvW: 1200, tvH: 700, baseCabs: 3, wallCabs: 4, openBoxes: 2, thk: 18 },
+    isFormulaVerified: true,
+    demoDimensions: { H: 700, W: 1400 },
     measurementFields: [
-      { key: 'W', label: 'Overall Width', unit: 'mm', defaultValue: 2400, min: 1200, max: 3600 },
-      { key: 'H', label: 'Overall Height', unit: 'mm', defaultValue: 2100, min: 1500, max: 2700 },
-      { key: 'D', label: 'Cabinet Depth', unit: 'mm', defaultValue: 450, min: 300, max: 600 },
-      { key: 'tvW', label: 'TV Width', unit: 'mm', defaultValue: 1200, min: 600, max: 2000 },
-      { key: 'tvH', label: 'TV Height', unit: 'mm', defaultValue: 700, min: 400, max: 1200 },
-      { key: 'baseCabs', label: 'Base Cabinet Count', unit: 'count', defaultValue: 3, min: 1, max: 6 },
-      { key: 'wallCabs', label: 'Wall Cabinet Count', unit: 'count', defaultValue: 4, min: 2, max: 8 },
-      { key: 'openBoxes', label: 'Open Box Count', unit: 'count', defaultValue: 2, min: 0, max: 4 },
-      { key: 'thk', label: 'Material Thickness', unit: 'mm', defaultValue: 18, min: 12, max: 25 },
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 700, min: 300, max: 1500 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1400, min: 400, max: 3000 },
     ],
-    views: ['front', 'plan'],
+    views: ['plan'],
     computeCutlist: (dims) => {
-      const W = n(dims.W), D = n(dims.D), baseCabs = n(dims.baseCabs), wallCabs = n(dims.wallCabs), thk = n(dims.thk);
-      const baseH = 500, wallCabH = 400, baseW = Math.round(W / baseCabs), wallW = Math.round(W / wallCabs);
-      return [
-        row(1, 'Base Cab — Top',    '18mm BWP Ply', baseW - thk*2, D,          baseCabs,    thk),
-        row(2, 'Base Cab — Bottom', '18mm BWP Ply', baseW - thk*2, D,          baseCabs,    thk),
-        row(3, 'Base Cab — Side',   '18mm BWP Ply', D,             baseH,      baseCabs * 2, thk),
-        row(4, 'Base Cab — Back',   '9mm BWP Ply',  baseW - thk*2, baseH - thk*2, baseCabs, 9, '', '9mm back panel'),
-        row(5, 'Base Cab — Shutter','18mm MDF',     baseW - 4,     baseH - 4,  baseCabs,    thk),
-        row(6, 'Wall Cab — Top',    '18mm BWP Ply', wallW - thk*2, D - 150,    wallCabs,    thk),
-        row(7, 'Wall Cab — Bottom', '18mm BWP Ply', wallW - thk*2, D - 150,    wallCabs,    thk),
-        row(8, 'Wall Cab — Side',   '18mm BWP Ply', D - 150,       wallCabH,   wallCabs*2,  thk),
-        row(9, 'Wall Cab — Back',   '9mm BWP Ply',  wallW - thk*2, wallCabH - thk*2, wallCabs, 9, '', '9mm back panel'),
-        row(10, 'Wall Cab — Shutter','18mm MDF',    wallW - 4,     wallCabH - 4, wallCabs,  thk),
-      ];
+      const cfg: LabeledBoxConfig = { productType: 'tv-unit', boxLabel: 'T.V.', title: 'T.V.', color: '#3b82f6' };
+      const cutRows = labeledBoxCutlist({ primary: n(dims.W), secondary: n(dims.H), primaryLabel: 'W', secondaryLabel: 'H' }, cfg);
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
-    DrawingComponent: TvUnitDrawing,
+    DrawingComponent: (props) => (
+      <LabeledBoxDrawing
+        inp={{ primary: n(props.dims.W), secondary: n(props.dims.H), primaryLabel: 'W', secondaryLabel: 'H' }}
+        cfg={{ productType: 'tv-unit', boxLabel: 'T.V.', title: 'T.V.', color: '#3b82f6' }}
+      />
+    ),
   },
 
   // ── LOFT ──────────────────────────────────────────────────────────────────────
@@ -1273,6 +1270,64 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
     DrawingComponent: (props) => <SeparateDressingDrawing dims={props.dims} />,
+  },
+
+  // ── SOFA ──────────────────────────────────────────────────────────────────────
+  // Plain technical-measurement box (H x W x D) per the user's spec — not a
+  // photorealistic sofa, a real CAD dimension drawing like every other
+  // product here. Depth is the "/" diagonal leader, same convention as
+  // Wardrobe/Shoe Rack/Side Table's own Depth.
+  {
+    id: 'sofa',
+    name: 'Sofa',
+    icon: '🛋️',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { H: 850, W: 2100, D: 900 },
+    measurementFields: [
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 850, min: 500, max: 1200 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 2100, min: 600, max: 4000 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 900, min: 500, max: 1400 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cfg: LabeledBoxConfig = { productType: 'sofa', boxLabel: 'SOFA', title: 'SOFA', color: '#7c3aed' };
+      const cutRows = labeledBoxCutlist({ primary: n(dims.W), secondary: n(dims.H), depth: n(dims.D), primaryLabel: 'W', secondaryLabel: 'H' }, cfg);
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => (
+      <LabeledBoxDrawing
+        inp={{ primary: n(props.dims.W), secondary: n(props.dims.H), depth: n(props.dims.D), primaryLabel: 'W', secondaryLabel: 'H' }}
+        cfg={{ productType: 'sofa', boxLabel: 'SOFA', title: 'SOFA', color: '#7c3aed' }}
+      />
+    ),
+  },
+
+  // ── CENTER TABLE ──────────────────────────────────────────────────────────────
+  // Plan/footprint box (Length x Width), no Height — per the user's spec.
+  {
+    id: 'center-table',
+    name: 'Center Table',
+    icon: '🛗',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { L: 1000, W: 550 },
+    measurementFields: [
+      { key: 'L', label: 'Length', unit: 'mm', defaultValue: 1000, min: 400, max: 2000 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 550, min: 300, max: 1200 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cfg: LabeledBoxConfig = { productType: 'center-table', boxLabel: 'CENTER TABLE', title: 'CENTER TABLE', color: '#0891b2' };
+      const cutRows = labeledBoxCutlist({ primary: n(dims.L), secondary: n(dims.W), primaryLabel: 'L', secondaryLabel: 'W' }, cfg);
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => (
+      <LabeledBoxDrawing
+        inp={{ primary: n(props.dims.L), secondary: n(props.dims.W), primaryLabel: 'L', secondaryLabel: 'W' }}
+        cfg={{ productType: 'center-table', boxLabel: 'CENTER TABLE', title: 'CENTER TABLE', color: '#0891b2' }}
+      />
+    ),
   },
 ];
 
