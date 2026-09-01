@@ -102,26 +102,9 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Bed',       color: '#22c55e', keys: ['bedW', 'bedL', 'hasBed'] },
     { label: 'Furniture', color: '#f59e0b', keys: ['wardW', 'tvW', 'hasWardrobe', 'hasTVUnit'] },
   ],
-  '1bhk': [
-    { label: 'Living / Dining', color: '#3b82f6', keys: ['livingL', 'livingW'] },
-    { label: 'Kitchen',         color: '#f59e0b', keys: ['kitchenL', 'kitchenW'] },
-    { label: 'Bedroom',         color: '#22c55e', keys: ['bedL', 'bedW'] },
-    { label: 'Bathroom',        color: '#8b5cf6', keys: ['bathL', 'bathW'] },
-  ],
-  '2bhk': [
-    { label: 'Living',          color: '#3b82f6', keys: ['livingL', 'livingW'] },
-    { label: 'Kitchen',         color: '#f59e0b', keys: ['kitchenL', 'kitchenW'] },
-    { label: 'Master Bedroom',  color: '#22c55e', keys: ['bed1L', 'bed1W'] },
-    { label: 'Bedroom 2',       color: '#a855f7', keys: ['bed2L', 'bed2W'] },
-    { label: 'Bathroom',        color: '#8b5cf6', keys: ['bath1L', 'bath1W'] },
-  ],
-  '3bhk': [
-    { label: 'Living',         color: '#3b82f6', keys: ['livingL', 'livingW'] },
-    { label: 'Kitchen',        color: '#f59e0b', keys: ['kitchenL', 'kitchenW'] },
-    { label: 'Master Bedroom', color: '#22c55e', keys: ['bed1L', 'bed1W'] },
-    { label: 'Bedroom 2',      color: '#a855f7', keys: ['bed2L', 'bed2W'] },
-    { label: 'Bedroom 3',      color: '#ec4899', keys: ['bed3L', 'bed3W'] },
-  ],
+  // 1bhk/2bhk/3bhk FIELD_GROUPS removed along with the products themselves
+  // (see productRegistry.tsx) — out of scope per the user's explicit
+  // instruction.
 };
 
 // ─── Per-product add-ons ─────────────────────────────────────────────────────────
@@ -358,65 +341,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
   ],
-  '1bhk': [
-    {
-      id: 'balcony',
-      label: 'Balcony',
-      icon: '🌿',
-      description: 'Attached balcony area',
-      placement: 'separate',
-      fields: [
-        { key: 'L', label: 'Length', defaultValue: 3000, min: 1500, max: 6000 },
-        { key: 'W', label: 'Width',  defaultValue: 1500, min: 900,  max: 3000 },
-      ],
-    },
-  ],
-  '2bhk': [
-    {
-      id: 'balcony',
-      label: 'Balcony',
-      icon: '🌿',
-      description: 'Attached balcony area',
-      placement: 'separate',
-      fields: [
-        { key: 'L', label: 'Length', defaultValue: 3000, min: 1500, max: 6000 },
-        { key: 'W', label: 'Width',  defaultValue: 1500, min: 900,  max: 3000 },
-      ],
-    },
-    {
-      id: 'utility',
-      label: 'Utility / Store Room',
-      icon: '🧹',
-      description: 'Utility or store room',
-      placement: 'separate',
-      fields: [
-        { key: 'L', label: 'Length', defaultValue: 2000, min: 1000, max: 3500 },
-        { key: 'W', label: 'Width',  defaultValue: 1500, min: 1000, max: 2500 },
-      ],
-    },
-  ],
-  '3bhk': [
-    {
-      id: 'balcony',
-      label: 'Balcony',
-      icon: '🌿',
-      description: 'Attached balcony area',
-      placement: 'separate',
-      fields: [
-        { key: 'L', label: 'Length', defaultValue: 3500, min: 1500, max: 6000 },
-        { key: 'W', label: 'Width',  defaultValue: 1800, min: 900,  max: 3500 },
-      ],
-    },
-    {
-      id: 'study-room',
-      label: 'Study Room',
-      icon: '📚',
-      description: 'Dedicated study or home office',
-      placement: 'separate',
-      fields: [
-        { key: 'L', label: 'Length', defaultValue: 3000, min: 1500, max: 5000 },
-        { key: 'W', label: 'Width',  defaultValue: 2500, min: 1500, max: 4000 },
-      ],
-    },
-  ],
+  // 1bhk/2bhk/3bhk PRODUCT_ADDONS removed along with the products
+  // themselves (see productRegistry.tsx) — out of scope per the user's
+  // explicit instruction.
 };

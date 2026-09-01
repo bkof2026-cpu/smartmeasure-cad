@@ -11,9 +11,6 @@ export type ProductId =
   | 'shoe-rack'
   | 'dining-table'
   | 'bedroom'
-  | '1bhk'
-  | '2bhk'
-  | '3bhk'
   | 'separate-dressing'
   | 'sofa'
   | 'center-table'
@@ -21,7 +18,17 @@ export type ProductId =
   | 'loft-box'
   | 'study-table'
   | 'partition'
-  | 'door';
+  | 'door'
+  | 'sofa-cum-bed';
+
+/**
+ * The user-facing room grouping from the Product Categories spec — purely
+ * an organizational layer over the product library (dropdown grouping +
+ * PDF section headings). Deliberately separate from the older `category`
+ * field below (which drives the small "Furniture/Room/Apartment" badge in
+ * the top bar) so this never changes that existing, unrelated behavior.
+ */
+export type RoomCategory = 'Master Bedroom' | 'Living Room' | 'Kitchen';
 
 export interface MeasurementField {
   key: string;
@@ -51,6 +58,12 @@ export interface ProductTemplate {
   name: string;
   icon: string;
   category: 'furniture' | 'room' | 'apartment';
+  /** Master Bedroom / Living Room / Kitchen — see RoomCategory. Optional so
+   * the handful of whole-apartment/room-layout products (bedroom, 1bhk,
+   * 2bhk, 3bhk, kitchen-the-room-planner) that don't fit this furniture-
+   * oriented grouping can simply omit it; the grouped dropdown/PDF treat an
+   * unset roomCategory as its own unlabeled bucket, never a crash. */
+  roomCategory?: RoomCategory;
   isFormulaVerified: boolean;
   measurementFields: MeasurementField[];
   demoDimensions: Record<string, number | string>;

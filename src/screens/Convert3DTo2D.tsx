@@ -479,9 +479,8 @@ export const Convert3DTo2D: React.FC = () => {
     else if (/loft/.test(nameLower)) hint = 'loft';
     else if (/dining|table/.test(nameLower)) hint = 'dining-table';
     else if (/bedroom/.test(nameLower)) hint = 'bedroom';
-    else if (/3bhk|3-bhk/.test(nameLower)) hint = '3bhk';
-    else if (/2bhk|2-bhk/.test(nameLower)) hint = '2bhk';
-    else if (/1bhk|1-bhk/.test(nameLower)) hint = '1bhk';
+    // 1bhk/2bhk/3bhk hints removed along with the products themselves —
+    // out of scope per the user's explicit instruction.
     setProductHint(hint);
 
     const reader = new FileReader();

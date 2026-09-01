@@ -2,7 +2,7 @@
 import { useApp } from '../store/AppContext';
 import { PRODUCT_REGISTRY, getProduct } from '../products/productRegistry';
 import { PRODUCT_ADDONS, FIELD_GROUPS } from '../products/addons';
-import type { ProductId, ProductTemplate } from '../products/productTypes';
+import type { ProductId, ProductTemplate, RoomCategory } from '../products/productTypes';
 import type { AddonDef } from '../products/addons';
 import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSelection';
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
@@ -18,6 +18,28 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 const n = (v: number | string) => Number(v);
 type WorkspaceTab = 'measure' | 'drawing' | 'evidence' | 'validation' | 'pdf' | 'history';
+
+// Product Categories spec — fixed display order (§19), independent of
+// PRODUCT_REGISTRY's own array order, so reordering the registry later
+// never silently reorders the category dropdown/PDF sections.
+const ROOM_CATEGORY_ORDER: RoomCategory[] = ['Master Bedroom', 'Living Room', 'Kitchen'];
+
+/** Groups the product library by roomCategory, in the spec's fixed
+ * category order, each group's own products kept in PRODUCT_REGISTRY's
+ * order (§19) — Kitchen is always included even with zero products, so it
+ * can show its "no products yet" placeholder (§21). Products with no
+ * roomCategory set (whole-room/apartment layout products, plus any
+ * pre-existing product the categories spec doesn't mention — e.g. Shoe
+ * Rack — never silently dropped from the dropdown) land in a trailing
+ * "Other Products" group instead of vanishing from the UI entirely. */
+function groupProductsByRoomCategory(registry: ProductTemplate[]): { category: string; products: ProductTemplate[] }[] {
+  const groups = ROOM_CATEGORY_ORDER.map((category) => ({
+    category: category as string,
+    products: registry.filter((p) => p.roomCategory === category),
+  }));
+  const uncategorized = registry.filter((p) => !p.roomCategory);
+  return uncategorized.length > 0 ? [...groups, { category: 'Other Products', products: uncategorized }] : groups;
+}
 
 const MIXED_WARDROBE_FIELDS = [
   { key: 'loftH', label: 'Loft Height', min: 250, max: 800, defaultValue: 450 },
@@ -328,7 +350,7 @@ function captionForSession(product: ProductTemplate, dims: Record<string, number
     .join('   ');
 }
 
-interface CombinedPdfItem { id: ProductId; name: string; icon: string; caption: string; svgHTML: string; }
+interface CombinedPdfItem { id: ProductId; name: string; icon: string; caption: string; svgHTML: string; roomCategory?: RoomCategory; }
 
 // Products the layout engine gives the bigger (half-page) slot to when
 // they're combined with smaller ones — per the user's own worked example
@@ -369,7 +391,7 @@ function pdfSectionHTMLColumn(it: CombinedPdfItem): string {
  * implement "automatically choose the most appropriate layout" in an
  * HTML/print document.
  */
-function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: number, info: PdfProjectInfo): string {
+function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: number, info: PdfProjectInfo, categoryHeading?: RoomCategory): string {
   const n = pageItems.length;
   let gridClass: string;
   let sectionsHTML: string;
@@ -392,11 +414,16 @@ function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: n
   // Project-information block sits in its own header strip — ABOVE and
   // entirely separate from the drawing grid below it, on every page (not
   // just page 1), so it can never overlap a drawing or its dimensions.
+  // Category heading (§14) sits below that, only when this page is the
+  // first page of that category's own run of products — a category with
+  // zero selected products never gets a heading at all, since this is only
+  // ever called with a real, non-empty pageItems for that category.
   return `<div class="pdf-page">
     <div class="page-header">
       ${projectInfoBlockHTML(info)}
       <div class="page-num">Page ${pageNum} of ${pageCount}</div>
     </div>
+    ${categoryHeading ? `<div class="category-heading">${categoryHeading}</div>` : ''}
     <div class="page-grid ${gridClass}">${sectionsHTML}</div>
   </div>`;
 }
@@ -411,9 +438,27 @@ function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: n
 function downloadCombinedPDF(items: CombinedPdfItem[], info: PdfProjectInfo): { ok: boolean; error?: string } {
   if (items.length === 0) return { ok: false, error: 'No product drawings to include.' };
   if (!info.clientName.trim()) return { ok: false, error: 'Client Name is required before a PDF can be generated.' };
-  const pages: CombinedPdfItem[][] = [];
-  for (let i = 0; i < items.length; i += 4) pages.push(items.slice(i, i + 4));
-  const pagesHTML = pages.map((page, i) => pdfPageHTML(page, i + 1, pages.length, info)).join('\n');
+  // Category-grouped pagination (spec §13-14, §19): products are paginated
+  // WITHIN their own roomCategory's own run (never mixing two categories'
+  // drawings onto the same page/grid), in the fixed Master Bedroom → Living
+  // Room → Kitchen order, each category's own products kept in their
+  // already-selected order. A product with no roomCategory (a whole-room/
+  // apartment layout item) falls into its own unlabeled trailing group, so
+  // nothing is ever silently dropped from the PDF.
+  const grouped: { heading?: RoomCategory; items: CombinedPdfItem[] }[] = [
+    ...ROOM_CATEGORY_ORDER.map((category) => ({
+      heading: category,
+      items: items.filter((it) => it.roomCategory === category),
+    })).filter((g) => g.items.length > 0),
+    ...(items.some((it) => !it.roomCategory) ? [{ heading: undefined, items: items.filter((it) => !it.roomCategory) }] : []),
+  ];
+  const pages: { items: CombinedPdfItem[]; heading?: RoomCategory }[] = [];
+  for (const group of grouped) {
+    for (let i = 0; i < group.items.length; i += 4) {
+      pages.push({ items: group.items.slice(i, i + 4), heading: i === 0 ? group.heading : undefined });
+    }
+  }
+  const pagesHTML = pages.map((page, i) => pdfPageHTML(page.items, i + 1, pages.length, info, page.heading)).join('\n');
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -426,6 +471,7 @@ function downloadCombinedPDF(items: CombinedPdfItem[], info: PdfProjectInfo): { 
     .pdf-page:last-child { page-break-after: auto; }
     .page-header { padding-bottom: 6px; border-bottom: 2px solid #333; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
     .page-num { font-size: 9px; color: #666; flex-shrink: 0; }
+    .category-heading { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1e293b; margin: 8px 0 6px; padding-bottom: 3px; border-bottom: 1.5px solid #94a3b8; flex-shrink: 0; }
 ${PINFO_CSS}
     .page-grid { flex: 1; display: grid; gap: 6mm; min-height: 0; }
     .grid-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
@@ -902,7 +948,7 @@ export const ProductFlow: React.FC = () => {
       .map((p) => {
         const session = liveSessions[p.id] ?? freshSession(p);
         const { element } = elementAndIssuesForSession(p, session);
-        return { id: p.id, name: p.name, icon: p.icon, caption: captionForSession(p, session.dims), svgHTML: svgHtmlOf(element) };
+        return { id: p.id, name: p.name, icon: p.icon, caption: captionForSession(p, session.dims), svgHTML: svgHtmlOf(element), roomCategory: p.roomCategory };
       })
       .filter((it) => it.svgHTML);
     const result = downloadCombinedPDF(items, {
@@ -1003,44 +1049,55 @@ export const ProductFlow: React.FC = () => {
               <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>
                 Click a product to open it · tick to include in a combined PDF
               </div>
-              <div className="max-h-64 overflow-auto flex flex-col gap-1 mb-3">
-                {PRODUCT_REGISTRY.map((p) => {
-                  const checked = multiSelectIds.has(p.id);
-                  const active = p.id === selectedId;
-                  const status = statusOf(p.id);
-                  const statusIcon = status === 'completed' ? '✓' : status === 'in-progress' ? '●' : '○';
-                  const statusColor = status === 'completed' ? '#4ade80' : status === 'in-progress' ? '#fbbf24' : '#475569';
-                  return (
-                    <div
-                      key={p.id}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5"
-                      style={{ background: active ? '#1d3a5f' : checked ? '#1e1b4b' : '#0f172a' }}
-                    >
-                      {/* The visible box stays 16px (unchanged theme), but
-                          its tap target is padded out toward the ~44px
-                          comfortable-touch minimum — a bare 16px checkbox
-                          is genuinely hard to hit accurately on a phone. */}
-                      <label className="flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32, margin: -6 }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleMultiSelect(p.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4"
-                        />
-                      </label>
-                      <button
-                        onClick={() => { switchToProduct(p.id); setShowMultiPanel(false); }}
-                        className="flex-1 flex items-center gap-2 text-left py-1"
-                      >
-                        <span className="text-base flex-shrink-0">{p.icon}</span>
-                        <span className="text-sm" style={{ color: '#e2e8f0' }}>{p.name}</span>
-                        {checked && <span className="text-xs ml-auto flex-shrink-0" style={{ color: statusColor }}>{statusIcon}</span>}
-                        {active && <span className="text-[10px]" style={{ color: '#60a5fa' }}>open</span>}
-                      </button>
+              <div className="max-h-80 overflow-auto flex flex-col gap-1 mb-3">
+                {groupProductsByRoomCategory(PRODUCT_REGISTRY).map(({ category, products }) => (
+                  <div key={category} className="mb-1">
+                    <div className="px-2 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: '#7dd3fc' }}>
+                      {category}
                     </div>
-                  );
-                })}
+                    {products.length === 0 ? (
+                      <div className="px-2 py-1.5 text-xs italic" style={{ color: '#475569' }}>No products available yet</div>
+                    ) : (
+                      products.map((p) => {
+                        const checked = multiSelectIds.has(p.id);
+                        const active = p.id === selectedId;
+                        const status = statusOf(p.id);
+                        const statusIcon = status === 'completed' ? '✓' : status === 'in-progress' ? '●' : '○';
+                        const statusColor = status === 'completed' ? '#4ade80' : status === 'in-progress' ? '#fbbf24' : '#475569';
+                        return (
+                          <div
+                            key={p.id}
+                            className="flex items-center gap-2 rounded-lg px-2 py-1.5"
+                            style={{ background: active ? '#1d3a5f' : checked ? '#1e1b4b' : '#0f172a' }}
+                          >
+                            {/* The visible box stays 16px (unchanged theme), but
+                                its tap target is padded out toward the ~44px
+                                comfortable-touch minimum — a bare 16px checkbox
+                                is genuinely hard to hit accurately on a phone. */}
+                            <label className="flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32, margin: -6 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleMultiSelect(p.id)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-4 h-4"
+                              />
+                            </label>
+                            <button
+                              onClick={() => { switchToProduct(p.id); setShowMultiPanel(false); }}
+                              className="flex-1 flex items-center gap-2 text-left py-1"
+                            >
+                              <span className="text-base flex-shrink-0">{p.icon}</span>
+                              <span className="text-sm" style={{ color: '#e2e8f0' }}>{p.name}</span>
+                              {checked && <span className="text-xs ml-auto flex-shrink-0" style={{ color: statusColor }}>{statusIcon}</span>}
+                              {active && <span className="text-[10px]" style={{ color: '#60a5fa' }}>open</span>}
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                ))}
               </div>
               {multiSelectIds.size > 0 && (
                 <>

@@ -890,6 +890,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Bed',
     icon: '🛏️',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     // Simplified per the user's real site-measurement workflow (2026-08-29):
     // a measurement person needs W/L/H + a headboard + optional side tables
@@ -928,6 +929,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Openable Wardrobe',
     icon: '🚪',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     // Simplified per the user's real site-measurement workflow (2026-08-30),
     // same treatment as the Bed: a plain W x H carcass, Depth shown as the
@@ -961,6 +963,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Sliding Wardrobe',
     icon: '🪞',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     demoDimensions: { W: 2400, H: 2090, D: 600 },
     measurementFields: [
@@ -995,6 +998,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'TV Unit',
     icon: '📺',
     category: 'furniture',
+    roomCategory: 'Living Room',
     isFormulaVerified: true,
     demoDimensions: { H: 700, W: 1400 },
     measurementFields: [
@@ -1050,6 +1054,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Dining Table',
     icon: '🍽️',
     category: 'furniture',
+    roomCategory: 'Living Room',
     isFormulaVerified: true,
     demoDimensions: { diningType: 'Folding Dining Table', foldW: 900, foldL: 1500, boxL: 1800, boxW: 900, boxD: 750, topL: 1600, topW: 700 },
     measurementFields: [
@@ -1081,9 +1086,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   // ── DOOR ──────────────────────────────────────────────────────────────────────
   {
     id: 'door',
-    name: 'Door',
+    // Displayed as "Safety Door" per the Product Categories spec — the
+    // Door product built earlier this session IS the reference "Safety
+    // Door", so this is a display rename only, not a new/duplicate engine.
+    name: 'Safety Door',
     icon: '🚪',
     category: 'furniture',
+    roomCategory: 'Living Room',
     isFormulaVerified: true,
     demoDimensions: { H: 2100, W: 900, sidePanel: 'None', sidePanelWLeft: 300, sidePanelWRight: 300, addTop: 0, topH: 300, topW: 900 },
     measurementFields: [
@@ -1148,97 +1157,12 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     DrawingComponent: BedroomDrawing,
   },
 
-  // ── 1 BHK ─────────────────────────────────────────────────────────────────────
-  {
-    id: '1bhk',
-    name: '1 BHK Layout',
-    icon: '🏠',
-    category: 'apartment',
-    isFormulaVerified: false,
-    demoDimensions: { livingL: 3600, livingW: 4200, kitchenL: 2400, kitchenW: 3000, bedL: 3000, bedW: 3600, bathL: 1500, bathW: 2000, ceiling: 2700 },
-    measurementFields: [
-      { key: 'livingL', label: 'Living Length', unit: 'mm', defaultValue: 3600, min: 2400, max: 6000 },
-      { key: 'livingW', label: 'Living Width', unit: 'mm', defaultValue: 4200, min: 2400, max: 6000 },
-      { key: 'kitchenL', label: 'Kitchen Length', unit: 'mm', defaultValue: 2400, min: 1800, max: 4200 },
-      { key: 'kitchenW', label: 'Kitchen Width', unit: 'mm', defaultValue: 3000, min: 1500, max: 4200 },
-      { key: 'bedL', label: 'Bedroom Length', unit: 'mm', defaultValue: 3000, min: 2400, max: 5400 },
-      { key: 'bedW', label: 'Bedroom Width', unit: 'mm', defaultValue: 3600, min: 2400, max: 5400 },
-      { key: 'bathL', label: 'Bathroom Length', unit: 'mm', defaultValue: 1500, min: 1200, max: 2400 },
-      { key: 'bathW', label: 'Bathroom Width', unit: 'mm', defaultValue: 2000, min: 1200, max: 2400 },
-      { key: 'ceiling', label: 'Ceiling Height', unit: 'mm', defaultValue: 2700, min: 2400, max: 3600 },
-    ],
-    views: ['floor-plan', 'kitchen-plan'],
-    computeCutlist: (dims) => [
-      row(1, 'Living / Dining Area', 'Area — sqft', n(dims.livingL), n(dims.livingW), 1, 0, '', 'Flooring / ceiling area'),
-      row(2, 'Kitchen',              'Area — sqft', n(dims.kitchenL), n(dims.kitchenW), 1, 0, '', 'Kitchen area'),
-      row(3, 'Bedroom',              'Area — sqft', n(dims.bedL), n(dims.bedW), 1, 0, '', 'Bedroom area'),
-      row(4, 'Bathroom',             'Area — sqft', n(dims.bathL), n(dims.bathW), 1, 0, '', 'Bathroom area'),
-    ],
-    DrawingComponent: OneBHKDrawing,
-  },
-
-  // ── 2 BHK ─────────────────────────────────────────────────────────────────────
-  {
-    id: '2bhk',
-    name: '2 BHK Layout',
-    icon: '🏡',
-    category: 'apartment',
-    isFormulaVerified: false,
-    demoDimensions: { livingL: 4200, livingW: 5400, kitchenL: 2700, kitchenW: 3300, bed1L: 3600, bed1W: 4200, bed2L: 3000, bed2W: 3600, bath1L: 1500, bath1W: 2000, bath2L: 1200, bath2W: 1800, ceiling: 2700 },
-    measurementFields: [
-      { key: 'livingL', label: 'Living Length', unit: 'mm', defaultValue: 4200, min: 3000, max: 7200 },
-      { key: 'livingW', label: 'Living Width', unit: 'mm', defaultValue: 5400, min: 3000, max: 7200 },
-      { key: 'kitchenL', label: 'Kitchen Length', unit: 'mm', defaultValue: 2700, min: 1800, max: 4800 },
-      { key: 'kitchenW', label: 'Kitchen Width', unit: 'mm', defaultValue: 3300, min: 1800, max: 4800 },
-      { key: 'bed1L', label: 'MBR Length', unit: 'mm', defaultValue: 3600, min: 2400, max: 6000 },
-      { key: 'bed1W', label: 'MBR Width', unit: 'mm', defaultValue: 4200, min: 2400, max: 6000 },
-      { key: 'bed2L', label: 'Bed2 Length', unit: 'mm', defaultValue: 3000, min: 2400, max: 5400 },
-      { key: 'bed2W', label: 'Bed2 Width', unit: 'mm', defaultValue: 3600, min: 2400, max: 5400 },
-      { key: 'bath1L', label: 'Bath1 Length', unit: 'mm', defaultValue: 1500, min: 1200, max: 2400 },
-      { key: 'bath1W', label: 'Bath1 Width', unit: 'mm', defaultValue: 2000, min: 1200, max: 2400 },
-      { key: 'ceiling', label: 'Ceiling Height', unit: 'mm', defaultValue: 2700, min: 2400, max: 3600 },
-    ],
-    views: ['floor-plan', 'bedroom-plans'],
-    computeCutlist: (dims) => [
-      row(1, 'Living / Dining', 'Area', n(dims.livingL), n(dims.livingW), 1, 0, '', 'Flooring area'),
-      row(2, 'Kitchen',         'Area', n(dims.kitchenL), n(dims.kitchenW), 1, 0),
-      row(3, 'Master Bedroom',  'Area', n(dims.bed1L), n(dims.bed1W), 1, 0),
-      row(4, 'Bedroom 2',       'Area', n(dims.bed2L), n(dims.bed2W), 1, 0),
-    ],
-    DrawingComponent: TwoBHKDrawing,
-  },
-
-  // ── 3 BHK ─────────────────────────────────────────────────────────────────────
-  {
-    id: '3bhk',
-    name: '3 BHK Layout',
-    icon: '🏘️',
-    category: 'apartment',
-    isFormulaVerified: false,
-    demoDimensions: { livingL: 5100, livingW: 6000, kitchenL: 3000, kitchenW: 3600, bed1L: 4200, bed1W: 4800, bed2L: 3600, bed2W: 4200, bed3L: 3000, bed3W: 3600, ceiling: 2700 },
-    measurementFields: [
-      { key: 'livingL', label: 'Living Length', unit: 'mm', defaultValue: 5100, min: 3600, max: 8400 },
-      { key: 'livingW', label: 'Living Width', unit: 'mm', defaultValue: 6000, min: 3600, max: 8400 },
-      { key: 'kitchenL', label: 'Kitchen Length', unit: 'mm', defaultValue: 3000, min: 2400, max: 5400 },
-      { key: 'kitchenW', label: 'Kitchen Width', unit: 'mm', defaultValue: 3600, min: 2400, max: 5400 },
-      { key: 'bed1L', label: 'MBR Length', unit: 'mm', defaultValue: 4200, min: 3000, max: 7200 },
-      { key: 'bed1W', label: 'MBR Width', unit: 'mm', defaultValue: 4800, min: 3000, max: 7200 },
-      { key: 'bed2L', label: 'Bed2 Length', unit: 'mm', defaultValue: 3600, min: 2400, max: 6000 },
-      { key: 'bed2W', label: 'Bed2 Width', unit: 'mm', defaultValue: 4200, min: 2400, max: 6000 },
-      { key: 'bed3L', label: 'Bed3 Length', unit: 'mm', defaultValue: 3000, min: 2400, max: 5400 },
-      { key: 'bed3W', label: 'Bed3 Width', unit: 'mm', defaultValue: 3600, min: 2400, max: 5400 },
-      { key: 'ceiling', label: 'Ceiling Height', unit: 'mm', defaultValue: 2700, min: 2400, max: 3600 },
-    ],
-    views: ['floor-plan'],
-    computeCutlist: (dims) => [
-      row(1, 'Living / Dining', 'Area', n(dims.livingL), n(dims.livingW), 1, 0, '', 'Flooring area'),
-      row(2, 'Kitchen',         'Area', n(dims.kitchenL), n(dims.kitchenW), 1, 0),
-      row(3, 'Master Bedroom',  'Area', n(dims.bed1L), n(dims.bed1W), 1, 0),
-      row(4, 'Bedroom 2',       'Area', n(dims.bed2L), n(dims.bed2W), 1, 0),
-      row(5, 'Bedroom 3',       'Area', n(dims.bed3L), n(dims.bed3W), 1, 0),
-    ],
-    DrawingComponent: ThreeBHKDrawing,
-  },
+  // Note: 1 BHK / 2 BHK / 3 BHK Layout products were removed entirely per
+  // the user's explicit instruction (out of scope — this app is a
+  // furniture-fabrication drawing tool, not a room/floor-plan planner).
+  // Their drawing source files (OneBHKDrawing/TwoBHKDrawing/
+  // ThreeBHKDrawing) are left on disk unimported, same convention as every
+  // other removed product this session.
 
   // ── SEPARATE DRESSING ─────────────────────────────────────────────────────────
   // A single vertical stack of three zones — Dressing Box / Switch Board /
@@ -1251,9 +1175,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   // is never independently measured — its height is whatever's left over.
   {
     id: 'separate-dressing',
+    // Maps to "Dressing Unit" in the Product Categories spec's Master
+    // Bedroom list — same product, display name unchanged (Separate
+    // Dressing is this app's own established name for it).
     name: 'Separate Dressing',
     icon: '🪞',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     demoDimensions: { H: 2100, W: 1200, D: 600, dressingBoxH: 1400, baseStorageH: 700, baseStorageW: 1200 },
     measurementFields: [
@@ -1285,6 +1213,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Sofa',
     icon: '🛋️',
     category: 'furniture',
+    roomCategory: 'Living Room',
     isFormulaVerified: true,
     demoDimensions: { H: 850, W: 2100, D: 900 },
     measurementFields: [
@@ -1306,6 +1235,37 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     ),
   },
 
+  // ── SOFA-CUM-BED ──────────────────────────────────────────────────────────────
+  // New product per the Product Categories spec — H x W x D, same real
+  // labeled-box + Depth-diagonal shape as Sofa/Center Table/T.V., so this
+  // reuses that shared module rather than a new near-duplicate file.
+  {
+    id: 'sofa-cum-bed',
+    name: 'Sofa-cum-Bed',
+    icon: '🛏️',
+    category: 'furniture',
+    roomCategory: 'Living Room',
+    isFormulaVerified: true,
+    demoDimensions: { H: 800, W: 1800, D: 900 },
+    measurementFields: [
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 800, min: 400, max: 1200 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1800, min: 900, max: 3000 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 900, min: 500, max: 1400 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cfg: LabeledBoxConfig = { productType: 'sofa-cum-bed', boxLabel: 'SOFA-CUM-BED', title: 'SOFA-CUM-BED', color: '#db2777' };
+      const cutRows = labeledBoxCutlist({ primary: n(dims.W), secondary: n(dims.H), depth: n(dims.D), primaryLabel: 'W', secondaryLabel: 'H' }, cfg);
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => (
+      <LabeledBoxDrawing
+        inp={{ primary: n(props.dims.W), secondary: n(props.dims.H), depth: n(props.dims.D), primaryLabel: 'W', secondaryLabel: 'H' }}
+        cfg={{ productType: 'sofa-cum-bed', boxLabel: 'SOFA-CUM-BED', title: 'SOFA-CUM-BED', color: '#db2777' }}
+      />
+    ),
+  },
+
   // ── CENTER TABLE ──────────────────────────────────────────────────────────────
   // Plan/footprint box (Length x Width), no Height — per the user's spec.
   {
@@ -1313,6 +1273,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Center Table',
     icon: '🛗',
     category: 'furniture',
+    roomCategory: 'Living Room',
     isFormulaVerified: true,
     demoDimensions: { L: 1000, W: 550 },
     measurementFields: [
@@ -1339,9 +1300,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   // them, matching the user's own reference sketch.
   {
     id: 'separate-side-table',
+    // Maps to "Side Table" in the Product Categories spec's Master Bedroom
+    // list — the old plain "Side Table" was explicitly replaced by this
+    // product earlier in this session; display name unchanged.
     name: 'Separate Side Table',
     icon: '🪞',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     demoDimensions: { mirrorW: 500, mirrorH: 700, baseH: 600, baseW: 500, baseD: 400 },
     measurementFields: [
@@ -1365,9 +1330,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   // spec) + optional Top Panel (Left/Right), matching the reference sketch.
   {
     id: 'loft-box',
+    // Maps to "Loft" in the Product Categories spec's Master Bedroom list
+    // — the old plain "Loft Cabinet" was explicitly replaced by this
+    // product earlier in this session; display name unchanged.
     name: 'Loft Box',
     icon: '📦',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 6, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
     measurementFields: [
@@ -1398,6 +1367,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Study Table',
     icon: '📖',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     demoDimensions: { H: 750, W: 1200, D: 600, storage: 'None', storageW: 450, sidePanel: 'None' },
     measurementFields: [
@@ -1429,6 +1399,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Partition',
     icon: '🧱',
     category: 'furniture',
+    roomCategory: 'Living Room',
     isFormulaVerified: true,
     demoDimensions: { type: 'With Framing', H: 2100, W: 900, D: 400, side: 'Left' },
     measurementFields: [
