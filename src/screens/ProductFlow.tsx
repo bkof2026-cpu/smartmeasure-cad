@@ -976,18 +976,18 @@ export const ProductFlow: React.FC = () => {
           360px screenshot: only a sliver of the blue Download PDF button
           was visible, clipped by History). Desktop/tablet (sm+) keeps the
           original single-row layout unchanged. */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 px-3 sm:px-5 py-3 flex-shrink-0"
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4 px-2.5 sm:px-5 py-1.5 sm:py-3 flex-shrink-0"
         style={{ background: '#0d1117', borderBottom: '1px solid #1e293b' }}>
         <div className="relative min-w-0 w-full sm:w-auto">
           <button
             onClick={() => setShowMultiPanel((prev) => !prev)}
-            className="flex w-full sm:w-auto items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold outline-none sm:min-w-[200px]"
+            className="flex w-full sm:w-auto items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold outline-none sm:min-w-[200px]"
             style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045' }}
           >
-            <span className="text-2xl flex-shrink-0">{product.icon}</span>
+            <span className="text-base sm:text-2xl flex-shrink-0">{product.icon}</span>
             <span className="flex-1 text-left truncate">{product.name}</span>
             {multiSelectIds.size > 0 && (
-              <span className="text-xs rounded-full px-1.5 py-0.5 flex-shrink-0" style={{ background: '#4338ca', color: '#fff' }}>{multiSelectIds.size}</span>
+              <span className="text-[10px] sm:text-xs rounded-full px-1.5 py-0.5 flex-shrink-0" style={{ background: '#4338ca', color: '#fff' }}>{multiSelectIds.size}</span>
             )}
             <span className="flex-shrink-0" style={{ color: '#64748b' }}>▾</span>
           </button>
@@ -1067,7 +1067,7 @@ export const ProductFlow: React.FC = () => {
             fighting the dropdown for space on one line — that's what was
             clipping Download PDF behind History before. Unchanged on sm+:
             ml-auto pushes this whole group right, same as the old layout. */}
-        <div className="flex items-center gap-2 flex-wrap sm:ml-auto sm:flex-nowrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:ml-auto sm:flex-nowrap">
           <div className="hidden sm:flex items-center gap-2">
             <span className="text-xs px-2 py-0.5 rounded font-semibold capitalize"
               style={{ background: '#1e293b', color: '#64748b' }}>{product.category}</span>
@@ -1082,7 +1082,7 @@ export const ProductFlow: React.FC = () => {
 
           <button
             onClick={handleDownloadPDF}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0"
+            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold flex-shrink-0"
             style={{ background: '#1d4ed8', color: '#fff' }}>
             ⬇ Download PDF
           </button>
@@ -1090,7 +1090,7 @@ export const ProductFlow: React.FC = () => {
           <div className="relative">
             <button
               onClick={() => setShowHistory((prev) => !prev)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold flex-shrink-0"
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold flex-shrink-0"
               style={{ background: '#1e293b', color: '#cbd5e1', border: '1px solid #243045' }}
             >
               🕘 10-Day History
@@ -1203,7 +1203,7 @@ export const ProductFlow: React.FC = () => {
           squeezed unreadably small to force all six onto one line.
           flex-shrink-0 on each button keeps labels from being crushed;
           whitespace-nowrap keeps them one line each. */}
-      <div className="flex items-center gap-1 px-4 py-2 flex-shrink-0 overflow-x-auto" style={{ background: '#111827', borderBottom: '1px solid #1e293b' }}>
+      <div className="flex items-center gap-1 px-2.5 sm:px-4 py-1 sm:py-2 flex-shrink-0 overflow-x-auto" style={{ background: '#111827', borderBottom: '1px solid #1e293b' }}>
         {([
           ['measure', 'Measure'],
           ['drawing', 'Drawing'],
@@ -1216,13 +1216,13 @@ export const ProductFlow: React.FC = () => {
             key={tab}
             ref={activeWorkspace === tab ? activeTabRef : undefined}
             onClick={() => setActiveWorkspace(tab)}
-            className="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wide flex-shrink-0 whitespace-nowrap"
+            className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wide flex-shrink-0 whitespace-nowrap"
             style={{ background: activeWorkspace === tab ? '#1d4ed8' : '#1e293b', color: activeWorkspace === tab ? '#fff' : '#64748b' }}
           >
             {label}
           </button>
         ))}
-        <span className="ml-auto whitespace-nowrap text-xs flex-shrink-0" style={{ color: '#475569' }}>
+        <span className="ml-auto whitespace-nowrap text-[10px] sm:text-xs flex-shrink-0" style={{ color: '#475569' }}>
           {model.lastSavedAt ? `Saved ${new Date(model.lastSavedAt).toLocaleTimeString('en-IN')}` : 'Not saved'}
         </span>
       </div>
@@ -1503,16 +1503,16 @@ export const ProductFlow: React.FC = () => {
         <div className={`flex-1 flex-col overflow-hidden ${activeWorkspace === 'measure' ? 'hidden lg:flex' : 'flex'}`} style={{ background: '#0d1117' }}>
 
           {/* View selector */}
-          <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0 flex-wrap"
+          <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 flex-shrink-0 flex-wrap"
             style={{ background: '#0d1117', borderBottom: '1px solid #1e293b' }}>
             {product.views.map((v) => (
               <button key={v} onClick={() => setActiveView(v)}
-                className="px-3 py-1 rounded-md text-xs font-semibold capitalize"
+                className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold capitalize"
                 style={{ background: activeView === v ? '#1d4ed8' : '#1e293b', color: activeView === v ? '#fff' : '#64748b' }}>
                 {v.replace(/-/g, ' ')}
               </button>
             ))}
-            <span className="ml-auto text-xs" style={{ color: '#334155' }}>
+            <span className="ml-auto text-[10px] sm:text-xs" style={{ color: '#334155' }}>
               All dims in mm
             </span>
           </div>

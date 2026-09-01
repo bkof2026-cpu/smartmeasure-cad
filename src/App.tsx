@@ -125,13 +125,16 @@ function BottomNav() {
 
 function AppHeader() {
   const { model, screen } = useApp();
+  // Shrunk from 50px/text-sm — on a phone this bar plus the product bar
+  // and tab row were together eating too much vertical space, leaving too
+  // little room for the actual drawing underneath.
   return (
-    <header className="flex items-center gap-3 px-4 border-b lg:hidden"
-      style={{ background: '#0d1117', borderColor: '#243045', height: 50, flexShrink: 0 }}>
-      <span className="text-sm font-black tracking-tight" style={{ color: '#e2e8f0' }}>
+    <header className="flex items-center gap-3 px-3 border-b lg:hidden"
+      style={{ background: '#0d1117', borderColor: '#243045', height: 36, flexShrink: 0 }}>
+      <span className="text-xs font-black tracking-tight" style={{ color: '#e2e8f0' }}>
         SmartMeasure <span style={{ color: '#3b82f6' }}>CAD</span>
       </span>
-      <span className="text-xs ml-auto truncate" style={{ color: '#4a5f7a', maxWidth: 160 }}>
+      <span className="text-[10px] ml-auto truncate" style={{ color: '#4a5f7a', maxWidth: 140 }}>
         {model.project.clientName || 'New Project'}
       </span>
     </header>
