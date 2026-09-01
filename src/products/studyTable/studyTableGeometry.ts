@@ -98,25 +98,19 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   const lines: AnnotationLine[] = [];
   const dimReqs: DimensionRequest[] = [];
 
-  // "Top" — the table's own top PANEL, drawn as a thin double-line band
-  // right at the box's actual top edge (not offset down inside it, per
-  // the user's own correction: "Top is the top of the main box"). The
-  // second, slightly-lower line represents that panel's real material
-  // thickness — a real technical-drawing convention, not just decoration.
-  const topPanelThk = Math.min(18, H * 0.03);
+  // "Top" vs "Tray" — per the user's own reference: both sit at the SAME
+  // horizontal band near the top edge, not one above the other in height.
+  // "Top" is the box's own real top edge (thin black, already the frame
+  // rect's border) — a leader points down-left onto that edge. "Tray" is a
+  // SEPARATE thick blue bar drawn just under that same top edge, spanning
+  // almost the full width — a short leader points up into it from below.
   const topLineY = tableY;
-  const topInnerY = tableY + topPanelThk;
-  lines.push({ x1: tableX, y1: topLineY, x2: tableX + W * 0.62, y2: topLineY, color: '#111827', strokeWidth: 2.5 });
-  lines.push({ x1: tableX + W * 0.06, y1: topInnerY, x2: tableX + W * 0.6, y2: topInnerY, color: '#111827', strokeWidth: 1.2 });
-  // Enlarged from a 12x12-unit diagonal (rendered as only a few screen px
-  // — too cramped for the label to sit on cleanly) to a real, legible
-  // leader reaching well up into the clear space above the box.
-  lines.push({ x1: tableX + W * 0.42, y1: topLineY - 45, x2: tableX + W * 0.32, y2: topLineY - 2, color: '#111827', label: 'Top' });
-  // Tray — dead-center horizontally (exactly W/2, equal distance from both
-  // edges) hanging from the top panel's own lower line, with a short,
-  // fixed drop so it never reads as an oversized gap on a tall table.
-  const trayX = tableX + W * 0.5;
-  lines.push({ x1: trayX, y1: topInnerY, x2: trayX, y2: topInnerY + Math.min(55, H * 0.09), color: '#111827', strokeWidth: 1, label: 'Tray' });
+  lines.push({ x1: tableX + W * 0.32, y1: topLineY, x2: tableX + W * 0.46, y2: topLineY - 42, color: '#111827', label: 'Top', arrowAtStart: true });
+
+  const trayY = tableY + Math.min(10, H * 0.02);
+  const trayInset = W * 0.06;
+  lines.push({ x1: tableX + trayInset, y1: trayY, x2: tableX + W - trayInset, y2: trayY, color: '#2563eb', strokeWidth: 3 });
+  lines.push({ x1: tableX + W * 0.5, y1: trayY, x2: tableX + W * 0.62, y2: trayY + 38, color: '#2563eb', label: 'Tray', arrowAtStart: true });
 
   // Base — a bold line right on the table's own bottom edge, matching the
   // Top line's treatment (the box's own thin rect stroke there reads as
@@ -151,13 +145,15 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
     const fesiaH = H * 0.15;
     const skirtH = H * 0.15;
     const shutterH = H - fesiaH - skirtH;
-    components.push({ id: `${id}-fascia`, type: 'FESIA', label: '', x: sx + 2, y: tableY + 2, width: inp.storageW - 4, height: fesiaH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
-    components.push({ id: `${id}-shutter`, type: 'SHUTTER', label: '', x: sx + 2, y: tableY + fesiaH, width: inp.storageW - 4, height: shutterH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
-    components.push({ id: `${id}-skirting`, type: 'SKIRT', label: '', x: sx + 2, y: tableY + fesiaH + shutterH, width: inp.storageW - 4, height: skirtH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
+    // Names now sit centered INSIDE each of their own bands (the standard
+    // component-label convention used everywhere else in this engine),
+    // not on an external leader line pointing out into the margin.
+    components.push({ id: `${id}-fascia`, type: 'FESIA', label: 'Fesia', x: sx + 2, y: tableY + 2, width: inp.storageW - 4, height: fesiaH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
+    components.push({ id: `${id}-shutter`, type: 'SHUTTER', label: 'Shutter', x: sx + 2, y: tableY + fesiaH, width: inp.storageW - 4, height: shutterH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
+    components.push({ id: `${id}-skirting`, type: 'SKIRT', label: 'Skirting', x: sx + 2, y: tableY + fesiaH + shutterH, width: inp.storageW - 4, height: skirtH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
+    // "Storage" itself still reads as an external leader — it names the
+    // whole assembly, not one specific band.
     const labelX = side === 'left' ? sx - 55 : sx + inp.storageW + 55;
-    lines.push({ x1: side === 'left' ? sx : sx + inp.storageW, y1: tableY + fesiaH / 2, x2: labelX, y2: tableY + fesiaH / 2, color: STORAGE_COLOR, label: 'Fesia' });
-    lines.push({ x1: side === 'left' ? sx : sx + inp.storageW, y1: tableY + H * 0.5, x2: labelX, y2: tableY + H * 0.5, color: STORAGE_COLOR, label: 'Shutter' });
-    lines.push({ x1: side === 'left' ? sx : sx + inp.storageW, y1: tableY + H - skirtH / 2, x2: labelX, y2: tableY + H - skirtH / 2, color: STORAGE_COLOR, label: 'Skirting' });
     lines.push({ x1: side === 'left' ? sx : sx + inp.storageW, y1: tableY + fesiaH / 2, x2: labelX, y2: tableY - 30, color: STORAGE_COLOR, label: 'Storage' });
     dimReqs.push({ axis: 'h', x1: sx, y1: tableY + H + 26, x2: sx + inp.storageW, y2: tableY + H + 26, edge: 'bottom', componentIds: [id], label: `${Math.round(inp.storageW)} mm (Storage W)`, source: { formula: 'Storage Width (entered)', constants: [] }, color: STORAGE_COLOR });
     return sx;
@@ -177,24 +173,30 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
     // staying on the panel's own real edge, and reaches further out (70,
     // not 50) so the label sits in clean space past the H dimension too.
     const leaderY = tableY + H * 0.25;
-    lines.push({ x1: px + panelW / 2, y1: leaderY, x2: px + (side === 'left' ? -70 : panelW + 70), y2: leaderY - 25, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})` });
+    lines.push({ x1: px + panelW / 2, y1: leaderY, x2: px + (side === 'left' ? -70 : panelW + 70), y2: leaderY - 25, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})`, arrowAtStart: true });
   }
   if (hasLeftPanel) drawSidePanel('left');
   if (hasRightPanel) drawSidePanel('right');
 
   // Total Width — only shown when Storage or a Side Panel actually changes
   // the overall footprint (matching the "no redundant dimension" rule used
-  // throughout this engine).
+  // throughout this engine). Shares the table's own bottom edge with "W"
+  // (not a hand-offset world-mm gap, which shrinks to nothing at compressed
+  // drawing scale) — the real fix is forcing it a tier further out below,
+  // same pattern already used for Loft Box's Top Panel W vs overall W.
   const outerLeft = hasLeftPanel ? (hasLeftStorage ? leftStorageX - panelW : tableX - panelW) : (hasLeftStorage ? leftStorageX : tableX);
   const outerRight = hasRightPanel ? rightStorageEndX + panelW : rightStorageEndX;
-  if (outerLeft !== tableX || outerRight !== tableX + W) {
-    dimReqs.push({ axis: 'h', x1: outerLeft, y1: tableY + H + 52, x2: outerRight, y2: tableY + H + 52, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth(inp))} mm (total width)`, source: { formula: 'Total Width = Table Width + Storage Width(s)', constants: [] } });
+  const showTotalWidth = outerLeft !== tableX || outerRight !== tableX + W;
+  if (showTotalWidth) {
+    dimReqs.push({ axis: 'h', x1: outerLeft, y1: tableY + H, x2: outerRight, y2: tableY + H, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth(inp))} mm (total width)`, source: { formula: 'Total Width = Table Width + Storage Width(s)', constants: [] } });
   }
 
   const worldWidth = Math.max(outerRight + 90, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
   const worldHeight = Math.max(tableY + H + 70, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
-  const dimensions = resolveDimensions(dimReqs);
+  const resolvedDims = resolveDimensions(dimReqs);
+  const widthTier = resolvedDims.find((d) => d.label.includes('(W)') && !d.label.includes('total'))?.tier ?? 0;
+  const dimensions = resolvedDims.map((d) => (d.label.includes('total width') ? { ...d, tier: Math.max(d.tier, widthTier + 1) } : d));
   const issues = [
     ...validateMeasurements({ H, W, D }, [
       { key: 'H', label: 'Height', min: 1 },

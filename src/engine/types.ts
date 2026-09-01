@@ -92,6 +92,11 @@ export interface AnnotationLine {
    * against in this view (real hand-sketch convention, not a measured
    * axis-aligned DimensionLine). */
   label?: string;
+  /** Draws a real arrowhead at (x1, y1) — the same marker used for real
+   * DimensionLines — for annotation leaders that should read as pointing
+   * AT the thing they label (e.g. "Side Panel" pointing at its own edge),
+   * rather than a plain unmarked line. Defaults to no arrowhead. */
+  arrowAtStart?: boolean;
 }
 
 /** Everything needed to draw one view of one resolved design. */

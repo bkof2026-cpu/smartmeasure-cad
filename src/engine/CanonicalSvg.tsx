@@ -249,6 +249,7 @@ export function TechnicalDrawingSvg({
             <line
               x1={px1} y1={py1} x2={px2} y2={py2}
               stroke={l.color ?? '#94a3b8'} strokeWidth={l.strokeWidth ?? 0.8} strokeDasharray={l.dashed ? '3 2' : undefined}
+              markerStart={l.arrowAtStart ? 'url(#canon-arrow)' : undefined}
             />
             {l.label && (
               <text
