@@ -98,17 +98,22 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
   const lines: AnnotationLine[] = [];
   const dimReqs: DimensionRequest[] = [];
 
-  // "Top" surface line near the top edge — symmetric margins on both sides
-  // (was 6%-70%, biased left) so it reads as the table's own centered top
-  // surface, not an off-center stripe.
-  const topLineY = tableY + H * 0.08;
-  lines.push({ x1: tableX + W * 0.06, y1: topLineY, x2: tableX + W * 0.94, y2: topLineY, color: '#111827', strokeWidth: 2 });
-  lines.push({ x1: tableX + W * 0.4, y1: topLineY - 14, x2: tableX + W * 0.46, y2: topLineY - 3, color: '#111827', label: 'Top' });
+  // "Top" — the table's own top PANEL, drawn as a thin double-line band
+  // right at the box's actual top edge (not offset down inside it, per
+  // the user's own correction: "Top is the top of the main box"). The
+  // second, slightly-lower line represents that panel's real material
+  // thickness — a real technical-drawing convention, not just decoration.
+  const topPanelThk = Math.min(18, H * 0.03);
+  const topLineY = tableY;
+  const topInnerY = tableY + topPanelThk;
+  lines.push({ x1: tableX, y1: topLineY, x2: tableX + W * 0.62, y2: topLineY, color: '#111827', strokeWidth: 2.5 });
+  lines.push({ x1: tableX + W * 0.06, y1: topInnerY, x2: tableX + W * 0.6, y2: topInnerY, color: '#111827', strokeWidth: 1.2 });
+  lines.push({ x1: tableX + W * 0.4, y1: topLineY - 16, x2: tableX + W * 0.46, y2: topLineY - 4, color: '#111827', label: 'Top' });
   // Tray — dead-center horizontally (exactly W/2, equal distance from both
-  // edges, was 40% from the left before) and a short drop (was 0.18*H,
-  // now a fixed, modest reach so it doesn't read as an oversized gap).
+  // edges) hanging from the top panel's own lower line, with a short,
+  // fixed drop so it never reads as an oversized gap on a tall table.
   const trayX = tableX + W * 0.5;
-  lines.push({ x1: trayX, y1: topLineY, x2: trayX, y2: topLineY + Math.min(60, H * 0.1), color: '#111827', strokeWidth: 1, label: 'Tray' });
+  lines.push({ x1: trayX, y1: topInnerY, x2: trayX, y2: topInnerY + Math.min(55, H * 0.09), color: '#111827', strokeWidth: 1, label: 'Tray' });
 
   // Base — a bold line right on the table's own bottom edge, matching the
   // Top line's treatment (the box's own thin rect stroke there reads as
@@ -134,10 +139,14 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
     const sx = side === 'left' ? tableX - inp.storageW - (hasLeftPanel ? panelW : 0) : tableX + W + (hasRightPanel ? panelW : 0);
     const id = `storage-${side}`;
     components.push({ id, type: 'STORAGE_FRAME', label: '', x: sx, y: tableY, width: inp.storageW, height: H, qty: 1, visible: true, source: { formula: `Width entered | Height = Table Height (auto) | Depth = Table Depth (auto)`, constants: [] } });
-    // Fascia / Shutter / Skirting — three structural bands, visual only,
-    // matching the reference sketch's own labels and proportions.
-    const fesiaH = Math.min(30, H * 0.06);
-    const skirtH = Math.min(24, H * 0.05);
+    // Fascia / Shutter / Skirting — three structural bands, visual only.
+    // Previously capped at tiny fixed sizes (30mm/24mm) which, against a
+    // typical ~750mm table, rendered as barely-visible slivers — nothing
+    // like the reference sketch's three clearly-sized bands. Proportional
+    // to the storage's own real Height instead, so all three stay clearly
+    // visible and correctly labeled regardless of the entered size.
+    const fesiaH = H * 0.15;
+    const skirtH = H * 0.15;
     const shutterH = H - fesiaH - skirtH;
     components.push({ id: `${id}-fascia`, type: 'FESIA', label: '', x: sx + 2, y: tableY + 2, width: inp.storageW - 4, height: fesiaH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
     components.push({ id: `${id}-shutter`, type: 'SHUTTER', label: '', x: sx + 2, y: tableY + fesiaH, width: inp.storageW - 4, height: shutterH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
