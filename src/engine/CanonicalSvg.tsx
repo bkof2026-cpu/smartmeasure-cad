@@ -230,9 +230,12 @@ export function TechnicalDrawingSvg({
         // else drawn via AnnotationLine) must read PARALLEL to their own
         // line, at whatever angle that line actually has — never forced
         // horizontal. Centered on the line's own midpoint (not its
-        // endpoint), offset only perpendicular to it (the -4 in y, applied
-        // before rotation) so the text sits just off the stroke rather than
-        // on top of it.
+        // endpoint), offset only perpendicular to it (the -1.5 in y,
+        // applied before rotation) so the text reads as riding directly on
+        // the line — real CAD dimension-text convention — rather than
+        // floating a visible gap above it (the previous -4 read as
+        // disconnected from the line on the smaller/shorter diagonals many
+        // products use).
         const mx = (px1 + px2) / 2, my = (py1 + py2) / 2;
         let angleDeg = (Math.atan2(py2 - py1, px2 - px1) * 180) / Math.PI;
         // Never let the label render upside-down — CAD dimension text stays
@@ -249,7 +252,7 @@ export function TechnicalDrawingSvg({
             />
             {l.label && (
               <text
-                x={mx} y={my - 4} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}
+                x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}
                 transform={`rotate(${angleDeg} ${mx} ${my})`}
               >
                 {l.label}

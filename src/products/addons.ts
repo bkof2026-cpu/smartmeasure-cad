@@ -43,7 +43,11 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Headboard', color: '#f59e0b', keys: ['hasHeadboard', 'headboardH'] },
   ],
   'separate-side-table': [
-    { label: 'Mirror', color: '#111827', keys: ['mirrorW', 'mirrorH'] },
+    // #111827 (near-black, matching the Mirror's own drawing outline
+    // color) was invisible against the dark form background — the
+    // measurement-form label needs a bright, readable color regardless of
+    // what shade the drawing itself uses for that component's outline.
+    { label: 'Mirror', color: '#e2e8f0', keys: ['mirrorW', 'mirrorH'] },
     { label: 'Base Storage', color: '#0891b2', keys: ['baseH', 'baseW', 'baseD'] },
   ],
   'separate-dressing': [
@@ -77,7 +81,10 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Side Panel', color: '#7c3aed', keys: ['sidePanel'] },
   ],
   partition: [
-    { label: 'Partition', color: '#111827', keys: ['type', 'H', 'W', 'D', 'side'] },
+    // Same fix as Separate Side Table's Mirror group — near-black is
+    // invisible on the dark form background, even though it matches the
+    // drawing's own frame outline color.
+    { label: 'Partition', color: '#e2e8f0', keys: ['type', 'H', 'W', 'D', 'side'] },
   ],
   'dining-table': [
     { label: 'Table Top', color: '#f59e0b', keys: ['L', 'W', 'topThick'] },
