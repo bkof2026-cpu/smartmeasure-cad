@@ -109,6 +109,23 @@ export interface AnnotationLine {
   labelAtStart?: boolean;
 }
 
+/**
+ * A real CAD outline that isn't a plain rectangle — e.g. the Folding Dining
+ * Table's rounded-bottom top surface. `d` is an SVG path string in WORLD mm
+ * coordinates (the same coordinate space every ComponentSpec/AnnotationLine
+ * uses) — CanonicalSvg applies the shared world→screen transform to the
+ * whole shape via a wrapping <g>, so it scales exactly like everything else
+ * on the drawing rather than needing its own pixel math per product.
+ */
+export interface CustomShape {
+  id: string;
+  d: string;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  label?: string;
+}
+
 /** Everything needed to draw one view of one resolved design. */
 export interface ResolvedDrawing {
   view: string;
@@ -122,6 +139,9 @@ export interface ResolvedDrawing {
   issues: ValidationIssue[];
   formulaStatus: FormulaStatus;
   lines?: AnnotationLine[];
+  /** Non-rectangular real geometry (curved outlines, etc.) — rendered
+   * alongside components, before dimensions/lines so leaders draw on top. */
+  shapes?: CustomShape[];
 }
 
 /** Numeric measurement inputs, keyed by field key (W, H, D, thk, doorQty, ...). */

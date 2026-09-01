@@ -22,6 +22,10 @@ import { StudyTableDrawing } from './studyTable/StudyTableDrawing';
 import { studyTableCutlist } from './studyTable/studyTableGeometry';
 import { PartitionDrawing } from './partition/PartitionDrawing';
 import { partitionCutlist } from './partition/partitionGeometry';
+import { DiningTableDrawing2 } from './diningTable/DiningTableDrawing2';
+import { diningTableCutlist } from './diningTable/diningTableGeometry';
+import { DoorDrawing } from './door/DoorDrawing';
+import { doorCutlist } from './door/doorGeometry';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { SimpleWardrobeDrawing } from './wardrobe/SimpleWardrobeDrawing';
@@ -1036,32 +1040,82 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   },
 
   // ── DINING TABLE ──────────────────────────────────────────────────────────────
+  // Updated per the "Dining Table Type" master spec — replaces the legacy
+  // apron/leg drawing with two real engine-driven types (Folding / Simple)
+  // behind a single dropdown, matching the reference drawings. Legacy
+  // DiningTableDrawing is left on disk unimported, same convention as the
+  // old Side Table/Loft Cabinet engines above.
   {
     id: 'dining-table',
     name: 'Dining Table',
     icon: '🍽️',
     category: 'furniture',
-    isFormulaVerified: false,
-    demoDimensions: { L: 1800, W: 900, H: 750, topThick: 30, seats: 6, legType: 'tapered' },
+    isFormulaVerified: true,
+    demoDimensions: { diningType: 'Folding Dining Table', foldW: 900, foldL: 1500, boxL: 1800, boxW: 900, boxD: 750, topL: 1600, topW: 700 },
     measurementFields: [
-      { key: 'L', label: 'Table Length', unit: 'mm', defaultValue: 1800, min: 1200, max: 3000 },
-      { key: 'W', label: 'Table Width', unit: 'mm', defaultValue: 900, min: 700, max: 1200 },
-      { key: 'H', label: 'Table Height', unit: 'mm', defaultValue: 750, min: 680, max: 800 },
-      { key: 'topThick', label: 'Top Thickness', unit: 'mm', defaultValue: 30, min: 18, max: 60 },
-      { key: 'seats', label: 'Number of Seats', unit: 'select', defaultValue: 6, options: ['4', '6', '8', '10'] },
-      { key: 'legType', label: 'Leg Type', unit: 'select', defaultValue: 'tapered', options: ['tapered', 'straight', 'pedestal'] },
+      { key: 'diningType', label: 'Dining Table Type', unit: 'select', defaultValue: 'Folding Dining Table', options: ['Folding Dining Table', 'Simple Dining Table'] },
+      // Folding Dining Table — Width × Length only, no Depth.
+      { key: 'foldW', label: 'Width', unit: 'mm', defaultValue: 900, min: 500, max: 2000 },
+      { key: 'foldL', label: 'Length', unit: 'mm', defaultValue: 1500, min: 700, max: 3000 },
+      // Simple Dining Table — outer Box (L × W × D) + inner Top (L × W).
+      { key: 'boxL', label: 'Box Length', unit: 'mm', defaultValue: 1800, min: 700, max: 3000 },
+      { key: 'boxW', label: 'Box Width', unit: 'mm', defaultValue: 900, min: 500, max: 1500 },
+      { key: 'boxD', label: 'Box Depth', unit: 'mm', defaultValue: 750, min: 400, max: 900 },
+      { key: 'topL', label: 'Top Length', unit: 'mm', defaultValue: 1600, min: 400, max: 3000 },
+      { key: 'topW', label: 'Top Width', unit: 'mm', defaultValue: 700, min: 300, max: 1500 },
     ],
-    views: ['plan', 'front', 'side'],
+    views: ['plan'],
     computeCutlist: (dims) => {
-      const L = n(dims.L), W = n(dims.W), H = n(dims.H), topThick = n(dims.topThick);
-      return [
-        row(1, 'Top',          'Solid Wood / MDF', L,         W,            1, topThick),
-        row(2, 'Apron Long',   'Solid Wood',       L - 100,   80,           2, 30,  '', 'Long side apron'),
-        row(3, 'Apron Short',  'Solid Wood',       W - 100,   80,           2, 30,  '', 'Short side apron'),
-        row(4, 'Leg',          'Solid Wood',       80,        H - topThick, 4, 80,  '', `${String(dims.legType)} leg`),
-      ];
+      const diningType = String(dims.diningType ?? 'Folding Dining Table').toLowerCase().startsWith('simple') ? 'simple' : 'folding';
+      const cutRows = diningTableCutlist({
+        type: diningType,
+        foldW: n(dims.foldW) || 900, foldL: n(dims.foldL) || 1500,
+        boxL: n(dims.boxL) || 1800, boxW: n(dims.boxW) || 900, boxD: n(dims.boxD) || 750,
+        topL: n(dims.topL) || 1600, topW: n(dims.topW) || 700,
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
-    DrawingComponent: DiningTableDrawing,
+    DrawingComponent: (props) => <DiningTableDrawing2 dims={props.dims} />,
+  },
+
+  // ── DOOR ──────────────────────────────────────────────────────────────────────
+  {
+    id: 'door',
+    name: 'Door',
+    icon: '🚪',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { H: 2100, W: 900, sidePanel: 'None', sidePanelWLeft: 300, sidePanelWRight: 300, addTop: 0, topH: 300, topW: 900 },
+    measurementFields: [
+      { key: 'H', label: 'Door Height', unit: 'mm', defaultValue: 2100, min: 1500, max: 2700 },
+      { key: 'W', label: 'Door Width', unit: 'mm', defaultValue: 900, min: 500, max: 1500 },
+      { key: 'sidePanel', label: 'Add Side Panel', unit: 'select', defaultValue: 'None', options: ['None', 'Left', 'Right', 'Both'] },
+      { key: 'sidePanelWLeft', label: 'Left Side Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 900 },
+      { key: 'sidePanelWRight', label: 'Right Side Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 900 },
+      { key: 'addTop', label: 'Add Top', unit: 'bool', defaultValue: 0 },
+      { key: 'topH', label: 'Top Height', unit: 'mm', defaultValue: 300, min: 100, max: 900 },
+      // Defaults to Door Width (900) — the spec's "Top Width auto-populates
+      // from Door Width" behaviour. Overridable like any other field; the
+      // drawing/dimension-dedup logic in doorGeometry.ts compares the
+      // CURRENT entered value against the current Door Width live, so this
+      // stays correct even if the user changes Door Width afterwards.
+      { key: 'topW', label: 'Top Width', unit: 'mm', defaultValue: 900, min: 200, max: 1500 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const sidePanel = String(dims.sidePanel ?? 'None').toLowerCase();
+      const cutRows = doorCutlist({
+        H: n(dims.H) || 2100, W: n(dims.W) || 900,
+        sidePanel: (sidePanel === 'left' || sidePanel === 'right' || sidePanel === 'both' ? sidePanel : 'none'),
+        sidePanelWLeft: n(dims.sidePanelWLeft) || 300,
+        sidePanelWRight: n(dims.sidePanelWRight) || 300,
+        addTop: Number(dims.addTop ?? 0) === 1,
+        topH: n(dims.topH) || 300,
+        topW: n(dims.topW) || n(dims.W) || 900,
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <DoorDrawing dims={props.dims} />,
   },
 
   // ── BEDROOM ───────────────────────────────────────────────────────────────────

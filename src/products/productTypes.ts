@@ -20,7 +20,8 @@ export type ProductId =
   | 'separate-side-table'
   | 'loft-box'
   | 'study-table'
-  | 'partition';
+  | 'partition'
+  | 'door';
 
 export interface MeasurementField {
   key: string;

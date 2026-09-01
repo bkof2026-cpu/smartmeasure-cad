@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnnotationLine, ComponentSpec, DimensionLine } from './types';
+import type { AnnotationLine, ComponentSpec, CustomShape, DimensionLine } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared SVG primitives used by every product's technical drawing renderer.
@@ -135,6 +135,7 @@ interface RenderProps {
   components: ComponentSpec[];
   dimensions: DimensionLine[];
   lines?: AnnotationLine[];
+  shapes?: CustomShape[];
   maxVw?: number;
   maxVh?: number;
   componentStyle?: (c: ComponentSpec) => ComponentStyle;
@@ -145,7 +146,7 @@ interface RenderProps {
 
 /** The one renderer every product's technical drawing view goes through. */
 export function TechnicalDrawingSvg({
-  worldWidth, worldHeight, title, components, dimensions, lines = [],
+  worldWidth, worldHeight, title, components, dimensions, lines = [], shapes = [],
   // Bumped from 640x480 — the densest drawings (e.g. Bed with both side
   // tables + Profile Shutter, all their own dimension labels at a constant,
   // legible font size regardless of scale) were compressing to a scale so
@@ -223,6 +224,15 @@ export function TechnicalDrawingSvg({
           </g>
         );
       })}
+      {shapes.map((s) => (
+        // World→screen mapping applied as a single transform on the whole
+        // path — the `d` string is authored in plain world mm, same
+        // coordinate space as every ComponentSpec, so a product never has
+        // to hand-multiply its own path points by ox/oy/scale.
+        <g key={s.id} transform={`translate(${ox} ${oy}) scale(${scale})`}>
+          <path d={s.d} fill={s.fill ?? '#f0eee8'} stroke={s.stroke ?? '#3b82f6'} strokeWidth={(s.strokeWidth ?? 1.2) / scale} />
+        </g>
+      ))}
       {lines.map((l, i) => {
         const px1 = ox + l.x1 * scale, py1 = oy + l.y1 * scale;
         const px2 = ox + l.x2 * scale, py2 = oy + l.y2 * scale;

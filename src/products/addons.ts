@@ -87,9 +87,15 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Partition', color: '#e2e8f0', keys: ['type', 'H', 'W', 'D', 'side'] },
   ],
   'dining-table': [
-    { label: 'Table Top', color: '#f59e0b', keys: ['L', 'W', 'topThick'] },
-    { label: 'Frame',     color: '#3b82f6', keys: ['H'] },
-    { label: 'Seating',   color: '#22c55e', keys: ['seats'] },
+    { label: 'Dining Table', color: '#e2e8f0', keys: ['diningType'] },
+    { label: 'Folding Dining Table', color: '#3b82f6', keys: ['foldW', 'foldL'] },
+    { label: 'Simple Dining Table — Box', color: '#3b82f6', keys: ['boxL', 'boxW', 'boxD'] },
+    { label: 'Simple Dining Table — Top', color: '#f59e0b', keys: ['topL', 'topW'] },
+  ],
+  door: [
+    { label: 'Door', color: '#3b82f6', keys: ['H', 'W'] },
+    { label: 'Side Panel', color: '#0891b2', keys: ['sidePanel', 'sidePanelWLeft', 'sidePanelWRight'] },
+    { label: 'Top', color: '#7c3aed', keys: ['addTop', 'topH', 'topW'] },
   ],
   bedroom: [
     { label: 'Room Size', color: '#3b82f6', keys: ['roomL', 'roomW'] },
