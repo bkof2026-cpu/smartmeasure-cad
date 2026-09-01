@@ -173,10 +173,18 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
     // Anchored at 25% down the panel (was the exact vertical center,
     // H/2) — the Height dimension's own label is ALSO centered at H/2 on
     // this same left side, so the two collided. This clears it while
-    // staying on the panel's own real edge, and reaches further out (70,
-    // not 50) so the label sits in clean space past the H dimension too.
+    // staying on the panel's own real edge.
+    // The leader itself is long (reaches well out past the H dimension),
+    // with the arrowhead at the panel edge and the label sitting at the
+    // OTHER end — the arrow's own starting point, out in clear space —
+    // rather than floating at the line's midpoint on top of the line.
     const leaderY = tableY + H * 0.25;
-    lines.push({ x1: px + panelW / 2, y1: leaderY, x2: px + (side === 'left' ? -70 : panelW + 70), y2: leaderY - 25, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})`, arrowAtStart: true });
+    const farX = px + (side === 'left' ? -140 : panelW + 140);
+    const farY = leaderY - 55;
+    // x1/y1 is the far/outer end — the arrow's own starting point, where
+    // the label anchors (labelAtStart) — and x2/y2 is the panel edge,
+    // where the arrowhead lands (arrowAtEnd).
+    lines.push({ x1: farX, y1: farY, x2: px + panelW / 2, y2: leaderY, color: '#7c3aed', label: `Side Panel (${side === 'left' ? 'Left' : 'Right'})`, labelAtStart: true, arrowAtEnd: true });
   }
   if (hasLeftPanel) drawSidePanel('left');
   if (hasRightPanel) drawSidePanel('right');

@@ -97,6 +97,16 @@ export interface AnnotationLine {
    * AT the thing they label (e.g. "Side Panel" pointing at its own edge),
    * rather than a plain unmarked line. Defaults to no arrowhead. */
   arrowAtStart?: boolean;
+  /** Same as arrowAtStart but draws the arrowhead at (x2, y2) instead —
+   * for a leader authored label-end-first, where the label anchors at
+   * (x1, y1) and the arrow should point at the OTHER end. */
+  arrowAtEnd?: boolean;
+  /** Places the label at the line's own (x1, y1) end instead of the
+   * default midpoint — for a long leader where the caption should sit
+   * right at the arrow's starting point (typically paired with
+   * arrowAtStart so the label and the arrowhead anchor the same end),
+   * rather than floating in the middle of a long line. */
+  labelAtStart?: boolean;
 }
 
 /** Everything needed to draw one view of one resolved design. */

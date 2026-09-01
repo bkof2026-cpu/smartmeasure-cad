@@ -236,7 +236,11 @@ export function TechnicalDrawingSvg({
         // floating a visible gap above it (the previous -4 read as
         // disconnected from the line on the smaller/shorter diagonals many
         // products use).
-        const mx = (px1 + px2) / 2, my = (py1 + py2) / 2;
+        // labelAtStart anchors the caption at the line's own (x1,y1) end
+        // instead of its midpoint — for a long leader whose label should
+        // sit right at the arrow's starting point, not float in the middle.
+        const mx = l.labelAtStart ? px1 : (px1 + px2) / 2;
+        const my = l.labelAtStart ? py1 : (py1 + py2) / 2;
         let angleDeg = (Math.atan2(py2 - py1, px2 - px1) * 180) / Math.PI;
         // Never let the label render upside-down — CAD dimension text stays
         // readable left-to-right / bottom-to-top, so angles past vertical
@@ -250,6 +254,7 @@ export function TechnicalDrawingSvg({
               x1={px1} y1={py1} x2={px2} y2={py2}
               stroke={l.color ?? '#94a3b8'} strokeWidth={l.strokeWidth ?? 0.8} strokeDasharray={l.dashed ? '3 2' : undefined}
               markerStart={l.arrowAtStart ? 'url(#canon-arrow)' : undefined}
+              markerEnd={l.arrowAtEnd ? 'url(#canon-arrow)' : undefined}
             />
             {l.label && (
               <text
