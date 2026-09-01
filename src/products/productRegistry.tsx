@@ -6,6 +6,8 @@ import { resolveSideTableFront, resolveSideTablePlan, resolveSideTableSide } fro
 import { computeSideTableCutlist } from './sideTable/sideTableFormulas';
 import { SimpleSideTableDrawing } from './sideTable/SimpleSideTableDrawing';
 import { simpleSideTableCutlist } from './sideTable/simpleSideTableGeometry';
+import { SeparateDressingDrawing } from './separateDressing/SeparateDressingDrawing';
+import { separateDressingCutlist } from './separateDressing/separateDressingGeometry';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { BoxTechnicalDrawing } from './loft/BoxTechnicalDrawing';
@@ -1236,6 +1238,41 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       row(5, 'Bedroom 3',       'Area', n(dims.bed3L), n(dims.bed3W), 1, 0),
     ],
     DrawingComponent: ThreeBHKDrawing,
+  },
+
+  // ── SEPARATE DRESSING ─────────────────────────────────────────────────────────
+  // A single vertical stack of three zones — Dressing Box / Switch Board /
+  // Base Storage — matching the user's own reference sketch. Total Depth is
+  // shared by all three zones (one "/" diagonal leader); Total Width is
+  // shared by Dressing Box + Switch Board, and by Base Storage too UNLESS
+  // its own width is entered differently, in which case a second width
+  // dimension appears just for it (no duplicate dimension when identical,
+  // per the user's explicit rule). Switch Board is a real visual zone but
+  // is never independently measured — its height is whatever's left over.
+  {
+    id: 'separate-dressing',
+    name: 'Separate Dressing',
+    icon: '🪞',
+    category: 'furniture',
+    isFormulaVerified: true,
+    demoDimensions: { H: 2100, W: 1200, D: 600, dressingBoxH: 1400, baseStorageH: 700, baseStorageW: 1200 },
+    measurementFields: [
+      { key: 'H', label: 'Total Height', unit: 'mm', defaultValue: 2100, min: 1200, max: 2700 },
+      { key: 'W', label: 'Total Width', unit: 'mm', defaultValue: 1200, min: 600, max: 2400 },
+      { key: 'D', label: 'Total Depth', unit: 'mm', defaultValue: 600, min: 300, max: 700 },
+      { key: 'dressingBoxH', label: 'Dressing Box Height', unit: 'mm', defaultValue: 1400, min: 400, max: 2000 },
+      { key: 'baseStorageH', label: 'Base Storage Height', unit: 'mm', defaultValue: 700, min: 300, max: 1200 },
+      { key: 'baseStorageW', label: 'Base Storage Width', unit: 'mm', defaultValue: 1200, min: 300, max: 2400 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cutRows = separateDressingCutlist({
+        H: n(dims.H), W: n(dims.W), D: n(dims.D),
+        dressingBoxH: n(dims.dressingBoxH), baseStorageH: n(dims.baseStorageH), baseStorageW: n(dims.baseStorageW) || n(dims.W),
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <SeparateDressingDrawing dims={props.dims} />,
   },
 ];
 

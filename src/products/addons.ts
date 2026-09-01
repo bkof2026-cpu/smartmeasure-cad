@@ -45,6 +45,11 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   'side-table': [
     { label: 'Side Table', color: '#3b82f6', keys: ['W', 'H', 'D', 'doors'] },
   ],
+  'separate-dressing': [
+    { label: 'Total',         color: '#ea580c', keys: ['H', 'W', 'D'] },
+    { label: 'Dressing Box',  color: '#2563eb', keys: ['dressingBoxH'] },
+    { label: 'Base Storage',  color: '#ea580c', keys: ['baseStorageH', 'baseStorageW'] },
+  ],
   'openable-wardrobe': [
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
   ],

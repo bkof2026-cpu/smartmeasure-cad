@@ -13,7 +13,8 @@ export type ProductId =
   | 'bedroom'
   | '1bhk'
   | '2bhk'
-  | '3bhk';
+  | '3bhk'
+  | 'separate-dressing';
 
 export interface MeasurementField {
   key: string;
