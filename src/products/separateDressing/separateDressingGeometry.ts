@@ -31,9 +31,13 @@ export interface SeparateDressingCutRow {
   remark: string;
 }
 
-const DRESSING_BOX_COLOR = '#2563eb'; // blue, matching the reference sketch
-const SWITCH_BOARD_COLOR = '#dc2626'; // red
-const BASE_STORAGE_COLOR = '#ea580c'; // orange
+// Exported so SeparateDressingDrawing.tsx can give each zone's own
+// component boxes (and their handles/labels) this same colour — the
+// original colours from the reference sketch, unchanged by the later
+// refactor from plain division lines into real sub-boxes.
+export const DRESSING_BOX_COLOR = '#2563eb'; // blue, matching the reference sketch
+export const SWITCH_BOARD_COLOR = '#dc2626'; // red
+export const BASE_STORAGE_COLOR = '#ea580c'; // orange
 const DIAG = '#ea580c';
 
 function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, dir: 'right-down' | 'right-up' | 'left-down' | 'left-up') {
@@ -55,12 +59,18 @@ function switchBoardDrawnH(inp: SeparateDressingInputs): number {
   return Math.max(20, switchBoardTrueH(inp));
 }
 
+// Shared with resolveSeparateDressingPlan so the cutlist and the drawing
+// never disagree on how many drawers Base Storage is actually split into.
+export const BASE_STORAGE_DRAWER_COUNT = 3;
+
 export function separateDressingCutlist(inp: SeparateDressingInputs): SeparateDressingCutRow[] {
   const trueH = switchBoardTrueH(inp);
+  const drawerH = inp.baseStorageH / BASE_STORAGE_DRAWER_COUNT;
   return [
     { component: 'Dressing Box', width: inp.W, height: inp.dressingBoxH, qty: 1, remark: `Width = Total Width (${Math.round(inp.W)}mm, shared) | Height entered independently | Depth = Total Depth (${Math.round(inp.D)}mm, shared)` },
     { component: 'Switch Board', width: inp.W, height: trueH, qty: 1, remark: `Visual zone only — Height = Total Height − Dressing Box Height − Base Storage Height (${Math.round(inp.H)} − ${Math.round(inp.dressingBoxH)} − ${Math.round(inp.baseStorageH)} = ${Math.round(trueH)}mm)${trueH < 20 ? ' — drawn as a thin nominal band on screen' : ''}` },
-    { component: 'Base Storage', width: inp.baseStorageW, height: inp.baseStorageH, qty: 1, remark: `Width entered (defaults to Total Width) | Height entered independently | Depth = Total Depth (shared)` },
+    { component: 'Base Storage (frame)', width: inp.baseStorageW, height: inp.baseStorageH, qty: 1, remark: `Width entered (defaults to Total Width) | Height entered independently | Depth = Total Depth (shared)` },
+    { component: `Base Storage — Drawer Front (×${BASE_STORAGE_DRAWER_COUNT})`, width: inp.baseStorageW, height: drawerH, qty: BASE_STORAGE_DRAWER_COUNT, remark: `Drawer Height = Base Storage Height / ${BASE_STORAGE_DRAWER_COUNT}` },
   ];
 }
 
@@ -80,23 +90,30 @@ export function resolveSeparateDressingPlan(inp: SeparateDressingInputs): Resolv
   const stackY = topPad;
 
   // ── Dressing Box (top zone) ──────────────────────────────────────────────
+  // Same treatment as Base Storage below: real, evenly-spaced sub-boxes
+  // (not just division lines), with the "Dressing Box" name centered
+  // inside the MIDDLE one, rather than off to the side — a centered
+  // caption directly on the outer frame would either sit on top of a
+  // division line or require skipping one (breaking equal spacing), so
+  // the name lives on its own sub-box instead, matching the reference
+  // sketch's row layout.
   const dbY = stackY;
-  components.push({
-    id: 'dressing-box', type: 'DRESSING_BOX', label: 'Dressing Box', x: stackX, y: dbY, width: W, height: inp.dressingBoxH, qty: 1, visible: true,
-    source: { formula: `Width = Total Width (shared) | Height = ${Math.round(inp.dressingBoxH)}mm (entered)`, constants: [] },
-  });
-  // Internal shelf/drawer division lines, matching the reference sketch's
-  // horizontal bands inside the Dressing Box (visual only, not measured).
-  // The box's own "Dressing Box" caption renders centered in the box — skip
-  // whichever division would land within the same band as that label so
-  // the line never strikes straight through the text.
   const dbRows = 4;
-  for (let i = 1; i < dbRows; i++) {
-    const frac = i / dbRows;
-    if (Math.abs(frac - 0.5) < 0.08) continue;
-    const ly = dbY + inp.dressingBoxH * frac;
-    lines.push({ x1: stackX + 4, y1: ly, x2: stackX + W - 4, y2: ly, color: DRESSING_BOX_COLOR, strokeWidth: 0.8 });
+  const dbRowH = inp.dressingBoxH / dbRows;
+  const middleDressingRowIdx = Math.floor(dbRows / 2);
+  for (let i = 0; i < dbRows; i++) {
+    components.push({
+      id: `dressing-box-row-${i}`, type: 'DRESSING_BOX_ROW', label: i === middleDressingRowIdx ? 'Dressing Box' : '',
+      x: stackX + 3, y: dbY + i * dbRowH + 3, width: W - 6, height: dbRowH - 6, qty: 1, visible: true,
+      source: { formula: `Row ${i + 1} of ${dbRows} — Width = Total Width, Height = Dressing Box Height / ${dbRows}`, constants: [] },
+    });
   }
+  // Thin outer frame, drawn behind the rows, unlabeled (the middle row
+  // above carries the name) — anchor for the Depth diagonal below.
+  components.unshift({
+    id: 'dressing-box', type: 'DRESSING_BOX_FRAME', label: '', x: stackX, y: dbY, width: W, height: inp.dressingBoxH, qty: 1, visible: true,
+    source: { formula: `Width = Total Width (shared) | Height = ${Math.round(inp.dressingBoxH)}mm (entered) — ${dbRows} rows`, constants: [] },
+  });
 
   // ── Switch Board (middle zone) — visual only, no measurement ────────────
   const sbY = dbY + inp.dressingBoxH;
@@ -114,23 +131,37 @@ export function resolveSeparateDressingPlan(inp: SeparateDressingInputs): Resolv
   lines.push({ x1: swX + swW, y1: swY, x2: swX + swW, y2: swY + swH, color: SWITCH_BOARD_COLOR, strokeWidth: 1.2 });
   lines.push({ x1: swX + swW, y1: swY + swH / 2, x2: stackX + W + 55, y2: swY + swH / 2, color: SWITCH_BOARD_COLOR, label: 'Switch Board' });
 
-  // ── Base Storage (bottom zone) ───────────────────────────────────────────
+  // ── Base Storage (bottom zone) — real drawers, not just a divided box. ──
+  // Per the user's own correction: Base Storage IS the drawer bank, so each
+  // row must read as an actual drawer front (with its own pull handle),
+  // not a plain division line. Each row is its own DRAWER_FRONT component —
+  // TechnicalDrawingSvg already draws a real centered horizontal pull on
+  // any wide component whose type contains "DRAWER_FRONT" (isPullType),
+  // the same mechanism the Bed/Side Table drawers already use — so this
+  // reuses existing, proven rendering rather than hand-drawing new marks.
   const bsY = sbY + sbH;
-  components.push({
-    id: 'base-storage', type: 'BASE_STORAGE', label: 'Base Storage', x: stackX, y: bsY, width: inp.baseStorageW, height: inp.baseStorageH, qty: 1, visible: true,
-    source: { formula: `Width = ${Math.round(inp.baseStorageW)}mm (entered) | Height = ${Math.round(inp.baseStorageH)}mm (entered)`, constants: [] },
-  });
-  // Same center-avoidance as the Dressing Box, so this division never
-  // strikes through the "Base Storage" caption either — 3 rows (not 2) so
-  // there's still a real division line once the exact-center one is
-  // skipped, rather than none at all.
-  const bsRows = 3;
-  for (let i = 1; i < bsRows; i++) {
-    const frac = i / bsRows;
-    if (Math.abs(frac - 0.5) < 0.08) continue;
-    const ly = bsY + inp.baseStorageH * frac;
-    lines.push({ x1: stackX + 4, y1: ly, x2: stackX + inp.baseStorageW - 4, y2: ly, color: BASE_STORAGE_COLOR, strokeWidth: 0.8 });
+  const bsRows = BASE_STORAGE_DRAWER_COUNT;
+  const rowH = inp.baseStorageH / bsRows;
+  // The "Base Storage" name reads on the MIDDLE drawer itself (centered in
+  // that box, like every other component's own caption) rather than off to
+  // the side — the middle drawer has the most clear room, away from the
+  // frame's top/bottom edges and the neighbouring zones.
+  const middleDrawerIdx = Math.floor(bsRows / 2);
+  for (let i = 0; i < bsRows; i++) {
+    components.push({
+      id: `base-storage-drawer-${i}`, type: 'DRAWER_FRONT', label: i === middleDrawerIdx ? 'Base Storage' : '',
+      x: stackX + 3, y: bsY + i * rowH + 3, width: inp.baseStorageW - 6, height: rowH - 6, qty: 1, visible: true,
+      source: { formula: `Drawer ${i + 1} of ${bsRows} — Width = Base Storage Width, Height = Base Storage Height / ${bsRows}`, constants: [] },
+    });
   }
+  // A thin outer frame around the whole bank, drawn behind the drawer
+  // fronts (unshifted to the start) and the anchor for its own Width/
+  // Height dimensions below — unlabeled itself, since the middle drawer
+  // now carries the "Base Storage" name.
+  components.unshift({
+    id: 'base-storage', type: 'BASE_STORAGE_FRAME', label: '', x: stackX, y: bsY, width: inp.baseStorageW, height: inp.baseStorageH, qty: 1, visible: true,
+    source: { formula: `Width = ${Math.round(inp.baseStorageW)}mm (entered) | Height = ${Math.round(inp.baseStorageH)}mm (entered) — ${bsRows} drawers`, constants: [] },
+  });
 
   // ── Depth — single shared "/" diagonal leader (Total = Dressing Box = Base Storage). ──
   const diag = insideDiagonal(stackX, stackY, W, inp.dressingBoxH, 'right-down');
