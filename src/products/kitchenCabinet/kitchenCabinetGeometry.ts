@@ -105,20 +105,36 @@ export function resolveKitchenCabinetPlan(inp: KitchenCabinetInputs): ResolvedDr
   const dimReqs: DimensionRequest[] = [];
 
   // Doors — dynamically divided per §4/§7. Each door is its own real
-  // component (not a divider line) so it can carry its own computed-width
-  // label, matching Loft Box's "every shutter shows its own number"
-  // convention, applied here to "every door shows its own number" (§4's
-  // worked example explicitly wants "Width of One Door = 331 mm" visible).
+  // component (not a divider line), named "Box N" (matching the user's
+  // own reference sketch's "= width of one box" callout — every door
+  // panel reads as its own named box), with its own computed width value
+  // right after the name — a single-line label, since the shared engine
+  // renders a component's label as one plain SVG <text> node (no line-
+  // break support), same convention as every other product's own
+  // component labels this session.
   const count = Math.max(1, Math.round(inp.doorCount) || 1);
   const dw = kitchenCabinetDoorWidth(W, count);
   let cursorX = cabX;
   for (let i = 0; i < count; i++) {
     components.push({
-      id: `door-${i}`, type: 'DOOR', label: `${Math.round(dw)}`,
+      id: `door-${i}`, type: 'DOOR', label: `Box ${i + 1} — ${Math.round(dw)}`,
       x: cursorX, y: cabY + 2, width: dw, height: H - 4, qty: 1, visible: true,
-      source: { formula: `Door ${i + 1} of ${count} — Width = (W − ${count}×${DOOR_GAP_MM}) / ${count} = ${dw.toFixed(2)}mm`, constants: [] },
+      source: { formula: `Box ${i + 1} of ${count} — Width = (Total Width − ${count}×${DOOR_GAP_MM}) / ${count} = ${dw.toFixed(2)}mm`, constants: [] },
     });
     cursorX += dw + DOOR_GAP_MM;
+  }
+
+  // Gap callout — a short leader pointing directly at one of the fixed
+  // 3mm gaps between doors, naming the formula the way the reference
+  // sketch's own purple leader does ("Total Width − (3mm) / N = width of
+  // one box"), so the drawing itself documents where the door-width
+  // number comes from, not just the DrawingInspector's traceability panel.
+  if (count > 1) {
+    const firstGapX = cabX + dw + DOOR_GAP_MM / 2;
+    lines.push({
+      x1: firstGapX, y1: cabY, x2: firstGapX, y2: cabY - 30,
+      color: CABINET_COLOR, label: `Total Width − (${DOOR_GAP_MM}mm) / ${count} = width of one box`, labelAtStart: true,
+    });
   }
 
   // Depth — "/" diagonal leader at the cabinet's own top-left corner.
@@ -144,6 +160,17 @@ export function resolveKitchenCabinetPlan(inp: KitchenCabinetInputs): ResolvedDr
       source: { formula: `Height (entered) | Width ${inp.openBoxW > 0 ? '(entered)' : '= Total Width (default)'}`, constants: [] },
     });
 
+    // "Open box" — a blue leader from the box's own bottom-left corner,
+    // matching the user's own reference sketch's leader naming the blue
+    // box directly (distinct from the plain W/H dimension lines, which
+    // only give numbers, not the component's name). Anchored below the
+    // box's own Height dimension (which occupies the left edge from boxY
+    // to boxY+obH) rather than beside it, so the two never collide.
+    lines.push({
+      x1: cabX, y1: boxY + obH, x2: cabX - 70, y2: boxY + obH + 60,
+      color: OPEN_BOX_COLOR, label: 'Open box', arrowAtStart: true,
+    });
+
     // Profile Light — a bold horizontal orange line near the upper portion
     // of the Open Box (§16), strictly inside its bounds, never outside.
     if (inp.profileLight) {
@@ -162,6 +189,16 @@ export function resolveKitchenCabinetPlan(inp: KitchenCabinetInputs): ResolvedDr
       lines.push({
         x1: centerX, y1: centerY, x2: centerX, y2: centerY,
         color: PROFILE_LIGHT_COLOR, label: `${Math.round(obW)} × ${Math.round(obH)}`,
+      });
+
+      // "Open Box with Profile Light" — a second, orange leader from the
+      // box's own bottom-right corner, matching the user's own reference
+      // sketch, which names the SAME box with two distinct leaders (blue
+      // for the Open Box itself, orange for it "with Profile Light")
+      // rather than replacing one label with the other.
+      lines.push({
+        x1: cabX + obW, y1: boxY + obH, x2: cabX + obW + 70, y2: boxY + obH + 60,
+        color: PROFILE_LIGHT_COLOR, label: 'Open Box with Profile Light', arrowAtStart: true,
       });
     }
 
