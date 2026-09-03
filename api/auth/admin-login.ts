@@ -4,9 +4,9 @@
 // exist or the PIN is wrong, so a caller can't enumerate valid emails.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
-import { sql } from '../_lib/db';
-import { createSession, isRateLimited, recordLoginAttempt, clientIp } from '../_lib/auth';
-import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond';
+import { sql } from '../_lib/db.js';
+import { createSession, isRateLimited, recordLoginAttempt, clientIp } from '../_lib/auth.js';
+import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond.js';
 
 export default withErrorHandling(async (req: VercelRequest, res: VercelResponse) => {
   if (req.method !== 'POST') return jsonError(res, 405, 'Method not allowed.');

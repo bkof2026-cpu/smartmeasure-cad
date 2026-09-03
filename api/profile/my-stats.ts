@@ -6,10 +6,10 @@
 // call this for their OWN id; managers/ceo use the separate /api/dashboard/*
 // routes to see everyone.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from '../_lib/db';
-import { getSessionUser, tokenFromRequest } from '../_lib/auth';
-import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond';
-import { parseDateRange } from '../_lib/dateRange';
+import { sql } from '../_lib/db.js';
+import { getSessionUser, tokenFromRequest } from '../_lib/auth.js';
+import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond.js';
+import { parseDateRange } from '../_lib/dateRange.js';
 
 export default withErrorHandling(async (req: VercelRequest, res: VercelResponse) => {
   if (req.method !== 'GET') return jsonError(res, 405, 'Method not allowed.');

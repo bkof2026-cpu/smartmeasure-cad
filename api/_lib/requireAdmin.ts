@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getSessionUser, tokenFromRequest, type SessionUser } from './auth';
-import { jsonError } from './respond';
+import { getSessionUser, tokenFromRequest, type SessionUser } from './auth.js';
+import { jsonError } from './respond.js';
 
 /** Validates the caller's session AND that their role is manager/ceo.
  * Returns the user on success, or null after already writing a 401/403

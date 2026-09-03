@@ -1,10 +1,10 @@
 // GET /api/dashboard/timeline?from=&to=&granularity=day|week  (manager/ceo only)
 // Drawings generated over time — trend line/area chart.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from '../_lib/db';
-import { requireAdmin } from '../_lib/requireAdmin';
-import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond';
-import { parseDateRange } from '../_lib/dateRange';
+import { sql } from '../_lib/db.js';
+import { requireAdmin } from '../_lib/requireAdmin.js';
+import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond.js';
+import { parseDateRange } from '../_lib/dateRange.js';
 
 export default withErrorHandling(async (req: VercelRequest, res: VercelResponse) => {
   if (req.method !== 'GET') return jsonError(res, 405, 'Method not allowed.');

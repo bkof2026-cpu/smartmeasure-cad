@@ -1,10 +1,10 @@
 // GET /api/dashboard/by-product?from=&to=  (manager/ceo only)
 // Total drawings per product across all employees — company-wide bar chart.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from '../_lib/db';
-import { requireAdmin } from '../_lib/requireAdmin';
-import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond';
-import { parseDateRange } from '../_lib/dateRange';
+import { sql } from '../_lib/db.js';
+import { requireAdmin } from '../_lib/requireAdmin.js';
+import { jsonError, jsonOk, withErrorHandling } from '../_lib/respond.js';
+import { parseDateRange } from '../_lib/dateRange.js';
 
 export default withErrorHandling(async (req: VercelRequest, res: VercelResponse) => {
   if (req.method !== 'GET') return jsonError(res, 405, 'Method not allowed.');

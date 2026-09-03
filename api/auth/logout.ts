@@ -3,8 +3,8 @@
 // reused after the user logs out — clearing localStorage alone would not
 // actually revoke it.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { deleteSession, tokenFromRequest } from '../_lib/auth';
-import { jsonOk, withErrorHandling } from '../_lib/respond';
+import { deleteSession, tokenFromRequest } from '../_lib/auth.js';
+import { jsonOk, withErrorHandling } from '../_lib/respond.js';
 
 export default withErrorHandling(async (req: VercelRequest, res: VercelResponse) => {
   const token = tokenFromRequest(req);

@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { randomBytes } from 'node:crypto';
 import type { VercelRequest } from '@vercel/node';
-import { sql } from './db';
+import { sql } from './db.js';
 
 export type UserRole = 'employee' | 'manager' | 'ceo';
 
