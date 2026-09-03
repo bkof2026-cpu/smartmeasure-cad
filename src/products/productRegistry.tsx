@@ -1363,6 +1363,46 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     DrawingComponent: (props) => <LoftBoxDrawing dims={props.dims} />,
   },
 
+  // ── KITCHEN LOFT ─────────────────────────────────────────────────────────────
+  // Same product as Loft Box (Master Bedroom) in every respect — same
+  // measurement fields, same shutter-division formula, same drawing engine
+  // — just placed under the Kitchen room category with its own name, per
+  // the user's explicit "same as Master Bedroom Loft Box, all
+  // functionality and drawing the same" instruction. Reuses
+  // LoftBoxDrawing/loftBoxCutlist directly rather than a duplicate
+  // geometry file, matching the same "reusable product configuration"
+  // convention already used for LabeledBoxDrawing (TV Unit/Sofa/Center
+  // Table share one module).
+  {
+    id: 'kitchen-loft',
+    name: 'Kitchen Loft',
+    icon: '📦',
+    category: 'furniture',
+    roomCategory: 'Kitchen',
+    isFormulaVerified: true,
+    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 6, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
+    measurementFields: [
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1000, min: 600, max: 3600 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
+      { key: 'onlyShutter', label: 'Only Shutter', unit: 'bool', defaultValue: 1 },
+      { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 6, min: 1, max: 12 },
+      { key: 'topPanel', label: 'Top Panel', unit: 'bool', defaultValue: 0 },
+      { key: 'topPanelSide', label: 'Top Panel Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
+      { key: 'topPanelWidth', label: 'Top Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 1200 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cutRows = loftBoxCutlist({
+        H: n(dims.H), W: n(dims.W), D: n(dims.D),
+        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount: n(dims.shutterCount) || 6,
+        topPanel: Number(dims.topPanel ?? 0) === 1, topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left', topPanelWidth: n(dims.topPanelWidth) || 300,
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <LoftBoxDrawing dims={props.dims} />,
+  },
+
   // ── KITCHEN CABINET (K.B) ────────────────────────────────────────────────────
   // First real product under the Kitchen room category — was a placeholder
   // ("No products available yet") until now. Black main cabinet divided

@@ -20,7 +20,8 @@ export type ProductId =
   | 'partition'
   | 'door'
   | 'sofa-cum-bed'
-  | 'kitchen-cabinet';
+  | 'kitchen-cabinet'
+  | 'kitchen-loft';
 
 /**
  * The user-facing room grouping from the Product Categories spec — purely
