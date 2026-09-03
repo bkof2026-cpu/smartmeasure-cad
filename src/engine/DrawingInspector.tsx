@@ -21,6 +21,13 @@ function isComponent(x: ComponentSpec | DimensionLine): x is ComponentSpec {
 export const DrawingInspector: React.FC<Props> = ({ selected, issues, formulaStatus }) => {
   const badge = STATUS_BADGE[formulaStatus];
   const critical = issues.filter((i) => i.severity === 'CRITICAL' || i.severity === 'ERROR');
+  // Advisory-only issues — shown distinctly from `critical` (amber, not
+  // red; never blocks PDF/"issue count" badge above) so a product can
+  // surface a non-blocking heads-up (e.g. Kitchen Cabinet's "door width
+  // exceeds 400mm" — spec explicitly wants this shown but never auto-
+  // correcting the user's own entered values) without it reading as a
+  // real validation failure the way CRITICAL/ERROR does.
+  const warnings = issues.filter((i) => i.severity === 'WARNING');
 
   return (
     <div className="mt-3 flex flex-col gap-2">
@@ -34,6 +41,12 @@ export const DrawingInspector: React.FC<Props> = ({ selected, issues, formulaSta
       {critical.length > 0 && (
         <div className="rounded-lg p-2 text-xs" style={{ background: '#1a0f0f', border: '1px solid #4c1d1d', color: '#fca5a5' }}>
           {critical.map((i) => <div key={i.id}>⚠ {i.message}</div>)}
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="rounded-lg p-2 text-xs" style={{ background: '#1a1000', border: '1px solid #7c5a12', color: '#fcd34d' }}>
+          {warnings.map((i) => <div key={i.id}>⚠ {i.message}</div>)}
         </div>
       )}
 

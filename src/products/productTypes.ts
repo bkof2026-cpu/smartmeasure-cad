@@ -19,7 +19,8 @@ export type ProductId =
   | 'study-table'
   | 'partition'
   | 'door'
-  | 'sofa-cum-bed';
+  | 'sofa-cum-bed'
+  | 'kitchen-cabinet';
 
 /**
  * The user-facing room grouping from the Product Categories spec — purely

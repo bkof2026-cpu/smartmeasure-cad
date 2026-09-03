@@ -26,6 +26,8 @@ import { DiningTableDrawing2 } from './diningTable/DiningTableDrawing2';
 import { diningTableCutlist } from './diningTable/diningTableGeometry';
 import { DoorDrawing } from './door/DoorDrawing';
 import { doorCutlist } from './door/doorGeometry';
+import { KitchenCabinetDrawing } from './kitchenCabinet/KitchenCabinetDrawing';
+import { kitchenCabinetCutlist } from './kitchenCabinet/kitchenCabinetGeometry';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { SimpleWardrobeDrawing } from './wardrobe/SimpleWardrobeDrawing';
@@ -1359,6 +1361,46 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
     DrawingComponent: (props) => <LoftBoxDrawing dims={props.dims} />,
+  },
+
+  // ── KITCHEN CABINET (K.B) ────────────────────────────────────────────────────
+  // First real product under the Kitchen room category — was a placeholder
+  // ("No products available yet") until now. Black main cabinet divided
+  // into N equal doors with a fixed 3mm gap (never user-entered), plus an
+  // optional blue Open Box (default width = Total Width) with an optional
+  // orange Profile Light + centered "W × H" callout, matching the spec's
+  // reference drawing exactly.
+  {
+    id: 'kitchen-cabinet',
+    name: 'Kitchen Cabinet (K.B)',
+    icon: '🗄️',
+    category: 'furniture',
+    roomCategory: 'Kitchen',
+    isFormulaVerified: true,
+    demoDimensions: { H: 720, W: 2000, D: 560, doorCount: 6, addOpenBox: 0, openBoxH: 150, openBoxW: 0, profileLight: 0 },
+    measurementFields: [
+      { key: 'H', label: 'Total Height', unit: 'mm', defaultValue: 720, min: 300, max: 2400 },
+      { key: 'W', label: 'Total Width', unit: 'mm', defaultValue: 2000, min: 300, max: 6000 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 560, min: 250, max: 900 },
+      { key: 'doorCount', label: 'No. of Doors', unit: 'count', defaultValue: 6, min: 1, max: 20 },
+      { key: 'addOpenBox', label: 'Add Open Box', unit: 'bool', defaultValue: 0 },
+      { key: 'openBoxH', label: 'Open Box Height', unit: 'mm', defaultValue: 150, min: 1, max: 900 },
+      { key: 'openBoxW', label: 'Open Box Width (blank = Total Width)', unit: 'mm', defaultValue: 0, min: 0, max: 6000 },
+      { key: 'profileLight', label: 'Add Profile Light', unit: 'bool', defaultValue: 0 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cutRows = kitchenCabinetCutlist({
+        H: n(dims.H), W: n(dims.W), D: n(dims.D),
+        doorCount: n(dims.doorCount) || 6,
+        addOpenBox: Number(dims.addOpenBox ?? 0) === 1,
+        openBoxH: n(dims.openBoxH) || 150,
+        openBoxW: n(dims.openBoxW) || 0,
+        profileLight: Number(dims.profileLight ?? 0) === 1,
+      });
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => <KitchenCabinetDrawing dims={props.dims} />,
   },
 
   // ── STUDY TABLE ───────────────────────────────────────────────────────────────
