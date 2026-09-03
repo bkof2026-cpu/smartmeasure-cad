@@ -46,6 +46,14 @@ This app also has a real backend now, deployed as Vercel serverless Functions al
 
 Requires a `DATABASE_URL` env var (Neon Postgres connection string) — set in Vercel project settings for production, and in `.env.local` for local `npm run migrate`/`add-employee`/`remove-employee`.
 
+## PWA (installable on Android/iOS)
+
+Configured via `vite-plugin-pwa` in `vite.config.ts` — generates `manifest.webmanifest` and a Workbox service worker (`sw.js`) at build time; nothing to run manually. Static app shell (JS/CSS/HTML/icons) is precached; every `/api/*` request is always `NetworkFirst` (8s timeout, 5-minute fallback cache only if the network genuinely fails) so dashboard/drawing data is never served stale.
+
+- `public/icons/` - `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `apple-touch-icon.png`. **These are placeholder icons** (a simple drafting-triangle glyph matching the login screen's 📐 branding, generated programmatically) — swap for real branded artwork before a real launch.
+- `index.html` - the extra PWA `<meta>`/`<link>` tags live outside the `<!-- figma:head-start/end -->` comment slots (so the Figma site-config plugin's injection never disturbs them); the manifest `<link>` and service-worker registration `<script>` are auto-injected by `vite-plugin-pwa` at build time, not present in source.
+- Manifest/SW only activate on a production build (`npm run build` + `vite preview`, or the real Vercel deployment) — `npm run dev`'s plain dev server intentionally has no manifest link, so don't expect install prompts there.
+
 ## Code quality
 
 - Use double quotes for strings containing apostrophes (`"We're here to help"`), or escape them in single-quoted strings. An unescaped apostrophe in a single-quoted string breaks the build.

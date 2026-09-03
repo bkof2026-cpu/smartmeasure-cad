@@ -1,6 +1,7 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
 import siteConfiguration from './.figma/make/site.json' with { type: 'json' }
@@ -23,6 +24,46 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      // PWA — installable on Android/iOS home screen. Precaches the static
+      // app shell only; every /api/* call always goes to the network
+      // (NetworkFirst with a short cache fallback for offline resilience),
+      // never served stale, since dashboard/drawing data must stay fresh.
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: ['icons/apple-touch-icon.png'],
+        manifest: {
+          name: 'SmartMeasure CAD',
+          short_name: 'SmartMeasure',
+          description: 'Field measurement & CAD drawing tool for employees',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          orientation: 'portrait',
+          background_color: '#ffffff',
+          theme_color: '#000000',
+          icons: [
+            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+            { src: '/icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          ],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          navigateFallbackDenylist: [/^\/api\//],
+          runtimeCaching: [
+            {
+              urlPattern: /^\/api\//,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'api-cache',
+                networkTimeoutSeconds: 8,
+                cacheableResponse: { statuses: [0, 200] },
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
+              },
+            },
+          ],
+        },
+      }),
     ],
     resolve: {
       alias: {
