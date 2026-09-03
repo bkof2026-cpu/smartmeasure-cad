@@ -34,6 +34,18 @@ This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin con
 
 `src/main.tsx` imports `src/index.css`, so global font wiring belongs in `src/index.css`. Keep CSS `@import` statements first, then add any `@font-face` rules and font-family defaults there.
 
+## Backend (Auth, Roles & KPI Dashboard)
+
+This app also has a real backend now, deployed as Vercel serverless Functions alongside the static Vite frontend (not a Next.js app):
+
+- `api/` - one file per endpoint (`api/auth/employee-login.ts` → `/api/auth/employee-login`, etc.), plus `api/_lib/` shared helpers (`db.ts` Neon client, `auth.ts` session/rate-limit helpers, `requireAdmin.ts` manager/ceo guard, `respond.ts`, `dateRange.ts`)
+- `db/schema.sql` - Postgres schema (users/drawings/sessions/login_attempts) — run via `npm run migrate`
+- `scripts/` - owner-run CLI: `npm run add-employee -- --id=E101 --name="..."`, `npm run remove-employee -- --id=E101`, `npm run migrate`
+- `src/auth/authClient.ts` - the only module that calls `/api/auth/*`, `/api/drawings`, `/api/profile/my-stats` from the frontend
+- `src/screens/Dashboard.tsx` - Manager/CEO KPI dashboard (Recharts)
+
+Requires a `DATABASE_URL` env var (Neon Postgres connection string) — set in Vercel project settings for production, and in `.env.local` for local `npm run migrate`/`add-employee`/`remove-employee`.
+
 ## Code quality
 
 - Use double quotes for strings containing apostrophes (`"We're here to help"`), or escape them in single-quoted strings. An unescaped apostrophe in a single-quoted string breaks the build.

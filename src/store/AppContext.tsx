@@ -75,8 +75,11 @@ interface AppContextValue {
   // Version
   saveVersion: (name: string, notes: string) => void;
 
-  // Employee + site workflow
-  loginEmployee: (employeeName: string) => void;
+  // Employee + site workflow — loginEmployee is called AFTER a successful
+  // /api/auth/employee-login response (see LoginScreen in App.tsx), never
+  // used to authenticate on its own; it just records the already-verified
+  // identity into local model state.
+  loginEmployee: (employeeId: string, employeeName: string) => void;
   logoutEmployee: () => void;
   saveMeasurementSnapshot: (snapshot: Omit<MeasurementHistoryEntry, 'id' | 'timestamp'> & { id?: string }) => void;
 
@@ -262,9 +265,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, []);
 
-  const loginEmployee = useCallback((employeeName: string) => {
+  const loginEmployee = useCallback((employeeId: string, employeeName: string) => {
+    const id = employeeId.trim();
     const name = employeeName.trim();
-    if (!name) return;
+    if (!id || !name) return;
     setModel((prev) => {
       // A real employee's session starting is the actual moment "demo" ends
       // — the illustrative sample project (DEMO_PROJECT's clientName/
@@ -277,6 +281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const isUntouchedDemo = prev.isDemoData && prev.project.clientName === DEMO_PROJECT.project.clientName && prev.project.projectId === DEMO_PROJECT.project.projectId;
       return {
         ...prev,
+        employeeId: id,
         employeeName: name,
         isLoggedIn: true,
         lastSavedAt: new Date().toISOString(),
@@ -288,6 +293,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logoutEmployee = useCallback(() => {
     setModel((prev) => ({
       ...prev,
+      employeeId: '',
       employeeName: '',
       isLoggedIn: false,
       lastSavedAt: new Date().toISOString(),

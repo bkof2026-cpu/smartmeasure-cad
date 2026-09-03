@@ -111,6 +111,11 @@ export interface KitchenProjectModel {
   evidence: EvidenceItem[];
   versions: Version[];
   employeeName?: string;
+  /** Real DB employee ID (e.g. "E101") the current session's login token
+   * belongs to — distinct from employeeName (their display name), used
+   * wherever a request must be tied back to a specific database row
+   * (drawing-event logging, profile stats). */
+  employeeId?: string;
   isLoggedIn?: boolean;
   lastSavedAt?: string;
   measurementHistory?: MeasurementHistoryEntry[];

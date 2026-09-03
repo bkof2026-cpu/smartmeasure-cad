@@ -15,9 +15,10 @@ import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
 import { SimpleShoeRackDrawing } from '../products/shoeRack/SimpleShoeRackDrawing';
 import { shoeRackCutlist, resolveShoeRackPlan, type ShoeRackBoxInput } from '../products/shoeRack/shoeRackGeometry';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { fetchMyStats, logDrawingEvent, type MyStats } from '../auth/authClient';
 
 const n = (v: number | string) => Number(v);
-type WorkspaceTab = 'measure' | 'drawing' | 'evidence' | 'validation' | 'pdf' | 'history';
+type WorkspaceTab = 'measure' | 'drawing' | 'evidence' | 'validation' | 'pdf' | 'history' | 'my-stats';
 
 // Product Categories spec — fixed display order (§19), independent of
 // PRODUCT_REGISTRY's own array order, so reordering the registry later
@@ -595,6 +596,94 @@ function WardrobeWithLoftFront({ wardW, wardH, sections, loftH, loftD, thk, isSl
   );
 }
 
+// ─── My Stats — employee's own self-service profile view ──────────────────
+// Server enforces that this can ONLY ever return the calling employee's own
+// counts (the employee id comes from their session token, never a client
+// parameter) — see api/profile/my-stats.ts. This panel just renders it.
+type StatsRange = 'month' | 'all';
+
+function MyStatsPanel() {
+  const [range, setRange] = useState<StatsRange>('month');
+  const [stats, setStats] = useState<MyStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const from = range === 'month' ? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString() : new Date(2020, 0, 1).toISOString();
+    fetchMyStats(from, new Date().toISOString()).then((result) => {
+      if (cancelled) return;
+      setLoading(false);
+      if (!result.ok) { setError(result.error); return; }
+      setStats(result.data);
+    });
+    return () => { cancelled = true; };
+  }, [range]);
+
+  const maxCount = stats ? Math.max(1, ...stats.byProduct.map((p) => p.count)) : 1;
+
+  return (
+    <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
+      <div className="max-w-3xl rounded-xl border p-5" style={{ background: '#111827', borderColor: '#243045' }}>
+        <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>My Stats</div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setRange('month')}
+              className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase"
+              style={{ background: range === 'month' ? '#1d4ed8' : '#1e293b', color: range === 'month' ? '#fff' : '#64748b' }}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => setRange('all')}
+              className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase"
+              style={{ background: range === 'all' ? '#1d4ed8' : '#1e293b', color: range === 'all' ? '#fff' : '#64748b' }}
+            >
+              All Time
+            </button>
+          </div>
+        </div>
+
+        {loading && <div className="text-xs" style={{ color: '#64748b' }}>Loading…</div>}
+        {error && (
+          <div className="rounded-lg border px-3 py-2 text-xs" style={{ background: '#3b0d0d', color: '#fca5a5', borderColor: '#7f1d1d' }}>
+            ⚠ {error}
+          </div>
+        )}
+
+        {stats && !loading && (
+          <>
+            <div className="mb-5 rounded-xl px-4 py-3" style={{ background: '#0f172a' }}>
+              <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Total Drawings</div>
+              <div className="text-2xl font-black" style={{ color: '#e2e8f0' }}>{stats.total}</div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {stats.byProduct.map((p) => (
+                <div key={p.product_name} className="flex items-center gap-3">
+                  <div className="w-28 flex-shrink-0 text-xs truncate" style={{ color: '#94a3b8' }} title={p.product_name}>{p.product_name}</div>
+                  <div className="flex-1 h-4 rounded-full overflow-hidden" style={{ background: '#1a2233' }}>
+                    <div className="h-full rounded-full" style={{ width: `${(p.count / maxCount) * 100}%`, background: '#3b82f6' }} />
+                  </div>
+                  <div className="w-8 flex-shrink-0 text-right text-xs font-bold" style={{ color: '#e2e8f0' }}>{p.count}</div>
+                </div>
+              ))}
+              {stats.byProduct.length === 0 && (
+                <div className="rounded-lg border px-4 py-4 text-sm" style={{ borderColor: '#243045', color: '#64748b' }}>
+                  No drawings logged in this range yet.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ProductFlow Screen ──────────────────────────────────────────────────
 
 export const ProductFlow: React.FC = () => {
@@ -734,10 +823,22 @@ export const ProductFlow: React.FC = () => {
         dims: { ...dims },
         notes: `${product.name} measurement capture (${activeView} view)`,
       });
+      // Server-side log for the KPI dashboard/My Stats — in ADDITION to the
+      // existing localStorage save above, never instead of it. Best-effort
+      // (logDrawingEvent never throws), so a network hiccup here can't
+      // break the employee-facing save that already worked for months.
+      logDrawingEvent({
+        productCategory: product.roomCategory ?? 'Uncategorized',
+        productName: product.name,
+        projectId: model.project.projectId,
+        clientName: model.project.clientName,
+        pdfGenerated: false,
+        measurements: dims,
+      });
     }, 500);
 
     return () => window.clearTimeout(timer);
-  }, [product, dims, activeView, model.project.projectId, model.employeeName, saveMeasurementSnapshot]);
+  }, [product, dims, activeView, model.project.projectId, model.employeeName, model.project.clientName, saveMeasurementSnapshot]);
 
   const recentHistory = (model.measurementHistory ?? []).filter((entry) => {
     const diff = Date.now() - new Date(entry.timestamp).getTime();
@@ -864,6 +965,14 @@ export const ProductFlow: React.FC = () => {
       employeeName: model.employeeName || '',
       products: [product.name],
     });
+    logDrawingEvent({
+      productCategory: product.roomCategory ?? 'Uncategorized',
+      productName: product.name,
+      projectId: model.project.projectId,
+      clientName: model.project.clientName,
+      pdfGenerated: true,
+      measurements: dims,
+    });
   };
 
   // Ticking a product seeds its session immediately (so the Todo list shows
@@ -960,6 +1069,20 @@ export const ProductFlow: React.FC = () => {
     if (!result.ok) {
       setPdfError(result.error ?? 'Unable to generate Combined PDF.');
       return;
+    }
+    // One drawing event per product included in the combined PDF — each
+    // still gets its own row (same as generating them individually would),
+    // so the dashboard's per-product counts are accurate either way.
+    for (const p of todoProducts) {
+      const session = liveSessions[p.id] ?? freshSession(p);
+      logDrawingEvent({
+        productCategory: p.roomCategory ?? 'Uncategorized',
+        productName: p.name,
+        projectId: model.project.projectId,
+        clientName: model.project.clientName,
+        pdfGenerated: true,
+        measurements: session.dims,
+      });
     }
     setPdfError(null);
     setShowMultiPanel(false);
@@ -1268,6 +1391,7 @@ export const ProductFlow: React.FC = () => {
           ['validation', 'Validation'],
           ['pdf', 'PDF'],
           ['history', 'History'],
+          ['my-stats', 'My Stats'],
         ] as [WorkspaceTab, string][]).map(([tab, label]) => (
           <button
             key={tab}
@@ -1807,6 +1931,8 @@ export const ProductFlow: React.FC = () => {
           </div>
         </div>
       )}
+
+      {activeWorkspace === 'my-stats' && <MyStatsPanel />}
     </div>
   );
 };

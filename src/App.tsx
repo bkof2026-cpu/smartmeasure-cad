@@ -39,14 +39,22 @@ import { ProductViewer } from './screens/ProductViewer';
 import { subscribeViewer } from './products/viewerBus';
 import type { ProductId } from './products/productTypes';
 import type { AppScreen } from './store/types';
+import {
+  employeeLogin, adminLogin, fetchMe, logout as apiLogout,
+  getEmployeeToken, setEmployeeToken, clearEmployeeToken,
+  getAdminToken, setAdminToken, clearAdminToken,
+  getLastLogin, setLastLogin as persistLastLogin, clearLastLogin,
+  type LastLogin, type SessionUser,
+} from './auth/authClient';
+import { Dashboard } from './screens/Dashboard';
 
 const NAV: { id: AppScreen; icon: string; label: string }[] = [
   { id: 'products', icon: '🧩', label: 'Products' },
   { id: 'kitchen-steps', icon: '🍳', label: 'Kitchen' },
 ];
 
-function Sidebar() {
-  const { screen, setScreen, model, geo, logoutEmployee } = useApp();
+function Sidebar({ onLogout }: { onLogout: () => void }) {
+  const { screen, setScreen, model, geo } = useApp();
   return (
     <nav className="flex flex-col border-r"
       style={{ width: 64, background: '#0d1117', borderColor: '#243045', flexShrink: 0 }}>
@@ -95,7 +103,7 @@ function Sidebar() {
           <span style={{ color: '#3d4f6a', fontSize: 7.5, fontWeight: 600 }}>% done</span>
         </div>
         <button
-          onClick={logoutEmployee}
+          onClick={onLogout}
           className="mt-2 w-full rounded-lg px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide"
           style={{ background: '#1e2535', color: '#94a3b8', border: '1px solid #243045' }}
         >
@@ -141,8 +149,8 @@ function AppHeader() {
   );
 }
 
-function DesktopHeader() {
-  const { model, screen, geo, logoutEmployee } = useApp();
+function DesktopHeader({ onLogout }: { onLogout: () => void }) {
+  const { model, screen, geo } = useApp();
   const screenLabel = NAV.find((n) => n.id === screen)?.label ?? screen;
   return (
     <header className="hidden lg:flex items-center gap-4 px-5 border-b"
@@ -168,7 +176,7 @@ function DesktopHeader() {
           <span className="text-xs font-mono font-bold" style={{ color: '#60a5fa' }}>{geo.completionPercent}%</span>
         </div>
         <button
-          onClick={logoutEmployee}
+          onClick={onLogout}
           className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide"
           style={{ background: '#1e2535', color: '#94a3b8', border: '1px solid #243045' }}
         >
@@ -179,9 +187,27 @@ function DesktopHeader() {
   );
 }
 
-function LoginScreen() {
-  const { loginEmployee, model } = useApp();
-  const [value, setValue] = React.useState(model.employeeName || '');
+function LoginScreen({ onOpenAdminLogin, onLoginSuccess }: { onOpenAdminLogin: () => void; onLoginSuccess: () => void }) {
+  const { loginEmployee } = useApp();
+  const [value, setValue] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [lastLogin, setLastLoginState] = React.useState<LastLogin | null>(() => getLastLogin());
+
+  const doLogin = React.useCallback(async (id: string) => {
+    const trimmed = id.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    const result = await employeeLogin(trimmed);
+    setBusy(false);
+    if (!result.ok) { setError(result.error); return; }
+    setEmployeeToken(result.data.token);
+    persistLastLogin({ id: result.data.id, name: result.data.name });
+    setLastLoginState({ id: result.data.id, name: result.data.name });
+    loginEmployee(result.data.id, result.data.name);
+    onLoginSuccess();
+  }, [busy, loginEmployee, onLoginSuccess]);
 
   return (
     <div className="flex h-screen items-center justify-center px-4" style={{ background: '#0d1117' }}>
@@ -198,54 +224,265 @@ function LoginScreen() {
           Employee Login
         </div>
 
+        {lastLogin && (
+          <button
+            onClick={() => doLogin(lastLogin.id)}
+            disabled={busy}
+            className="mb-4 w-full rounded-xl px-4 py-3 text-left disabled:opacity-60"
+            style={{ background: '#132038', border: '1.5px solid #1e3a5f' }}
+          >
+            <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>Continue as</div>
+            <div className="text-sm font-bold mt-0.5" style={{ color: '#e2e8f0' }}>{lastLogin.name} <span style={{ color: '#4a5f7a' }}>({lastLogin.id})</span></div>
+          </button>
+        )}
+        {lastLogin && (
+          <button
+            onClick={() => { clearLastLogin(); setLastLoginState(null); }}
+            className="mb-4 text-[11px] underline"
+            style={{ color: '#475569' }}
+          >
+            Not you? Use a different ID
+          </button>
+        )}
+
         <label className="mb-2 block text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>
-          Employee Name
+          Employee ID
         </label>
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Enter name"
-          className="w-full rounded-xl px-4 py-3 text-base outline-none"
+          placeholder="e.g. E101"
+          disabled={busy}
+          className="w-full rounded-xl px-4 py-3 text-base outline-none disabled:opacity-60"
           style={{ background: '#1e2535', border: '1.5px solid #2a3347', color: '#e2e8f0' }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && value.trim()) loginEmployee(value);
+            if (e.key === 'Enter') doLogin(value);
           }}
         />
 
+        {error && (
+          <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ background: '#3b0d0d', color: '#fca5a5', borderColor: '#7f1d1d' }}>
+            ⚠ {error}
+          </div>
+        )}
+
         <button
-          onClick={() => loginEmployee(value)}
-          disabled={!value.trim()}
+          onClick={() => doLogin(value)}
+          disabled={!value.trim() || busy}
           className="mt-5 w-full rounded-xl py-3 text-sm font-bold uppercase tracking-wide disabled:opacity-50"
           style={{ background: '#3b82f6', color: '#fff' }}
         >
-          Continue to Products
+          {busy ? 'Signing in…' : 'Continue to Products'}
         </button>
 
         <div className="mt-5 text-center text-[11px]" style={{ color: '#475569' }}>
           Site measurements auto-save locally and remain available for recovery.
+        </div>
+
+        <div className="mt-4 pt-4 border-t text-center" style={{ borderColor: '#1e2535' }}>
+          <button
+            onClick={onOpenAdminLogin}
+            className="text-[11px] font-semibold uppercase tracking-wide"
+            style={{ color: '#7c9cff' }}
+          >
+            Employee KPI / Performance Report →
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
+function AdminLoginScreen({ onBack, onSuccess }: { onBack: () => void; onSuccess: (user: SessionUser) => void }) {
+  const [email, setEmail] = React.useState('');
+  const [pin, setPin] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const doLogin = React.useCallback(async () => {
+    if (!email.trim() || !pin.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    const result = await adminLogin(email.trim(), pin.trim());
+    setBusy(false);
+    // Generic error message regardless of which field was wrong, per spec.
+    if (!result.ok) { setError('Invalid credentials.'); return; }
+    setAdminToken(result.data.token);
+    onSuccess({ id: result.data.id, name: result.data.name, role: result.data.role as SessionUser['role'], email: result.data.email });
+  }, [email, pin, busy, onSuccess]);
+
+  return (
+    <div className="flex h-screen items-center justify-center px-4" style={{ background: '#0d1117' }}>
+      <div className="w-full max-w-md rounded-2xl border p-6" style={{ background: '#111827', borderColor: '#243045' }}>
+        <div className="mb-6 flex items-center gap-3">
+          <span className="text-3xl">📊</span>
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.2em]" style={{ color: '#a78bfa' }}>SmartMeasure</div>
+            <div className="text-2xl font-black" style={{ color: '#e2e8f0' }}>KPI Dashboard</div>
+          </div>
+        </div>
+
+        <div className="mb-4 text-xs font-bold uppercase tracking-[0.18em]" style={{ color: '#64748b' }}>
+          Manager / CEO Login
+        </div>
+
+        <label className="mb-2 block text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Email</label>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          type="email"
+          placeholder="you@company.com"
+          disabled={busy}
+          className="w-full rounded-xl px-4 py-3 text-base outline-none disabled:opacity-60"
+          style={{ background: '#1e2535', border: '1.5px solid #2a3347', color: '#e2e8f0' }}
+        />
+
+        <label className="mb-2 mt-4 block text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>PIN</label>
+        <input
+          value={pin}
+          onChange={(e) => setPin(e.target.value)}
+          type="password"
+          placeholder="Access PIN"
+          disabled={busy}
+          className="w-full rounded-xl px-4 py-3 text-base outline-none disabled:opacity-60"
+          style={{ background: '#1e2535', border: '1.5px solid #2a3347', color: '#e2e8f0' }}
+          onKeyDown={(e) => { if (e.key === 'Enter') doLogin(); }}
+        />
+
+        {error && (
+          <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ background: '#3b0d0d', color: '#fca5a5', borderColor: '#7f1d1d' }}>
+            ⚠ {error}
+          </div>
+        )}
+
+        <button
+          onClick={doLogin}
+          disabled={!email.trim() || !pin.trim() || busy}
+          className="mt-5 w-full rounded-xl py-3 text-sm font-bold uppercase tracking-wide disabled:opacity-50"
+          style={{ background: '#7c3aed', color: '#fff' }}
+        >
+          {busy ? 'Signing in…' : 'View Dashboard'}
+        </button>
+
+        <div className="mt-4 pt-4 border-t text-center" style={{ borderColor: '#1e2535' }}>
+          <button onClick={onBack} className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>
+            ← Back to Employee Login
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Which top-level auth surface is showing before the employee app or the
+ * dashboard takes over. 'checking' is the brief window where a stored
+ * session token is being validated server-side on load — kept as its own
+ * state (not just a boolean) so the login screen never flashes for an
+ * already-logged-in employee/admin on a normal reload. */
+type AuthView = 'checking' | 'employee-login' | 'admin-login' | 'employee-app' | 'dashboard';
+
 function Shell() {
-  const { screen, model } = useApp();
+  const { screen, model, loginEmployee, logoutEmployee } = useApp();
   const isFinal = screen === 'final';
 
-  if (!model.isLoggedIn) {
-    return <LoginScreen />;
+  const [authView, setAuthView] = React.useState<AuthView>('checking');
+  const [adminUser, setAdminUser] = React.useState<SessionUser | null>(null);
+
+  // On every app load: check for a stored employee session token first (an
+  // employee session takes priority since it's the primary, most-used
+  // flow), then an admin token, validating each server-side via
+  // /api/auth/me before trusting it — never taking a client-stored value
+  // at face value. An invalid/expired token is cleared and the login
+  // screen shows instead.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const empToken = getEmployeeToken();
+      if (empToken) {
+        const result = await fetchMe(empToken);
+        if (cancelled) return;
+        if (result.ok && result.data.user.role === 'employee') {
+          loginEmployee(result.data.user.id, result.data.user.name);
+          setAuthView('employee-app');
+          return;
+        }
+        clearEmployeeToken();
+      }
+      const adminToken = getAdminToken();
+      if (adminToken) {
+        const result = await fetchMe(adminToken);
+        if (cancelled) return;
+        if (result.ok && (result.data.user.role === 'manager' || result.data.user.role === 'ceo')) {
+          setAdminUser(result.data.user);
+          setAuthView('dashboard');
+          return;
+        }
+        clearAdminToken();
+      }
+      if (!cancelled) setAuthView('employee-login');
+    })();
+    return () => { cancelled = true; };
+    // Intentionally runs once on mount only — loginEmployee is a stable
+    // useCallback from AppContext, re-running this on every model change
+    // would re-validate the token on every keystroke elsewhere in the app.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleEmployeeLogout = React.useCallback(() => {
+    const token = getEmployeeToken();
+    if (token) apiLogout(token);
+    clearEmployeeToken();
+    logoutEmployee();
+    setAuthView('employee-login');
+  }, [logoutEmployee]);
+
+  const handleAdminLogout = React.useCallback(() => {
+    const token = getAdminToken();
+    if (token) apiLogout(token);
+    clearAdminToken();
+    setAdminUser(null);
+    setAuthView('employee-login');
+  }, []);
+
+  if (authView === 'checking') {
+    return (
+      <div className="flex h-screen items-center justify-center" style={{ background: '#0d1117', color: '#475569' }}>
+        <div className="text-xs font-bold uppercase tracking-widest">Loading…</div>
+      </div>
+    );
+  }
+
+  if (authView === 'admin-login') {
+    return (
+      <AdminLoginScreen
+        onBack={() => setAuthView('employee-login')}
+        onSuccess={(user) => { setAdminUser(user); setAuthView('dashboard'); }}
+      />
+    );
+  }
+
+  if (authView === 'dashboard' && adminUser) {
+    return <Dashboard user={adminUser} onLogout={handleAdminLogout} />;
+  }
+
+  if (authView !== 'employee-app' || !model.isLoggedIn) {
+    return (
+      <LoginScreen
+        onOpenAdminLogin={() => setAuthView('admin-login')}
+        onLoginSuccess={() => setAuthView('employee-app')}
+      />
+    );
   }
 
   return (
     <div className="flex flex-col h-full" style={{ background: '#0d1117' }}>
       {!isFinal && <AppHeader />}
-      {!isFinal && <DesktopHeader />}
+      {!isFinal && <DesktopHeader onLogout={handleEmployeeLogout} />}
 
       <div className="flex flex-1 overflow-hidden">
         {!isFinal && (
           <div className="hidden lg:flex">
-            <Sidebar />
+            <Sidebar onLogout={handleEmployeeLogout} />
           </div>
         )}
         <main className="flex-1 overflow-hidden flex flex-col">
