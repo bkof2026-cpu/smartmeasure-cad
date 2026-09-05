@@ -1027,6 +1027,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     name: 'Shoe Rack',
     icon: '👞',
     category: 'furniture',
+    roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
     // No base W/H/D — per the user's own reference sketch, Shoe Rack is
     // built entirely from two optional box types (2 Door Box / Single Door

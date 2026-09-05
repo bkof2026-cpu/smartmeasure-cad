@@ -14,8 +14,12 @@ import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
 import { SimpleShoeRackDrawing } from '../products/shoeRack/SimpleShoeRackDrawing';
 import { shoeRackCutlist, resolveShoeRackPlan, type ShoeRackBoxInput } from '../products/shoeRack/shoeRackGeometry';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { fetchMyStats, logDrawingEvent, type MyStats } from '../auth/authClient';
+import { mountOffscreenSvgs } from '../pdf/mountOffscreen';
+import {
+  generateAndDownloadPdf, generateAndDownloadSingleProductPdf,
+  type PdfDrawingItem, type PdfViewItem, type PdfCutRow,
+} from '../pdf/pdfEngine';
 
 const n = (v: number | string) => Number(v);
 type WorkspaceTab = 'measure' | 'drawing' | 'evidence' | 'validation' | 'pdf' | 'history' | 'my-stats';
@@ -63,44 +67,11 @@ const MIXED_WARDROBE_FIELDS = [
 // zone from real CALC_OPEN_WARDROBE/CALC_SLIDE_WARDROBE formulas instead
 // of being the one hand-authored special case. See renderMainDrawing().
 // ─── PDF Download ─────────────────────────────────────────────────────────────
+// Real .pdf generation now lives in src/pdf/pdfEngine.ts (jsPDF + svg2pdf.js
+// — true vector SVG content, one real .pdf file, one download, no HTML/JSON
+// side-file). This file only builds the per-product data (real drawing
+// elements, cutlists, captions) and hands it to that engine.
 
-interface PdfCutRow { component: string; width: number; height: number; qty: number; thickness?: number; remark?: string; }
-interface PdfView { label: string; svgHTML: string; }
-
-/**
- * Every part's real formula/size/qty as a clean table — not leader-line
- * callouts scattered across the drawing (which gets congested fast once a
- * design has 20+ real components). This is the same information the
- * on-screen Drawing Inspector shows for one clicked component, just listed
- * for every component at once, the way a real fabrication drawing's
- * component/BOM table does.
- */
-function componentTableHTML(rows: PdfCutRow[]): string {
-  if (!rows.length) return '';
-  const body = rows.map((r, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td>${r.component}</td>
-      <td>${Math.round(r.width)}</td>
-      <td>${Math.round(r.height)}</td>
-      <td>${r.qty}</td>
-      <td>${r.thickness ?? ''}</td>
-      <td>${r.remark ?? ''}</td>
-    </tr>`).join('');
-  return `
-  <table class="comp-table">
-    <thead><tr><th>Sr.</th><th>Component</th><th>Width (mm)</th><th>Height (mm)</th><th>Qty</th><th>Thk (mm)</th><th>Formula / Note</th></tr></thead>
-    <tbody>${body}</tbody>
-  </table>`;
-}
-
-/**
- * One PDF, every applicable view (Front/Plan/Side, or Internal where a
- * product has it) — each view is re-rendered off-screen at its own view
- * value (see renderMainDrawing's viewOverride param), so the PDF is never
- * limited to whichever single tab happened to be open when Download was
- * clicked.
- */
 // Real project identity carried into every generated PDF (single or
 // combined) — never a hardcoded/demo value. `products` is the ordered
 // list of product names the PDF actually covers (one entry for a single
@@ -111,104 +82,6 @@ interface PdfProjectInfo {
   clientName: string;
   employeeName: string;
   products: string[];
-}
-
-/** Meaningful, non-demo filename: SmartMeasure_<ProjectId>_<Products>. Falls back to "Combined" when the product-name list would make the filename unreasonably long. */
-function pdfFileName(projectId: string, products: string[]): string {
-  const idPart = (projectId.trim() || 'Project').replace(/[^a-z0-9]+/gi, '');
-  const prodPart = products.map((p) => p.replace(/[^a-z0-9]+/gi, '')).join('_');
-  const namePart = (prodPart.length > 40 || products.length > 3) ? 'Combined' : (prodPart || 'Drawing');
-  return `SmartMeasure_${idPart}_${namePart}`;
-}
-
-/** Compact project-information block — Project ID / Client / Employee /
- * Product(s) / Date / Time — placed at the top of every generated PDF,
- * ABOVE and separate from the drawing area so it can never overlap a
- * drawing or its dimensions. */
-function projectInfoBlockHTML(info: PdfProjectInfo): string {
-  const now = new Date();
-  const row = (label: string, value: string) => `<div class="pinfo-row"><span class="pinfo-label">${label}</span><span class="pinfo-value">${value || '—'}</span></div>`;
-  return `<div class="pinfo">
-    <div class="pinfo-brand">SmartMeasure CAD</div>
-    ${row('Project ID', info.projectId)}
-    ${row('Client', info.clientName)}
-    ${row('Employee', info.employeeName)}
-    ${row(info.products.length > 1 ? 'Products' : 'Product', info.products.join(', '))}
-    ${row('Date', now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }))}
-    ${row('Time', now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }))}
-  </div>`;
-}
-
-const PINFO_CSS = `
-    .pinfo { border: 1px solid #ccc; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; display: inline-flex; flex-direction: column; gap: 2px; min-width: 220px; page-break-inside: avoid; }
-    .pinfo-brand { font-size: 11px; font-weight: 900; color: #1d4ed8; margin-bottom: 3px; }
-    .pinfo-row { display: flex; gap: 6px; font-size: 9px; }
-    .pinfo-label { color: #888; min-width: 56px; flex-shrink: 0; }
-    .pinfo-value { color: #111; font-weight: 700; word-break: break-word; }`;
-
-function downloadPDF(productName: string, views: PdfView[], cutlist: PdfCutRow[], info: PdfProjectInfo) {
-  if (views.length === 0) return;
-  // Each view gets its own page, forced with page-break-before so a view
-  // never starts mid-page with too little room left — and the SVG itself
-  // is height-capped to the printable page height (A3 landscape minus
-  // margins minus header room), so a portrait-proportioned drawing (e.g.
-  // a bed's Plan view) scales DOWN to fit one page instead of overflowing
-  // and getting visually split across a page boundary.
-  const svgHTML = views.map((v, i) => `<div class="view-block"${i > 0 ? ' style="page-break-before:always"' : ''}><div class="view-label">${v.label.toUpperCase()} VIEW</div>${v.svgHTML}</div>`).join('\n');
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${productName} — 2D Drawing</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: white; font-family: 'Segoe UI', system-ui, sans-serif; padding: 12mm; }
-    .header { padding-bottom: 8px; border-bottom: 2px solid #333; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .header h1 { font-size: 16px; font-weight: 900; }
-    .header p  { font-size: 10px; color: #666; }
-    .view-block { page-break-inside: avoid; }
-    .view-label { font-size: 10px; font-weight: 700; color: #666; letter-spacing: 0.06em; margin-bottom: 4px; }
-    svg { max-width: 100%; max-height: 220mm; width: auto; height: auto; display: block; margin: 0 auto 16px; page-break-inside: avoid; }
-    h2.section-title { font-size: 12px; font-weight: 900; margin: 18px 0 8px; padding-top: 10px; border-top: 2px solid #333; page-break-before: always; }
-    table.comp-table { width: 100%; border-collapse: collapse; font-size: 9px; }
-    table.comp-table th, table.comp-table td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
-    table.comp-table th { background: #f0f0f0; font-weight: 700; }
-    table.comp-table tr { page-break-inside: avoid; }
-    table.comp-table td:nth-child(3), table.comp-table td:nth-child(4), table.comp-table td:nth-child(5), table.comp-table td:nth-child(6) { text-align: right; font-family: 'JetBrains Mono', monospace; }
-    @page { size: A3 landscape; margin: 10mm; }
-    @media print { .no-print { display: none !important; } }
-${PINFO_CSS}
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <h1>${productName} — 2D Technical Drawing</h1>
-      <p>Generated by SmartMeasure CAD • ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
-    </div>
-    <p style="font-size:9px;color:#999">All dimensions in millimetres (mm)</p>
-  </div>
-  ${projectInfoBlockHTML(info)}
-  ${svgHTML}
-  ${cutlist.length ? `<h2 class="section-title">Component Table — every part's real size, quantity and formula</h2>${componentTableHTML(cutlist)}` : ''}
-  <script>window.onload = () => { setTimeout(() => window.print(), 300); }</script>
-</body>
-</html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  // Direct file download to the device (no new tab / print-dialog step) —
-  // an <a download> click is what actually saves a file in the browser;
-  // window.open() only opened a viewable tab the user had to Ctrl+P from.
-  // Filename carries the real Project ID + product name(s), never a
-  // "demo"/"test"/"sample" placeholder.
-  const safeName = pdfFileName(info.projectId, info.products);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${safeName}-2D-Drawing.html`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 // ─── Per-product addon-input derivation (pure, no component state) ────────────
@@ -274,14 +147,10 @@ function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<str
   return { twoDoor, singleDoor };
 }
 
-/** Renders one React element to a standalone <svg ...>...</svg> string. */
-function svgHtmlOf(el: React.ReactElement): string {
-  const markup = renderToStaticMarkup(<>{el}</>);
-  const holder = document.createElement('div');
-  holder.innerHTML = markup;
-  const svg = holder.querySelector('svg');
-  return svg ? svg.outerHTML : '';
-}
+// svgHtmlOf() (renderToStaticMarkup → HTML string) retired — svg2pdf.js
+// needs a real, currently-mounted DOM <svg> element, not a detached HTML
+// string, so PDF generation now uses mountOffscreenSvgs() instead (see
+// handleDownloadPDF / handleDownloadCombinedPDF below).
 
 // ─── Multi-product session ─────────────────────────────────────────────────
 // One Project/site visit can cover several products — each keeps its own
@@ -351,167 +220,11 @@ function captionForSession(product: ProductTemplate, dims: Record<string, number
     .join('   ');
 }
 
-interface CombinedPdfItem { id: ProductId; name: string; icon: string; caption: string; svgHTML: string; roomCategory?: RoomCategory; }
-
-// Products the layout engine gives the bigger (half-page) slot to when
-// they're combined with smaller ones — per the user's own worked example
-// (Wardrobe = half page, Bed/Shoe Rack = quarter page each). A product with
-// no entry here defaults to the small/quarter slot.
-const LARGE_PDF_PRODUCTS = new Set<ProductId>(['openable-wardrobe', 'sliding-wardrobe']);
-
-function pdfSectionHTML(it: CombinedPdfItem, sizeClass: string): string {
-  return `<div class="pdf-section ${sizeClass}">
-    <div class="section-title">${it.icon} ${it.name}</div>
-    ${it.caption ? `<div class="section-caption">${it.caption}</div>` : ''}
-    <div class="section-svg-wrap">${it.svgHTML}</div>
-  </div>`;
-}
-
-/**
- * The exactly-2-products layout: two equal-width columns split by a plain
- * vertical rule, each headed by a simple underlined product name (no icon,
- * no caption line, no card border) — matching the user's own reference
- * layout for "these products together are one project," as distinct from
- * the weighted half/quarter treatment used for 3+ products.
- */
-function pdfSectionHTMLColumn(it: CombinedPdfItem): string {
-  return `<div class="pdf-section size-column">
-    <div class="section-title-plain">${it.name}</div>
-    <div class="section-svg-wrap">${it.svgHTML}</div>
-  </div>`;
-}
-
-/**
- * One page's worth of sections (at most 4), arranged per the user's own
- * spec: 1 product = full page; 2 = two equal side-by-side columns split by
- * a vertical rule (their own reference layout — "one complete project" on
- * one page); 3 = one half-page "large" product (if any is flagged) over
- * two quarter-page ones; 4 = an even 2x2 grid. This is the actual layout
- * decision — expressed as a CSS grid template per page rather than
- * hand-computed pixel coordinates, which is a correct, robust way to
- * implement "automatically choose the most appropriate layout" in an
- * HTML/print document.
- */
-function pdfPageHTML(pageItems: CombinedPdfItem[], pageNum: number, pageCount: number, info: PdfProjectInfo, categoryHeading?: RoomCategory): string {
-  const n = pageItems.length;
-  let gridClass: string;
-  let sectionsHTML: string;
-  if (n === 1) {
-    gridClass = 'grid-1';
-    sectionsHTML = pdfSectionHTML(pageItems[0], 'size-full');
-  } else if (n === 2) {
-    gridClass = 'grid-2col';
-    sectionsHTML = pageItems.map((it) => pdfSectionHTMLColumn(it)).join('');
-  } else if (n === 3) {
-    gridClass = 'grid-3';
-    const largeIdx = pageItems.findIndex((it) => LARGE_PDF_PRODUCTS.has(it.id));
-    const big = largeIdx >= 0 ? pageItems[largeIdx] : pageItems[0];
-    const rest = pageItems.filter((it) => it !== big);
-    sectionsHTML = pdfSectionHTML(big, 'size-half-top') + rest.map((it) => pdfSectionHTML(it, 'size-quarter')).join('');
-  } else {
-    gridClass = 'grid-4';
-    sectionsHTML = pageItems.map((it) => pdfSectionHTML(it, 'size-quarter')).join('');
-  }
-  // Project-information block sits in its own header strip — ABOVE and
-  // entirely separate from the drawing grid below it, on every page (not
-  // just page 1), so it can never overlap a drawing or its dimensions.
-  // Category heading (§14) sits below that, only when this page is the
-  // first page of that category's own run of products — a category with
-  // zero selected products never gets a heading at all, since this is only
-  // ever called with a real, non-empty pageItems for that category.
-  return `<div class="pdf-page">
-    <div class="page-header">
-      ${projectInfoBlockHTML(info)}
-      <div class="page-num">Page ${pageNum} of ${pageCount}</div>
-    </div>
-    ${categoryHeading ? `<div class="category-heading">${categoryHeading}</div>` : ''}
-    <div class="page-grid ${gridClass}">${sectionsHTML}</div>
-  </div>`;
-}
-
-/**
- * One PDF, every selected product's REAL drawing (same canonical SVG as its
- * own on-screen view — never a re-simplified redraw) laid out with the
- * half/quarter-page weighting from the user's own spec, paginated at a
- * maximum of 4 sections per page. Returns ok:false with a reason instead of
- * throwing/silently no-op'ing, so the caller can show it inline.
- */
-function downloadCombinedPDF(items: CombinedPdfItem[], info: PdfProjectInfo): { ok: boolean; error?: string } {
-  if (items.length === 0) return { ok: false, error: 'No product drawings to include.' };
-  if (!info.clientName.trim()) return { ok: false, error: 'Client Name is required before a PDF can be generated.' };
-  // Category-grouped pagination (spec §13-14, §19): products are paginated
-  // WITHIN their own roomCategory's own run (never mixing two categories'
-  // drawings onto the same page/grid), in the fixed Master Bedroom → Living
-  // Room → Kitchen order, each category's own products kept in their
-  // already-selected order. A product with no roomCategory (a whole-room/
-  // apartment layout item) falls into its own unlabeled trailing group, so
-  // nothing is ever silently dropped from the PDF.
-  const grouped: { heading?: RoomCategory; items: CombinedPdfItem[] }[] = [
-    ...ROOM_CATEGORY_ORDER.map((category) => ({
-      heading: category,
-      items: items.filter((it) => it.roomCategory === category),
-    })).filter((g) => g.items.length > 0),
-    ...(items.some((it) => !it.roomCategory) ? [{ heading: undefined, items: items.filter((it) => !it.roomCategory) }] : []),
-  ];
-  const pages: { items: CombinedPdfItem[]; heading?: RoomCategory }[] = [];
-  for (const group of grouped) {
-    for (let i = 0; i < group.items.length; i += 4) {
-      pages.push({ items: group.items.slice(i, i + 4), heading: i === 0 ? group.heading : undefined });
-    }
-  }
-  const pagesHTML = pages.map((page, i) => pdfPageHTML(page.items, i + 1, pages.length, info, page.heading)).join('\n');
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Combined 2D Drawings — ${items.length} Products</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: white; font-family: 'Segoe UI', system-ui, sans-serif; }
-    .pdf-page { padding: 8mm; page-break-after: always; display: flex; flex-direction: column; min-height: 190mm; }
-    .pdf-page:last-child { page-break-after: auto; }
-    .page-header { padding-bottom: 6px; border-bottom: 2px solid #333; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
-    .page-num { font-size: 9px; color: #666; flex-shrink: 0; }
-    .category-heading { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1e293b; margin: 8px 0 6px; padding-bottom: 3px; border-bottom: 1.5px solid #94a3b8; flex-shrink: 0; }
-${PINFO_CSS}
-    .page-grid { flex: 1; display: grid; gap: 6mm; min-height: 0; }
-    .grid-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
-    .grid-2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-    .grid-2col { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; gap: 0; }
-    .grid-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-    .grid-3 .size-half-top { grid-column: 1 / 3; grid-row: 1; }
-    .grid-3 .size-quarter { grid-row: 2; }
-    .grid-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-    .pdf-section { border: 1px solid #ccc; border-radius: 4px; padding: 6px; display: flex; flex-direction: column; overflow: hidden; page-break-inside: avoid; min-height: 0; min-width: 0; }
-    .section-title { font-size: 11px; font-weight: 800; text-align: center; text-transform: uppercase; letter-spacing: 0.02em; color: #222; flex-shrink: 0; }
-    .section-caption { font-size: 9px; color: #666; text-align: center; margin: 2px 0 4px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
-    .section-svg-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 0; }
-    .section-svg-wrap svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }
-    /* Exactly-2-products layout: two equal columns, one plain vertical
-       rule between them (not a bordered card each) — the two drawings
-       read as one combined project sheet rather than two separate tiles. */
-    .pdf-section.size-column { border: none; border-radius: 0; padding: 10px 22px; }
-    .grid-2col .pdf-section.size-column:first-child { border-right: 1.5px solid #222; }
-    .section-title-plain { font-size: 13px; font-weight: 700; font-style: italic; text-align: center; text-decoration: underline; text-underline-offset: 4px; color: #111; flex-shrink: 0; margin-bottom: 6px; }
-    @page { size: A3 landscape; margin: 0; }
-  </style>
-</head>
-<body>
-  ${pagesHTML}
-  <script>window.onload = () => { setTimeout(() => window.print(), 300); }</script>
-</body>
-</html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${pdfFileName(info.projectId, info.products)}-2D-Drawings.html`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-  return { ok: true };
-}
+// Combined-PDF item building, packing, and rendering now live in
+// src/pdf/pdfEngine.ts (generateAndDownloadPdf) — real .pdf pages via
+// jsPDF + svg2pdf.js, Kitchen always page-separate from Master Bedroom +
+// Living Room, small/large-drawing packing, a pinned top-left info block
+// on every page. See handleDownloadCombinedPDF below.
 
 // ─── Add-on detail views (generic / not yet migrated to the real engine) ──────
 // These render a standalone add-on that has its own W/H/D fields
@@ -718,6 +431,10 @@ export const ProductFlow: React.FC = () => {
   // its own error state (not reused from completeErrors) since it guards
   // a different action and shouldn't be cleared by Mark Complete.
   const [pdfError, setPdfError] = useState<string | null>(null);
+  // Real PDF generation (jsPDF + svg2pdf.js) is async — this disables the
+  // Download PDF button(s) mid-generation so a second click can't start an
+  // overlapping doc.save() on the same jsPDF instance.
+  const [pdfBusy, setPdfBusy] = useState(false);
   const drawingRef = useRef<HTMLDivElement>(null);
   // The workspace tab strip scrolls horizontally on narrow screens (never
   // the whole page) — this keeps whichever tab is active scrolled fully
@@ -934,45 +651,50 @@ export const ProductFlow: React.FC = () => {
   // viewOverride) and pulls the real per-component cutlist, so the PDF
   // always contains Front/Plan/Side (or Internal) together with the full
   // component table — never just whichever single tab was open on screen.
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!product) return;
     if (!model.project.clientName.trim()) {
       setPdfError('Client Name is required before a PDF can be generated.');
       return;
     }
     setPdfError(null);
-    const views: PdfView[] = product.views
-      .map((v) => {
-        const markup = renderToStaticMarkup(<>{renderMainDrawing(v)}</>);
-        const holder = document.createElement('div');
-        holder.innerHTML = markup;
-        const svg = holder.querySelector('svg');
-        return { label: v.replace(/-/g, ' '), svgHTML: svg ? svg.outerHTML : '' };
-      })
-      .filter((v) => v.svgHTML);
+    setPdfBusy(true);
+    try {
+      const { svgs, cleanup } = await mountOffscreenSvgs(product.views.map((v) => renderMainDrawing(v)));
+      const views: PdfViewItem[] = product.views
+        .map((v, i) => ({ label: v.replace(/-/g, ' '), svgEl: svgs[i] }))
+        .filter((v): v is PdfViewItem => !!v.svgEl);
 
-    const cutlist: PdfCutRow[] = selectedId === 'bed'
-      ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
-      : isWardrobe
-      ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, sidePanel: wardrobeSidePanel, loft: wardrobeLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
-      : isShoeRack
-      ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
-      : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
+      const cutlist: PdfCutRow[] = selectedId === 'bed'
+        ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        : isWardrobe
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, sidePanel: wardrobeSidePanel, loft: wardrobeLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        : isShoeRack
+        ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
 
-    downloadPDF(product.name, views, cutlist, {
-      projectId: model.project.projectId,
-      clientName: model.project.clientName,
-      employeeName: model.employeeName || '',
-      products: [product.name],
-    });
-    logDrawingEvent({
-      productCategory: product.roomCategory ?? 'Uncategorized',
-      productName: product.name,
-      projectId: model.project.projectId,
-      clientName: model.project.clientName,
-      pdfGenerated: true,
-      measurements: dims,
-    });
+      const result = await generateAndDownloadSingleProductPdf(product.name, views, cutlist, {
+        projectId: model.project.projectId,
+        clientName: model.project.clientName,
+        employeeName: model.employeeName || '',
+        products: [product.name],
+      });
+      cleanup();
+      if (!result.ok) {
+        setPdfError(result.error ?? 'Unable to generate PDF.');
+        return;
+      }
+      logDrawingEvent({
+        productCategory: product.roomCategory ?? 'Uncategorized',
+        productName: product.name,
+        projectId: model.project.projectId,
+        clientName: model.project.clientName,
+        pdfGenerated: true,
+        measurements: dims,
+      });
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   // Ticking a product seeds its session immediately (so the Todo list shows
@@ -1034,7 +756,7 @@ export const ProductFlow: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, dims, selectedAddons, addonDims, selectedId, todoProducts, productSessions, switchToProduct]);
 
-  const handleDownloadCombinedPDF = () => {
+  const handleDownloadCombinedPDF = async () => {
     // Step 1 of the required validation order: Client Name, before doing
     // any of the (heavier) drawing-resolution work below.
     if (!model.project.clientName.trim()) {
@@ -1045,47 +767,60 @@ export const ProductFlow: React.FC = () => {
       setPdfError('Employee session not found — please log in again.');
       return;
     }
-    // The product currently on screen may have unsaved live edits that
-    // haven't been written back into productSessions yet (that only
-    // happens on switch) — fold them in here so the PDF always reflects
-    // exactly what's on screen right now for the active product too.
-    const liveSessions: Partial<Record<ProductId, ProductSessionData>> = {
-      ...productSessions,
-      [selectedId]: { dims, selectedAddons, addonDims, status: productSessions[selectedId]?.status ?? 'not-started' },
-    };
-    const items: CombinedPdfItem[] = todoProducts
-      .map((p) => {
+    setPdfBusy(true);
+    try {
+      // The product currently on screen may have unsaved live edits that
+      // haven't been written back into productSessions yet (that only
+      // happens on switch) — fold them in here so the PDF always reflects
+      // exactly what's on screen right now for the active product too.
+      const liveSessions: Partial<Record<ProductId, ProductSessionData>> = {
+        ...productSessions,
+        [selectedId]: { dims, selectedAddons, addonDims, status: productSessions[selectedId]?.status ?? 'not-started' },
+      };
+      const elements = todoProducts.map((p) => {
         const session = liveSessions[p.id] ?? freshSession(p);
-        const { element } = elementAndIssuesForSession(p, session);
-        return { id: p.id, name: p.name, icon: p.icon, caption: captionForSession(p, session.dims), svgHTML: svgHtmlOf(element), roomCategory: p.roomCategory };
-      })
-      .filter((it) => it.svgHTML);
-    const result = downloadCombinedPDF(items, {
-      projectId: model.project.projectId,
-      clientName: model.project.clientName,
-      employeeName: model.employeeName,
-      products: todoProducts.map((p) => p.name),
-    });
-    if (!result.ok) {
-      setPdfError(result.error ?? 'Unable to generate Combined PDF.');
-      return;
-    }
-    // One drawing event per product included in the combined PDF — each
-    // still gets its own row (same as generating them individually would),
-    // so the dashboard's per-product counts are accurate either way.
-    for (const p of todoProducts) {
-      const session = liveSessions[p.id] ?? freshSession(p);
-      logDrawingEvent({
-        productCategory: p.roomCategory ?? 'Uncategorized',
-        productName: p.name,
+        return elementAndIssuesForSession(p, session).element;
+      });
+      const { svgs, cleanup } = await mountOffscreenSvgs(elements);
+      const items: PdfDrawingItem[] = todoProducts
+        .map((p, i): PdfDrawingItem | null => {
+          const session = liveSessions[p.id] ?? freshSession(p);
+          const svgEl = svgs[i];
+          if (!svgEl) return null;
+          return { id: p.id, name: p.name, caption: captionForSession(p, session.dims), roomCategory: p.roomCategory, svgEl };
+        })
+        .filter((it): it is PdfDrawingItem => it !== null);
+
+      const result = await generateAndDownloadPdf(items, {
         projectId: model.project.projectId,
         clientName: model.project.clientName,
-        pdfGenerated: true,
-        measurements: session.dims,
+        employeeName: model.employeeName,
+        products: todoProducts.map((p) => p.name),
       });
+      cleanup();
+      if (!result.ok) {
+        setPdfError(result.error ?? 'Unable to generate Combined PDF.');
+        return;
+      }
+      // One drawing event per product included in the combined PDF — each
+      // still gets its own row (same as generating them individually would),
+      // so the dashboard's per-product counts are accurate either way.
+      for (const p of todoProducts) {
+        const session = liveSessions[p.id] ?? freshSession(p);
+        logDrawingEvent({
+          productCategory: p.roomCategory ?? 'Uncategorized',
+          productName: p.name,
+          projectId: model.project.projectId,
+          clientName: model.project.clientName,
+          pdfGenerated: true,
+          measurements: session.dims,
+        });
+      }
+      setPdfError(null);
+      setShowMultiPanel(false);
+    } finally {
+      setPdfBusy(false);
     }
-    setPdfError(null);
-    setShowMultiPanel(false);
   };
 
   // Separate add-on detail drawings
@@ -1231,10 +966,11 @@ export const ProductFlow: React.FC = () => {
                   </div>
                   <button
                     onClick={handleDownloadCombinedPDF}
-                    className="w-full rounded-lg px-3 py-2 text-sm font-bold"
+                    disabled={pdfBusy}
+                    className="w-full rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-60"
                     style={{ background: allCompleted ? '#16a34a' : '#4338ca', color: '#fff' }}
                   >
-                    {allCompleted ? `✓ Download Combined PDF (${multiSelectIds.size})` : `⬇ Download Draft PDF (${multiSelectIds.size})`}
+                    {pdfBusy ? '⏳ Generating PDF…' : allCompleted ? `✓ Download Combined PDF (${multiSelectIds.size})` : `⬇ Download Draft PDF (${multiSelectIds.size})`}
                   </button>
                 </>
               )}
@@ -1262,9 +998,10 @@ export const ProductFlow: React.FC = () => {
 
           <button
             onClick={handleDownloadPDF}
-            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold flex-shrink-0"
+            disabled={pdfBusy}
+            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold flex-shrink-0 disabled:opacity-60"
             style={{ background: '#1d4ed8', color: '#fff' }}>
-            ⬇ Download PDF
+            {pdfBusy ? '⏳ Generating…' : '⬇ Download PDF'}
           </button>
 
           <div className="relative">
@@ -1354,10 +1091,11 @@ export const ProductFlow: React.FC = () => {
               // the single-product "Download PDF" button instead).
               <button
                 onClick={handleDownloadCombinedPDF}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                disabled={pdfBusy}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-60"
                 style={{ background: '#16a34a', color: '#fff' }}
               >
-                ✓ Download Combined PDF ({todoProducts.length})
+                {pdfBusy ? '⏳ Generating…' : `✓ Download Combined PDF (${todoProducts.length})`}
               </button>
             ) : (
               <button
@@ -1904,12 +1642,12 @@ export const ProductFlow: React.FC = () => {
                   PDF" (the single active product) always stays available —
                   neither button replaces the other. */}
               <div className="mt-5 flex flex-col sm:flex-row gap-2">
-                <button onClick={handleDownloadPDF} className="rounded-xl px-4 py-3 text-sm font-bold" style={{ background: hasMultiple ? '#1e293b' : '#1d4ed8', color: hasMultiple ? '#cbd5e1' : '#fff', border: hasMultiple ? '1px solid #243045' : 'none' }}>
-                  ⬇ Download Current Drawing PDF
+                <button onClick={handleDownloadPDF} disabled={pdfBusy} className="rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60" style={{ background: hasMultiple ? '#1e293b' : '#1d4ed8', color: hasMultiple ? '#cbd5e1' : '#fff', border: hasMultiple ? '1px solid #243045' : 'none' }}>
+                  {pdfBusy ? '⏳ Generating…' : '⬇ Download Current Drawing PDF'}
                 </button>
                 {hasMultiple && (
-                  <button onClick={handleDownloadCombinedPDF} className="rounded-xl px-4 py-3 text-sm font-bold" style={{ background: allCompleted ? '#16a34a' : '#4338ca', color: '#fff' }}>
-                    {allCompleted ? `✓ Download Combined PDF (${todoProducts.length})` : `⬇ Download Draft PDF (${todoProducts.length})`}
+                  <button onClick={handleDownloadCombinedPDF} disabled={pdfBusy} className="rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60" style={{ background: allCompleted ? '#16a34a' : '#4338ca', color: '#fff' }}>
+                    {pdfBusy ? '⏳ Generating…' : allCompleted ? `✓ Download Combined PDF (${todoProducts.length})` : `⬇ Download Draft PDF (${todoProducts.length})`}
                   </button>
                 )}
               </div>
