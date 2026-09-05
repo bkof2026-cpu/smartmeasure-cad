@@ -433,6 +433,13 @@ export const ProductFlow: React.FC = () => {
   // the Measure/Drawing/Evidence workspace as normal.
   const [multiSelectIds, setMultiSelectIds] = useState<Set<ProductId>>(() => new Set());
   const [showMultiPanel, setShowMultiPanel] = useState(false);
+  // Combined PDF's per-product Evidence Note picker (PDF tab, multi-product
+  // case only) — which ticked product's note is currently being edited.
+  // Reuses the exact same setEvidenceNote/model.evidence store as the
+  // single-product Evidence tab, just picked by product here instead of by
+  // whichever product happens to be open.
+  const [combinedNoteProductId, setCombinedNoteProductId] = useState<ProductId | null>(null);
+  const [combinedNoteDraft, setCombinedNoteDraft] = useState('');
   // One entry per product ever visited or ticked — each product's own
   // measurements/add-ons/status, entirely isolated from every other
   // product's (never mixed), restored exactly when its product is reopened.
@@ -691,6 +698,25 @@ export const ProductFlow: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [selectedId, evidenceNoteDraft, setEvidenceNote]);
 
+  // Combined PDF's per-product note picker — same load-on-select /
+  // debounced-save pattern as the single-product Evidence tab above, keyed
+  // by whichever ticked product is currently selected in the picker rather
+  // than by selectedId.
+  useEffect(() => {
+    if (!combinedNoteProductId) { setCombinedNoteDraft(''); return; }
+    const existing = model.evidence.find((item) => item.measurementId === combinedNoteProductId && item.type === 'note');
+    setCombinedNoteDraft(existing?.caption ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combinedNoteProductId]);
+
+  useEffect(() => {
+    if (!combinedNoteProductId) return;
+    const timer = window.setTimeout(() => {
+      setEvidenceNote(combinedNoteProductId, combinedNoteDraft);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [combinedNoteProductId, combinedNoteDraft, setEvidenceNote]);
+
   // Map field key → group colour
   const fieldColor: Record<string, string> = {};
   groups.forEach((g) => g.keys.forEach((k) => { fieldColor[k] = g.color; }));
@@ -884,7 +910,11 @@ export const ProductFlow: React.FC = () => {
           const session = liveSessions[p.id] ?? freshSession(p);
           const svgEl = svgs[i];
           if (!svgEl) return null;
-          return { id: p.id, name: p.name, caption: captionForSession(p, session.dims), roomCategory: p.roomCategory, svgEl };
+          // Each product's own note, picked via the PDF tab's per-product
+          // picker above — never another product's, since it's looked up
+          // by this exact product's id.
+          const evidenceNote = model.evidence.find((item) => item.measurementId === p.id && item.type === 'note')?.caption;
+          return { id: p.id, name: p.name, caption: captionForSession(p, session.dims), roomCategory: p.roomCategory, svgEl, evidenceNote };
         })
         .filter((it): it is PdfDrawingItem => it !== null);
 
@@ -1723,6 +1753,41 @@ export const ProductFlow: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {hasMultiple && (
+                <div className="mt-5 rounded-lg border p-3" style={{ background: '#0f172a', borderColor: '#243045' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>
+                    Evidence Note per product
+                  </div>
+                  <div className="mt-0.5 text-[10px]" style={{ color: '#475569' }}>
+                    Pick a product below to add its own note — shown in the bottom-right corner of that product's box in the Combined PDF.
+                  </div>
+                  <select
+                    value={combinedNoteProductId ?? ''}
+                    onChange={(e) => setCombinedNoteProductId((e.target.value || null) as ProductId | null)}
+                    className="mt-2 w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }}
+                  >
+                    <option value="">Select a product…</option>
+                    {todoProducts.map((p) => {
+                      const hasNote = model.evidence.some((item) => item.measurementId === p.id && item.type === 'note' && item.caption.trim());
+                      return (
+                        <option key={p.id} value={p.id}>{p.icon} {p.name}{hasNote ? ' — note added' : ''}</option>
+                      );
+                    })}
+                  </select>
+                  {combinedNoteProductId && (
+                    <textarea
+                      value={combinedNoteDraft}
+                      onChange={(e) => setCombinedNoteDraft(e.target.value)}
+                      placeholder={`e.g. Site condition is good for ${getProduct(combinedNoteProductId)?.name ?? 'this product'}...`}
+                      rows={3}
+                      className="mt-2 w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
+                      style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }}
+                    />
+                  )}
+                </div>
+              )}
 
               {pdfError && (
                 <div className="mt-4 rounded-lg border px-3 py-2 text-xs" style={{ background: '#3b0d0d', color: '#fca5a5', borderColor: '#7f1d1d' }}>
