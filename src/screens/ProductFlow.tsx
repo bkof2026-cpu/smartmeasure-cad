@@ -397,6 +397,85 @@ function MyStatsPanel() {
   );
 }
 
+// ─── Shared numeric measurement input ──────────────────────────────────────
+// Every measurement field (Bed Width/Length/Height, Headboard Height, and
+// the equivalent fields across every other product) used to bind its input
+// straight to a coerced-to-number value: `value={Number(dims[key] ?? 0)}`,
+// `onChange={(e) => set(Number(e.target.value))}`. Clearing the field made
+// e.target.value "" → Number("") is 0 → the field re-rendered showing "0"
+// immediately, so a user could never see (or leave) it empty while typing a
+// fresh number — confirmed via a real screen recording.
+//
+// Fix: this component owns its OWN local string state for what's currently
+// displayed, decoupled from the real committed value. It only calls
+// onCommit(n) once the typed text actually parses to a real, finite number
+// — an empty or partial string (e.g. "", "-", "1.") is shown exactly as
+// typed and never forced back to a number mid-edit. The underlying `dims`
+// value (used by drawings/cutlist/validation/PDF) is therefore untouched
+// while the box is empty — it simply keeps its last real committed value,
+// so nothing downstream ever silently treats "cleared" as a real 0mm
+// measurement. When the field is blurred still empty, it reverts the
+// DISPLAY back to the last committed value (matching the "don't change
+// current functionality / default values" instruction) rather than
+// leaving a stale, never-committed "" sitting in dims.
+function MeasurementNumberInput({
+  value, onCommit, min, max, step, className, style,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const [draft, setDraft] = useState<string>(String(value));
+  const editingRef = useRef(false);
+
+  // Syncs the display from the real value whenever it changes from OUTSIDE
+  // this input (product switch, History recall, another control affecting
+  // the same field) — but never while the user is actively typing in this
+  // exact box, so an external re-render can't stomp on an in-progress edit.
+  useEffect(() => {
+    if (!editingRef.current) setDraft(String(value));
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      min={min}
+      max={max}
+      step={step}
+      onFocus={() => { editingRef.current = true; }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        // Allow only what a real number (or a number mid-typing) looks
+        // like: digits, one leading minus, one decimal point — anything
+        // else is simply not accepted as a keystroke, same as the browser's
+        // own type="number" filtering, but without that input type's
+        // "reset to 0/empty on blur-with-invalid-content" behavior.
+        if (raw !== '' && !/^-?\d*\.?\d*$/.test(raw)) return;
+        setDraft(raw);
+        const parsed = Number(raw);
+        if (raw !== '' && raw !== '-' && !raw.endsWith('.') && Number.isFinite(parsed)) {
+          onCommit(parsed);
+        }
+      }}
+      onBlur={() => {
+        editingRef.current = false;
+        // Left empty/invalid on blur — snap the DISPLAY back to the last
+        // real committed value (never silently commit 0), matching "keep
+        // the current default/standard measurement behavior".
+        setDraft(String(value));
+      }}
+      className={className}
+      style={style}
+    />
+  );
+}
+
 // ─── Main ProductFlow Screen ──────────────────────────────────────────────────
 
 export const ProductFlow: React.FC = () => {
@@ -1336,11 +1415,10 @@ export const ProductFlow: React.FC = () => {
                             </button>
                           ) : (
                             <div className="flex gap-1">
-                              <input
-                                type="number"
+                              <MeasurementNumberInput
                                 value={Number(dims[field.key] ?? field.defaultValue)}
+                                onCommit={(val) => handleDimChange(field.key, val)}
                                 min={field.min} max={field.max} step={field.step ?? 1}
-                                onChange={(e) => handleDimChange(field.key, Number(e.target.value))}
                                 className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                                 style={{ background: '#1e293b', color: '#e2e8f0', border: `1px solid ${group.color}40` }}
                               />
@@ -1384,11 +1462,10 @@ export const ProductFlow: React.FC = () => {
                           {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                       ) : (
-                        <input
-                          type="number"
+                        <MeasurementNumberInput
                           value={Number(dims[field.key] ?? field.defaultValue)}
+                          onCommit={(val) => handleDimChange(field.key, val)}
                           min={field.min} max={field.max} step={field.step ?? 1}
-                          onChange={(e) => handleDimChange(field.key, Number(e.target.value))}
                           className="px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                           style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045' }}
                         />
@@ -1417,7 +1494,7 @@ export const ProductFlow: React.FC = () => {
                     {fields.map((field) => (
                       <div key={field.key} className="flex flex-col gap-0.5">
                         <label className="text-xs font-semibold" style={{ color: '#c084fc' }}>{field.label} <span className="font-mono" style={{ color: '#475569' }}>(mm / count)</span></label>
-                        <input type="number" value={Number(dims[field.key] ?? field.defaultValue)} min={field.min} max={field.max} onChange={(e) => handleDimChange(field.key, Number(e.target.value))} className="rounded-lg px-2 py-1.5 text-sm font-mono outline-none" style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }} />
+                        <MeasurementNumberInput value={Number(dims[field.key] ?? field.defaultValue)} onCommit={(val) => handleDimChange(field.key, val)} min={field.min} max={field.max} className="rounded-lg px-2 py-1.5 text-sm font-mono outline-none" style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }} />
                       </div>
                     ))}
                   </div>
