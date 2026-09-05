@@ -64,6 +64,14 @@ interface AppContextValue {
 
   // Evidence
   addEvidence: (e: EvidenceItem) => void;
+  /** Upserts the ONE persistent Evidence Note for a given product/measurement
+   * (measurementId) — stored as a single EvidenceItem of type 'note', keyed
+   * by measurementId, so exactly one note exists per product at a time
+   * (never a growing list). Passing an empty/whitespace-only text removes
+   * the note entirely rather than leaving a blank record around. Reuses the
+   * existing evidence[] array (already localStorage-persisted) instead of
+   * introducing a separate storage path. */
+  setEvidenceNote: (measurementId: string, text: string) => void;
 
   // Rules
   updateRule: (key: keyof RuleParameters, value: number | number[]) => void;
@@ -232,6 +240,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setModel((prev) => ({ ...prev, evidence: [...prev.evidence, e] }));
   }, []);
 
+  const setEvidenceNote = useCallback((measurementId: string, text: string) => {
+    setModel((prev) => {
+      const withoutOldNote = prev.evidence.filter((item) => !(item.measurementId === measurementId && item.type === 'note'));
+      if (!text.trim()) return { ...prev, evidence: withoutOldNote };
+      const noteItem: EvidenceItem = {
+        id: `EVNOTE-${measurementId}`,
+        measurementId,
+        label: 'Evidence Note',
+        type: 'note',
+        caption: text,
+        timestamp: new Date().toISOString(),
+      };
+      return { ...prev, evidence: [...withoutOldNote, noteItem] };
+    });
+  }, []);
+
   const updateRule = useCallback((key: keyof RuleParameters, value: number | number[]) => {
     setRules((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -345,6 +369,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addOpening, updateOpening, removeOpening,
         addModule, updateModule, removeModule,
         addEvidence,
+        setEvidenceNote,
         updateRule,
         setStep, completeStep,
         saveVersion,

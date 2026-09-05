@@ -29,6 +29,57 @@ export interface PdfProjectInfo {
   products: string[];
 }
 
+// ─── Evidence Note (bottom-right corner) ────────────────────────────────────
+// A short free-text note tied to the current product/measurement (see the
+// Evidence tab in ProductFlow.tsx), included on the single-product PDF only
+// per the user's own request. Reserves space at the bottom-right of the
+// LAST page only — never drawn on a page that has none, never overlapping
+// the drawing/dimension/heading/footer content already on that page.
+const NOTE_FONT_SIZE = 8;
+const NOTE_LINE_HEIGHT = 10;
+const NOTE_LABEL_GAP = 4; // px between the "Evidence Note" label and its text
+const NOTE_BOX_PAD = 6;
+const NOTE_MAX_WIDTH = 220; // pt — wide enough to read, narrow enough to stay clear of the drawing
+
+/** How tall the reserved bottom-right strip needs to be for this note, in pt
+ * — 0 when the note is empty/whitespace-only, so the caller can skip
+ * reserving any space at all (spec: no empty section, no wasted space). */
+function evidenceNoteBlockHeight(doc: jsPDF, note: string | undefined): number {
+  if (!note || !note.trim()) return 0;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(NOTE_FONT_SIZE);
+  const lines = doc.splitTextToSize(note.trim(), NOTE_MAX_WIDTH - NOTE_BOX_PAD * 2);
+  const textH = lines.length * NOTE_LINE_HEIGHT;
+  const labelH = NOTE_LINE_HEIGHT + NOTE_LABEL_GAP;
+  return NOTE_BOX_PAD * 2 + labelH + textH;
+}
+
+/** Draws the Evidence Note label + wrapped text pinned to the page's own
+ * bottom-right corner (inside MARGIN, never past it) — a no-op when the
+ * note is empty, per spec §7. */
+function drawEvidenceNote(doc: jsPDF, note: string | undefined) {
+  if (!note || !note.trim()) return;
+  const trimmed = note.trim();
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(NOTE_FONT_SIZE);
+  const lines = doc.splitTextToSize(trimmed, NOTE_MAX_WIDTH - NOTE_BOX_PAD * 2);
+  const blockH = evidenceNoteBlockHeight(doc, trimmed);
+  const boxW = NOTE_MAX_WIDTH;
+  const x = PAGE_W - MARGIN - boxW;
+  const y = PAGE_H - MARGIN - blockH;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(NOTE_FONT_SIZE);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Evidence Note', x + boxW - NOTE_BOX_PAD, y + NOTE_BOX_PAD + NOTE_FONT_SIZE, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(NOTE_FONT_SIZE);
+  doc.setTextColor(60, 60, 60);
+  const textY = y + NOTE_BOX_PAD + NOTE_LINE_HEIGHT + NOTE_LABEL_GAP;
+  doc.text(lines, x + boxW - NOTE_BOX_PAD, textY, { align: 'right', lineHeightFactor: NOTE_LINE_HEIGHT / NOTE_FONT_SIZE });
+}
+
 // Page geometry — A3 landscape in points (jsPDF's 'pt' unit), matching the
 // paper size the previous HTML/print version used.
 const PAGE_W = 1190.55; // A3 landscape width in pt
@@ -373,18 +424,35 @@ export interface PdfViewItem {
   svgEl: SVGSVGElement;
 }
 
+const COMPONENT_TABLE_COLS = [
+  { key: 'sr', label: 'Sr.', w: 0.05 },
+  { key: 'component', label: 'Component', w: 0.28 },
+  { key: 'width', label: 'Width (mm)', w: 0.12 },
+  { key: 'height', label: 'Height (mm)', w: 0.12 },
+  { key: 'qty', label: 'Qty', w: 0.08 },
+  { key: 'thk', label: 'Thk (mm)', w: 0.1 },
+  { key: 'remark', label: 'Formula / Note', w: 0.25 },
+];
+
+/** Computes the table's real total height without drawing anything —
+ * lets the caller know exactly how far down the page it will reach, so it
+ * can decide whether the Evidence Note still has clear room below it. */
+function componentTableHeight(doc: jsPDF, rows: PdfCutRow[]): number {
+  const w = PAGE_W - MARGIN * 2;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  const rowsH = rows.reduce((sum, r) => {
+    const values = [String(1), r.component, String(Math.round(r.width)), String(Math.round(r.height)), String(r.qty), r.thickness ? String(r.thickness) : '', r.remark ?? ''];
+    const rowLines = values.map((v, ci) => doc.splitTextToSize(v, w * COMPONENT_TABLE_COLS[ci].w - 6));
+    return sum + Math.max(11, ...rowLines.map((l) => l.length * 8));
+  }, 0);
+  return 14 + rowsH; // header row (14) + every data row
+}
+
 function drawComponentTable(doc: jsPDF, rows: PdfCutRow[], startY: number): void {
   const x = MARGIN;
   const w = PAGE_W - MARGIN * 2;
-  const cols = [
-    { key: 'sr', label: 'Sr.', w: 0.05 },
-    { key: 'component', label: 'Component', w: 0.28 },
-    { key: 'width', label: 'Width (mm)', w: 0.12 },
-    { key: 'height', label: 'Height (mm)', w: 0.12 },
-    { key: 'qty', label: 'Qty', w: 0.08 },
-    { key: 'thk', label: 'Thk (mm)', w: 0.1 },
-    { key: 'remark', label: 'Formula / Note', w: 0.25 },
-  ];
+  const cols = COMPONENT_TABLE_COLS;
   let colX: number[] = [];
   let acc = x;
   for (const c of cols) { colX.push(acc); acc += w * c.w; }
@@ -419,12 +487,39 @@ export async function generateAndDownloadSingleProductPdf(
   views: PdfViewItem[],
   cutlist: PdfCutRow[],
   info: PdfProjectInfo,
+  evidenceNote?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   if (views.length === 0) return { ok: false, error: 'No drawing to include.' };
   if (!info.clientName.trim()) return { ok: false, error: 'Client Name is required before a PDF can be generated.' };
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [PAGE_W, PAGE_H] });
   const totalPages = views.length + (cutlist.length > 0 ? 1 : 0);
+  const lastViewIndex = views.length - 1;
+
+  // Decide up front which single page (if any) gets the Evidence Note, so
+  // it is drawn exactly once and only where there is real, provably clear
+  // room below/beside the existing content — never guessed after the fact.
+  // A blank/whitespace note needs 0pt, so a product with no note reserves
+  // nothing anywhere and renders identically to before this feature existed.
+  const noteBlockHeight = evidenceNoteBlockHeight(doc, evidenceNote);
+  let noteOnTablePage = false;
+  let noteOnLastViewPage = false;
+  if (noteBlockHeight > 0) {
+    if (cutlist.length > 0) {
+      // The component table's own height is fully computable ahead of
+      // drawing it — if the note fits below the table with room to spare,
+      // it goes there (visually pairing "why the measurement is trusted"
+      // with the parts list); otherwise it falls back to the last drawing
+      // view page instead of ever overlapping the table.
+      const tableContentTop = MARGIN + INFO_BLOCK_H + 14 + 10;
+      const tableBottom = tableContentTop + componentTableHeight(doc, cutlist);
+      const fitsBelowTable = tableBottom + 12 + noteBlockHeight <= PAGE_H - MARGIN;
+      noteOnTablePage = fitsBelowTable;
+      noteOnLastViewPage = !fitsBelowTable;
+    } else {
+      noteOnLastViewPage = true;
+    }
+  }
 
   for (let i = 0; i < views.length; i++) {
     if (i > 0) doc.addPage([PAGE_W, PAGE_H], 'landscape');
@@ -436,8 +531,10 @@ export async function generateAndDownloadSingleProductPdf(
     doc.setTextColor(102, 102, 102);
     doc.text(`${views[i].label.toUpperCase()} VIEW`, MARGIN, contentTop);
 
-    const cell = { x: MARGIN, y: contentTop + 8, w: PAGE_W - MARGIN * 2, h: PAGE_H - MARGIN - (contentTop + 8) };
+    const reserveNote = i === lastViewIndex && noteOnLastViewPage ? noteBlockHeight : 0;
+    const cell = { x: MARGIN, y: contentTop + 8, w: PAGE_W - MARGIN * 2, h: PAGE_H - MARGIN - (contentTop + 8) - reserveNote };
     await drawItemCell(doc, { id: `view-${i}`, name: productName, caption: '', svgEl: views[i].svgEl }, cell);
+    if (reserveNote > 0) drawEvidenceNote(doc, evidenceNote);
   }
 
   if (cutlist.length > 0) {
@@ -449,6 +546,7 @@ export async function generateAndDownloadSingleProductPdf(
     doc.setTextColor(30, 30, 30);
     doc.text('Component Table — every part\'s real size, quantity and formula', MARGIN, contentTop);
     drawComponentTable(doc, cutlist, contentTop + 10);
+    if (noteOnTablePage) drawEvidenceNote(doc, evidenceNote);
   }
 
   const filename = `${pdfClientFileName(info.clientName, info.projectId)}.pdf`;

@@ -441,8 +441,14 @@ export const ProductFlow: React.FC = () => {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>('measure');
   const [wardrobeDesign, setWardrobeDesign] = useState<WardrobeDesign | null>(null);
   const [previousProductId, setPreviousProductId] = useState<ProductId>('bed');
-  const [evidenceCaption, setEvidenceCaption] = useState('');
-  const [evidenceTag, setEvidenceTag] = useState('General site condition');
+  // Evidence Note — one persistent free-text note per product/measurement
+  // (replaces the old per-photo caption + tag + photo/video upload, per the
+  // user's explicit instruction: the Evidence page is now just this note,
+  // which is what the PDF module includes). Local draft state so typing
+  // feels instant; committed to the store (and thus localStorage) via
+  // setEvidenceNote on every change, same "auto-save locally" promise the
+  // rest of the app already makes.
+  const [evidenceNoteDraft, setEvidenceNoteDraft] = useState('');
   // PDF page: Client Name is the one mandatory identity field — nothing
   // downloads (single or combined) until it's actually entered. Kept as
   // its own error state (not reused from completeErrors) since it guards
@@ -461,7 +467,7 @@ export const ProductFlow: React.FC = () => {
   useEffect(() => {
     activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeWorkspace]);
-  const { model, addEvidence, saveMeasurementSnapshot, updateProject } = useApp();
+  const { model, setEvidenceNote, saveMeasurementSnapshot, updateProject } = useApp();
   const product = getProduct(selectedId);
   const addons = PRODUCT_ADDONS[selectedId] ?? [];
   const groups = FIELD_GROUPS[selectedId] ?? [];
@@ -667,25 +673,23 @@ export const ProductFlow: React.FC = () => {
     return [];
   });
 
-  const handleEvidenceFile = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      addEvidence({
-        id: `EV-${Date.now()}`,
-        measurementId: selectedId,
-        label: evidenceTag,
-        type: file.type.startsWith('video/') ? 'video' : 'photo',
-        caption: evidenceCaption || file.name,
-        dataUrl: typeof reader.result === 'string' ? reader.result : undefined,
-        timestamp: new Date().toISOString(),
-      });
-      setEvidenceCaption('');
-      event.target.value = '';
-    };
-    reader.readAsDataURL(file);
-  }, [addEvidence, evidenceCaption, evidenceTag, selectedId]);
+  // Loads the currently-selected product's own saved Evidence Note into the
+  // draft whenever the product changes, so switching products (or the PDF
+  // reading it later) never shows a different product's note.
+  useEffect(() => {
+    const existing = model.evidence.find((item) => item.measurementId === selectedId && item.type === 'note');
+    setEvidenceNoteDraft(existing?.caption ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  // Debounced save — same 500ms pattern as saveMeasurementSnapshot above,
+  // so rapid typing doesn't spam the store/localStorage on every keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setEvidenceNote(selectedId, evidenceNoteDraft);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [selectedId, evidenceNoteDraft, setEvidenceNote]);
 
   // Map field key → group colour
   const fieldColor: Record<string, string> = {};
@@ -760,12 +764,18 @@ export const ProductFlow: React.FC = () => {
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
 
+      // The Evidence Note is keyed by measurementId === selectedId (same
+      // product/measurement this PDF is for) — reading it straight from
+      // model.evidence here means the PDF always reflects whatever is
+      // currently saved for THIS product, never another one's note.
+      const evidenceNote = model.evidence.find((item) => item.measurementId === selectedId && item.type === 'note')?.caption;
+
       const result = await generateAndDownloadSingleProductPdf(product.name, views, cutlist, {
         projectId: model.project.projectId,
         clientName: model.project.clientName,
         employeeName: model.employeeName || '',
         products: [product.name],
-      });
+      }, evidenceNote);
       cleanup();
       if (!result.ok) {
         setPdfError(result.error ?? 'Unable to generate PDF.');
@@ -1616,30 +1626,18 @@ export const ProductFlow: React.FC = () => {
                 <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>Evidence</div>
                 <div className="text-xs" style={{ color: '#64748b' }}>{product.name} · {model.project.projectId} · {model.employeeName || 'Employee'}</div>
               </div>
-              <span className="text-xs font-mono" style={{ color: '#475569' }}>{model.evidence.length} item(s)</span>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <select value={evidenceTag} onChange={(e) => setEvidenceTag(e.target.value)} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }}>
-                <option>General site condition</option>
-                <option>Headboard / frame</option>
-                <option>Side table position</option>
-                <option>Wall / obstruction</option>
-                <option>Client approval</option>
-              </select>
-              <input value={evidenceCaption} onChange={(e) => setEvidenceCaption(e.target.value)} placeholder="Evidence note" className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }} />
-            </div>
-            <label className="mt-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed px-4 py-5 text-sm font-bold" style={{ borderColor: '#3b82f6', color: '#60a5fa' }}>
-              + Add Photo or Video
-              <input type="file" accept="image/*,video/*" onChange={handleEvidenceFile} className="hidden" />
-            </label>
-            <div className="mt-5 flex flex-col gap-2">
-              {model.evidence.filter((item) => item.measurementId === selectedId).map((item) => (
-                <div key={item.id} className="flex items-center gap-3 rounded-lg border p-3" style={{ background: '#0f172a', borderColor: '#243045' }}>
-                  {item.dataUrl && item.type === 'photo' ? <img src={item.dataUrl} alt={item.label} className="h-12 w-12 rounded object-cover" /> : <span className="text-xl">{item.type === 'video' ? '🎥' : '📝'}</span>}
-                  <div className="min-w-0"><div className="text-xs font-bold" style={{ color: '#e2e8f0' }}>{item.label}</div><div className="truncate text-xs" style={{ color: '#64748b' }}>{item.caption}</div></div>
-                  <span className="ml-auto text-[10px] font-mono" style={{ color: '#475569' }}>{new Date(item.timestamp).toLocaleString('en-IN')}</span>
-                </div>
-              ))}
+            <label className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Evidence Note</label>
+            <textarea
+              value={evidenceNoteDraft}
+              onChange={(e) => setEvidenceNoteDraft(e.target.value)}
+              placeholder="e.g. Site condition is good. Wall measurement taken after checking the existing structure."
+              rows={5}
+              className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
+              style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }}
+            />
+            <div className="mt-2 text-[10px]" style={{ color: '#475569' }}>
+              Saved automatically with this measurement — included at the bottom-right of the downloaded PDF.
             </div>
           </div>
         </div>
