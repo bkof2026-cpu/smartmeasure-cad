@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useApp } from '../store/AppContext';
 import { PRODUCT_REGISTRY, getProduct } from '../products/productRegistry';
 import { PRODUCT_ADDONS, FIELD_GROUPS } from '../products/addons';
@@ -410,6 +410,23 @@ export const ProductFlow: React.FC = () => {
   const [addonDims, setAddonDims] = useState<Record<string, Record<string, number>>>({});
   const [activeView, setActiveView] = useState<string>('front');
   const [showHistory, setShowHistory] = useState(false);
+  // The History panel is `position: fixed` (see the render below) and its
+  // on-screen coordinates are computed from the button's own real
+  // getBoundingClientRect() each time it opens (and kept in sync on
+  // resize/scroll while open) — never a fixed `right-0`/`left-0` CSS
+  // anchor, which assumed the button always sits flush against its
+  // container's true right edge. On narrow/mobile widths this row wraps
+  // (see the comment above it) and the button can land anywhere, so a
+  // static anchor let the panel's left edge run off-screen. Nothing about
+  // the panel's own markup, styling, or content changes — only where it
+  // is placed.
+  const historyBtnRef = useRef<HTMLButtonElement>(null);
+  const historyPanelRef = useRef<HTMLDivElement>(null);
+  // Starts off-screen (never visible mid-flight) rather than un-positioned —
+  // the layout effect below immediately replaces this with the button's
+  // real, clamped coordinates before the next paint, so this default is
+  // never actually seen.
+  const [historyPanelStyle, setHistoryPanelStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999 });
   // Multi-product PDF: pick several products at once and download one PDF
   // with every selected product's diagram laid out on the same page(s) —
   // separate from the single-product selectedId above, which still drives
@@ -571,6 +588,76 @@ export const ProductFlow: React.FC = () => {
     setShowHistory(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [switchToProduct]);
+
+  // Keeps the History panel fully inside the viewport (spec: never clipped
+  // left/right/top/bottom, repositions itself, works at any screen size) —
+  // measures the button and the panel's own real rendered size, then picks
+  // fixed left/top coordinates that fit. Recomputes on open, and while
+  // open on resize/scroll so it never goes stale (e.g. rotating a phone,
+  // or scrolling a long page) — panel content/markup is untouched, only
+  // its position.
+  useLayoutEffect(() => {
+    if (!showHistory) return;
+
+    const GAP = 8; // px between the button and the panel — matches the old `mt-2`
+    const EDGE_MARGIN = 8; // px minimum breathing room from any viewport edge
+
+    const reposition = () => {
+      const btn = historyBtnRef.current;
+      const panel = historyPanelRef.current;
+      if (!btn || !panel) return;
+      const btnRect = btn.getBoundingClientRect();
+      const panelWidth = panel.offsetWidth;
+      const panelHeight = panel.offsetHeight;
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
+
+      // Horizontal: default to right-aligned under the button (its old
+      // `right-0` look), but clamp so neither edge ever leaves the
+      // viewport — sliding the panel left when it would overflow right,
+      // and never past EDGE_MARGIN on the left either.
+      let left = btnRect.right - panelWidth;
+      left = Math.min(left, viewportW - panelWidth - EDGE_MARGIN);
+      left = Math.max(left, EDGE_MARGIN);
+
+      // Vertical: default to below the button (its old `top-full`), but
+      // flip above it when there isn't enough room below — same "reposition
+      // based on available space" behaviour, still clamped to the viewport.
+      let top = btnRect.bottom + GAP;
+      const fitsBelow = top + panelHeight + EDGE_MARGIN <= viewportH;
+      if (!fitsBelow) {
+        const topAbove = btnRect.top - GAP - panelHeight;
+        top = topAbove >= EDGE_MARGIN ? topAbove : Math.max(EDGE_MARGIN, viewportH - panelHeight - EDGE_MARGIN);
+      }
+
+      setHistoryPanelStyle({
+        position: 'fixed',
+        left: `${Math.round(left)}px`,
+        top: `${Math.round(top)}px`,
+        // Caps height too, so on very short viewports the panel's own
+        // internal `max-h-64 overflow-auto` list area still fits on screen
+        // instead of the whole card being pushed past the bottom edge.
+        maxHeight: `${Math.max(120, viewportH - EDGE_MARGIN * 2)}px`,
+      });
+    };
+
+    // Two rAFs: one for the panel's first paint (so offsetWidth/Height are
+    // real, not 0 from an unmounted-until-now node), one more so the
+    // resulting layout has settled before reading it back.
+    let raf1 = 0, raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(reposition);
+    });
+
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [showHistory, recentHistory.length]);
 
   const validationIssues = (product?.measurementFields ?? []).flatMap((field) => {
     const value = Number(dims[field.key] ?? field.defaultValue);
@@ -1006,6 +1093,7 @@ export const ProductFlow: React.FC = () => {
 
           <div className="relative">
             <button
+              ref={historyBtnRef}
               onClick={() => setShowHistory((prev) => !prev)}
               className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold flex-shrink-0"
               style={{ background: '#1e293b', color: '#cbd5e1', border: '1px solid #243045' }}
@@ -1014,7 +1102,17 @@ export const ProductFlow: React.FC = () => {
             </button>
 
             {showHistory && recentHistory.length > 0 && (
-              <div className="absolute right-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border p-2 z-20" style={{ background: '#111827', borderColor: '#243045' }}>
+              // `fixed` + historyPanelStyle (computed in the useLayoutEffect
+              // above from the button's real position) replaces the old
+              // `absolute right-0 top-full mt-2`, which assumed this button
+              // always sat flush against the container's true right edge —
+              // not reliable once the header row wraps on narrow screens.
+              // Same width cap, same rounded/border/background/padding as
+              // before; only how it's placed has changed.
+              <div
+                ref={historyPanelRef}
+                className="w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border p-2 z-20"
+                style={{ background: '#111827', borderColor: '#243045', ...historyPanelStyle }}>
               <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>
                 Recover previous measurements
               </div>
