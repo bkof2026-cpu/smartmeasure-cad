@@ -47,6 +47,13 @@ export interface SimpleWardrobeInputs {
   dressing: WardrobeDressingInput;
   sidePanel: WardrobeSidePanelInput;
   loft: WardrobeLoftInput;
+  // Separate, explicitly-entered overall envelope values — per the user's
+  // own instruction, these are NOT derived/recomputed from W/H + add-ons;
+  // whatever is typed here is exactly what the drawing's outer "Total
+  // Width"/"Total Height" dimension line shows. 0 (or omitted) hides that
+  // line entirely, same as the add-on-driven total-* lines already did.
+  totalWidthMm?: number;
+  totalHeightMm?: number;
 }
 
 export interface SimpleWardrobeCutRow {
@@ -117,7 +124,7 @@ function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, 
 }
 
 export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDrawing {
-  const { W, H, D, dressing, sidePanel, loft } = inp;
+  const { W, H, D, dressing, sidePanel, loft, totalWidthMm, totalHeightMm } = inp;
   const leaderMargin = 150; // room for the Wardrobe's own Depth "/" leader
 
   const dressL = dressing.enabled && dressing.side !== 'right' ? dressing.widthMm : 0;
@@ -213,6 +220,20 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: topPad, x2: wardrobeX + W, y2: wardrobeY + H, edge: 'right', componentIds: [], label: `${Math.round(loftH + H)} mm (total height)`, source: { formula: 'Total Height = Loft Height + Wardrobe Height', constants: [] } });
   }
 
+  // Explicitly-entered "Total Width" / "Total Height" — separate measurement
+  // fields the user fills in directly (not derived from add-ons); the
+  // drawing shows exactly the value entered, never recomputed. Spans the
+  // full composite footprint (same outer span as the add-on-driven total
+  // lines above) so it always reads as the true overall envelope, but
+  // carries its own distinct label/formula so it's never confused with —
+  // or silently overwritten by — the add-on-derived total above.
+  if (totalWidthMm && totalWidthMm > 0) {
+    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + H, x2: loftX + totalWidth, y2: wardrobeY + H, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} mm (Total Width, entered)`, source: { formula: 'Total Width (entered directly, not derived from Wardrobe Width or add-ons)', constants: [] } });
+  }
+  if (totalHeightMm && totalHeightMm > 0) {
+    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: Math.min(topPad, wardrobeY), x2: wardrobeX + W, y2: wardrobeY + H, edge: 'right', componentIds: [], label: `${Math.round(totalHeightMm)} mm (Total Height, entered)`, source: { formula: 'Total Height (entered directly, not derived from Wardrobe Height or add-ons)', constants: [] } });
+  }
+
   // Side Dressing — flush against the Wardrobe (or the Side Panel line, if
   // one is also enabled on that side). Width is carried in the caption
   // itself (e.g. "Dressing 400") rather than a top-edge arrow: when a Loft
@@ -292,11 +313,19 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // one tier past whatever the wardrobe's own width/height landed on.
   const ownWidthTier = resolvedDims.find((d) => d.label.includes('(width)'))?.tier ?? 0;
   const ownHeightTier = resolvedDims.find((d) => d.label.includes('(height)'))?.tier ?? 0;
+  const computedTotalWidthTier = resolvedDims.find((d) => d.label.includes('total width'))?.tier;
+  const computedTotalHeightTier = resolvedDims.find((d) => d.label.includes('total height'))?.tier;
   const dimensions = resolvedDims.map((d) => {
     const isDressingHeight = (d.componentIds.includes('dress-l') || d.componentIds.includes('dress-r')) && (d.edge === 'left' || d.edge === 'right');
     if (isDressingHeight) return { ...d, tier: Math.max(d.tier, 1) };
     if (d.label.includes('total width')) return { ...d, tier: Math.max(d.tier, ownWidthTier + 1) };
     if (d.label.includes('total height')) return { ...d, tier: Math.max(d.tier, ownHeightTier + 1) };
+    // The user-entered "Total Width/Height" always reads as the true
+    // outermost dimension — one tier past the add-on-driven computed total
+    // when one is showing, or past the wardrobe's own width/height when
+    // there's no add-on total to sit outside of.
+    if (d.label.includes('Total Width, entered')) return { ...d, tier: Math.max(d.tier, (computedTotalWidthTier ?? ownWidthTier) + 1) };
+    if (d.label.includes('Total Height, entered')) return { ...d, tier: Math.max(d.tier, (computedTotalHeightTier ?? ownHeightTier) + 1) };
     return d;
   });
   const issues = [

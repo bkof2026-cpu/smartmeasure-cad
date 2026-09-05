@@ -23,6 +23,11 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, sidePan
     dressing: dressing ?? DEFAULT_DRESSING,
     sidePanel: sidePanel ?? DEFAULT_PANEL,
     loft: loft ? { ...loft, widthMm: loft.widthMm || W } : DEFAULT_LOFT,
+    // Separate, directly-entered overall envelope — see
+    // simpleWardrobeGeometry.ts's own comment: never derived/recomputed,
+    // shown exactly as typed. Absent/0 simply hides the outer line.
+    totalWidthMm: n(dims.totalWidth),
+    totalHeightMm: n(dims.totalHeight),
   };
   const drawing = resolveSimpleWardrobePlan(inp);
   const [selected, setSelected] = useState<ComponentSpec | DimensionLine | null>(null);

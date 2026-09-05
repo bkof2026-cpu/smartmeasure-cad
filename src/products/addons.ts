@@ -57,9 +57,15 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   ],
   'openable-wardrobe': [
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
+    // Separate, directly-entered overall envelope — shown on the drawing
+    // exactly as typed, never derived from Wardrobe Width/Height or any
+    // add-on (see simpleWardrobeGeometry.ts). Its own group/colour keeps it
+    // visually distinct from the wardrobe's own carcass W/H above.
+    { label: 'Total (Overall)', color: '#22c55e', keys: ['totalWidth', 'totalHeight'] },
   ],
   'sliding-wardrobe': [
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
+    { label: 'Total (Overall)', color: '#22c55e', keys: ['totalWidth', 'totalHeight'] },
   ],
   'tv-unit': [
     { label: 'T.V.', color: '#3b82f6', keys: ['H', 'W'] },

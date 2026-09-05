@@ -940,11 +940,16 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // WardrobeTechnicalDrawing.tsx) is kept intact for a future
     // "fabrication detail" mode — nothing deleted, this entry and
     // ProductFlow.tsx's design-selection gate just no longer require it.
-    demoDimensions: { W: 2290, H: 2090, D: 600 },
+    demoDimensions: { W: 2290, H: 2090, D: 600, totalWidth: 0, totalHeight: 0 },
     measurementFields: [
       { key: 'W', label: 'Wardrobe Width', unit: 'mm', defaultValue: 2290, min: 900, max: 3600 },
       { key: 'H', label: 'Wardrobe Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
       { key: 'D', label: 'Wardrobe Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
+      // Separate, directly-entered overall envelope — shown on the drawing
+      // exactly as typed, never derived/recomputed from Wardrobe Width/
+      // Height or any add-on. 0 = not entered, outer line stays hidden.
+      { key: 'totalWidth', label: 'Total Width', unit: 'mm', defaultValue: 0, min: 0, max: 6000 },
+      { key: 'totalHeight', label: 'Total Height', unit: 'mm', defaultValue: 0, min: 0, max: 3600 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
@@ -967,11 +972,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     category: 'furniture',
     roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
-    demoDimensions: { W: 2400, H: 2090, D: 600 },
+    demoDimensions: { W: 2400, H: 2090, D: 600, totalWidth: 0, totalHeight: 0 },
     measurementFields: [
       { key: 'W', label: 'Wardrobe Width', unit: 'mm', defaultValue: 2400, min: 1200, max: 5400 },
       { key: 'H', label: 'Wardrobe Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
       { key: 'D', label: 'Wardrobe Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
+      { key: 'totalWidth', label: 'Total Width', unit: 'mm', defaultValue: 0, min: 0, max: 6000 },
+      { key: 'totalHeight', label: 'Total Height', unit: 'mm', defaultValue: 0, min: 0, max: 3600 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
