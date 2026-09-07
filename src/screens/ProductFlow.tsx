@@ -1558,11 +1558,10 @@ export const ProductFlow: React.FC = () => {
                                 ) : (
                                   <>
                                     <div className="flex gap-1">
-                                      <input
-                                        type="number"
-                                        value={adDims[field.key] ?? field.defaultValue}
+                                      <MeasurementNumberInput
+                                        value={Number(adDims[field.key] ?? field.defaultValue)}
+                                        onCommit={(val) => handleAddonDimChange(addon.id, field.key, val)}
                                         min={field.min} max={field.max} step={field.step ?? 1}
-                                        onChange={(e) => handleAddonDimChange(addon.id, field.key, Number(e.target.value))}
                                         className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                                         style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
                                       />

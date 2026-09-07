@@ -2,6 +2,13 @@ import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engin
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
 
+// Same real 70mm skirting constant used across this codebase (Side Table,
+// Wardrobe) — per the user's explicit instruction. Drawing-only: no new
+// measurement field, entered Height stays the true floor-to-top figure,
+// the box itself is drawn 70mm shorter with the skirting strip filling
+// the gap at the bottom.
+export const SHOE_RACK_SKIRTING_HEIGHT_MM = 70;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shoe Rack — same real site-measurement pattern as the simplified Bed/
 // Wardrobe: no mandatory base size, just two optional box types the user
@@ -90,7 +97,8 @@ export function resolveShoeRackPlan(inp: ShoeRackInputs): ResolvedDrawing {
 
   const anyEnabled = twoDoor.enabled || singleDoor.enabled;
   const maxH = Math.max(twoDoor.enabled ? twoDoor.heightMm : 0, singleDoor.enabled ? singleDoor.heightMm : 0);
-  const bottomY = topPad + maxH; // both boxes sit flush on this shared baseline, per the reference sketch
+  const skirtH = SHOE_RACK_SKIRTING_HEIGHT_MM;
+  const bottomY = topPad + maxH; // shared floor line (skirting's own bottom edge)
 
   let cursorX = leaderMargin;
   const twoDoorX = cursorX;
@@ -99,56 +107,88 @@ export function resolveShoeRackPlan(inp: ShoeRackInputs): ResolvedDrawing {
 
   if (twoDoor.enabled) {
     const { widthMm: w, heightMm: h, depthMm: d } = twoDoor;
-    const y = bottomY - h;
+    // Entered Height stays the true floor-to-top figure (what was actually
+    // measured on-site); the carcass box itself is drawn skirtH shorter,
+    // with a continuous skirting strip (below, spanning both boxes) filling
+    // the gap — per the user's explicit skirting-math confirmation.
+    const bodyH = h > skirtH ? h - skirtH : h;
+    const y = bottomY - skirtH - bodyH;
     components.push({
       // Plain name only — the real Height/Width/Depth are already shown via
       // the dimension arrows and the "/" leader around the box; repeating
       // them in the caption risks overflowing a narrower box and colliding
       // with the Height dimension sitting right beside it.
-      id: 'two-door-box', type: 'SHOE_RACK_BOX', label: '2 Door Box', x: twoDoorX, y, width: w, height: h, qty: 1, visible: true,
-      source: { formula: `Height = ${Math.round(h)}mm | Width = ${Math.round(w)}mm | Depth = ${Math.round(d)}mm (all entered)`, constants: [] },
+      id: 'two-door-box', type: 'SHOE_RACK_BOX', label: '2 Door Box', x: twoDoorX, y, width: w, height: bodyH, qty: 1, visible: true,
+      source: { formula: `Width = ${Math.round(w)}mm | Height = ${Math.round(h)}mm entered − ${skirtH}mm skirting = ${Math.round(bodyH)}mm carcass | Depth = ${Math.round(d)}mm (entered)`, constants: [] },
     });
     // The shared middle divider — one real line splitting the box into its
     // two doors, matching the sketch — plus a short pull-mark tick on each
     // door's inner edge (the small "|" beside each door in the sketch).
     const midX = twoDoorX + w / 2;
-    lines.push({ x1: midX, y1: y + 4, x2: midX, y2: y + h - 4, color: '#333' });
-    lines.push({ x1: midX - 16, y1: y + h / 2 - 10, x2: midX - 16, y2: y + h / 2 + 10, color: '#555' });
-    lines.push({ x1: midX + 16, y1: y + h / 2 - 10, x2: midX + 16, y2: y + h / 2 + 10, color: '#555' });
+    lines.push({ x1: midX, y1: y + 4, x2: midX, y2: y + bodyH - 4, color: '#333' });
+    lines.push({ x1: midX - 16, y1: y + bodyH / 2 - 10, x2: midX - 16, y2: y + bodyH / 2 + 10, color: '#555' });
+    lines.push({ x1: midX + 16, y1: y + bodyH / 2 - 10, x2: midX + 16, y2: y + bodyH / 2 + 10, color: '#555' });
     // Depth — "/" diagonal leader drawn INSIDE the box's own top-left
     // corner, per the user's explicit direction.
-    const twoDoorDiag = insideDiagonal(twoDoorX, y, w, h, 'right-down');
+    const twoDoorDiag = insideDiagonal(twoDoorX, y, w, bodyH, 'right-down');
     lines.push({ x1: twoDoorX, y1: y, x2: twoDoorDiag.x2, y2: twoDoorDiag.y2, color: DIAG, label: `${Math.round(d)} mm (D)` });
-    // Height — real straight dimension on the box's own outer (left) edge.
-    dimReqs.push({ axis: 'v', x1: twoDoorX, y1: y, x2: twoDoorX, y2: bottomY, edge: 'left', componentIds: ['two-door-box'], label: `${Math.round(h)} mm (H)`, source: { formula: 'Height (entered)', constants: [] } });
-    // Width — real straight dimension on the shared bottom baseline.
-    dimReqs.push({ axis: 'h', x1: twoDoorX, y1: bottomY, x2: twoDoorX + w, y2: bottomY, edge: 'bottom', componentIds: ['two-door-box'], label: `${Math.round(w)} mm (W)`, source: { formula: 'Width (entered)', constants: [] } });
+    // Height — real straight dimension on the box's own outer (left) edge,
+    // spanning the carcass (bodyH) only — skirting gets its own separate
+    // dimension below.
+    dimReqs.push({ axis: 'v', x1: twoDoorX, y1: y, x2: twoDoorX, y2: bottomY - skirtH, edge: 'left', componentIds: ['two-door-box'], label: `${Math.round(bodyH)} mm (H)`, source: { formula: `Carcass Height = entered H(${Math.round(h)}) − skirting(${skirtH})`, constants: [] } });
+    // Width — real straight dimension on the box's own bottom edge (the
+    // carcass/skirting boundary, not the true floor line — matches Wardrobe's
+    // own convention of measuring Width against the carcass, not skirting).
+    dimReqs.push({ axis: 'h', x1: twoDoorX, y1: bottomY - skirtH, x2: twoDoorX + w, y2: bottomY - skirtH, edge: 'bottom', componentIds: ['two-door-box'], label: `${Math.round(w)} mm (W)`, source: { formula: 'Width (entered)', constants: [] } });
   }
 
   if (singleDoor.enabled) {
     const { widthMm: w, heightMm: h, depthMm: d } = singleDoor;
-    const y = bottomY - h;
+    const bodyH = h > skirtH ? h - skirtH : h;
+    const y = bottomY - skirtH - bodyH;
     components.push({
-      id: 'single-door-box', type: 'SHOE_RACK_BOX', label: 'Single Door Box', x: singleDoorX, y, width: w, height: h, qty: 1, visible: true,
-      source: { formula: `Height = ${Math.round(h)}mm | Width = ${Math.round(w)}mm | Depth = ${Math.round(d)}mm (all entered)`, constants: [] },
+      id: 'single-door-box', type: 'SHOE_RACK_BOX', label: 'Single Door Box', x: singleDoorX, y, width: w, height: bodyH, qty: 1, visible: true,
+      source: { formula: `Width = ${Math.round(w)}mm | Height = ${Math.round(h)}mm entered − ${skirtH}mm skirting = ${Math.round(bodyH)}mm carcass | Depth = ${Math.round(d)}mm (entered)`, constants: [] },
     });
     // Single door pull-mark tick, matching the sketch's one "|" mark.
     const doorMidX = singleDoorX + w * 0.35;
-    lines.push({ x1: doorMidX, y1: y + h / 2 - 10, x2: doorMidX, y2: y + h / 2 + 10, color: '#555' });
+    lines.push({ x1: doorMidX, y1: y + bodyH / 2 - 10, x2: doorMidX, y2: y + bodyH / 2 + 10, color: '#555' });
     // Depth — drawn INSIDE this box's own top-RIGHT corner instead of its
     // left: its left corner is the shared boundary with the 2 Door Box
     // (whenever that one is also present), so a leader there would overlap
     // that box's own space. The top-right corner is always this box's own.
-    const singleDoorDiag = insideDiagonal(singleDoorX + w, y, w, h, 'left-down');
+    const singleDoorDiag = insideDiagonal(singleDoorX + w, y, w, bodyH, 'left-down');
     lines.push({ x1: singleDoorX + w, y1: y, x2: singleDoorDiag.x2, y2: singleDoorDiag.y2, color: DIAG, label: `${Math.round(d)} mm (D)` });
     // Height — real straight dimension on the box's own outer (right) edge.
-    dimReqs.push({ axis: 'v', x1: singleDoorX + w, y1: y, x2: singleDoorX + w, y2: bottomY, edge: 'right', componentIds: ['single-door-box'], label: `${Math.round(h)} mm (H)`, source: { formula: 'Height (entered)', constants: [] } });
-    // Width — real straight dimension on the shared bottom baseline.
-    dimReqs.push({ axis: 'h', x1: singleDoorX, y1: bottomY, x2: singleDoorX + w, y2: bottomY, edge: 'bottom', componentIds: ['single-door-box'], label: `${Math.round(w)} mm (W)`, source: { formula: 'Width (entered)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: singleDoorX + w, y1: y, x2: singleDoorX + w, y2: bottomY - skirtH, edge: 'right', componentIds: ['single-door-box'], label: `${Math.round(bodyH)} mm (H)`, source: { formula: `Carcass Height = entered H(${Math.round(h)}) − skirting(${skirtH})`, constants: [] } });
+    // Width — real straight dimension on the box's own bottom (carcass) edge.
+    dimReqs.push({ axis: 'h', x1: singleDoorX, y1: bottomY - skirtH, x2: singleDoorX + w, y2: bottomY - skirtH, edge: 'bottom', componentIds: ['single-door-box'], label: `${Math.round(w)} mm (W)`, source: { formula: 'Width (entered)', constants: [] } });
+  }
+
+  // Skirting — one continuous, labeled strip along the FULL floor line
+  // shared by both boxes (a real skirting board runs under the whole unit,
+  // not a separate piece per box), per the user's explicit instruction.
+  // Drawing-only: no new measurement field, never shown in the
+  // Measurements panel.
+  if (anyEnabled) {
+    const skirtX = twoDoorX;
+    const skirtRightEdge = singleDoor.enabled ? singleDoorX + singleDoor.widthMm : twoDoor.enabled ? twoDoorX + twoDoor.widthMm : twoDoorX;
+    const skirtW = skirtRightEdge - twoDoorX;
+    const skirtY = bottomY - skirtH;
+    components.push({
+      id: 'skirting', type: 'SKIRTING', label: `Skirting — ${skirtH}mm`, x: skirtX, y: skirtY, width: skirtW, height: skirtH, qty: 1, visible: true,
+      source: { formula: `Fixed ${skirtH}mm skirting strip — real board height, not derived from Box Width/Depth`, constants: [] },
+    });
+    // Dimension anchored on the RIGHT edge — the left edge already carries
+    // the 2 Door Box's own Depth "/" leader and leaderMargin is sized for
+    // that, not an extra dimension further left; the right edge has open
+    // space (same reasoning Single Door Box's own Height dimension already
+    // uses on this side).
+    dimReqs.push({ axis: 'v', x1: skirtRightEdge + 16, y1: skirtY, x2: skirtRightEdge + 16, y2: skirtY + skirtH, edge: 'right', componentIds: ['skirting'], label: `${skirtH} mm (Skirting)`, source: { formula: `Fixed ${skirtH}mm skirting board`, constants: [] } });
   }
 
   const worldWidth = Math.max(
-    anyEnabled ? singleDoorX + (singleDoor.enabled ? singleDoor.widthMm : 0) + 20 : 200,
+    anyEnabled ? singleDoorX + (singleDoor.enabled ? singleDoor.widthMm : 0) + (anyEnabled ? 46 : 20) : 200,
     ...lines.map((l) => Math.max(l.x1, l.x2) + 10),
   );
   const worldHeight = Math.max(anyEnabled ? bottomY + 30 : 200, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
