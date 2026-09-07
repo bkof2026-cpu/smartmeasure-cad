@@ -93,13 +93,14 @@ function profileShutterActive(inp: SimpleBedInputs): boolean {
 }
 
 /** "BED WITHOUT SIDE TABLE" / "BED WITH LEFT SIDE TABLE" / "BED WITH RIGHT SIDE TABLE" / "BED WITH SIDE TABLES",
- *  with " + PROFILE SHUTTER" appended when one is mounted and active. */
+ *  with " + DRESSING" appended when one is mounted and active — displayed
+ *  name renamed from "Profile Shutter" per the user's explicit instruction. */
 export function simpleBedTitle(inp: SimpleBedInputs): string {
   const base = inp.lst.enabled && inp.rst.enabled ? 'BED WITH SIDE TABLES'
     : inp.lst.enabled ? 'BED WITH LEFT SIDE TABLE'
     : inp.rst.enabled ? 'BED WITH RIGHT SIDE TABLE'
     : 'BED WITHOUT SIDE TABLE';
-  return profileShutterActive(inp) ? `${base} + PROFILE SHUTTER` : base;
+  return profileShutterActive(inp) ? `${base} + DRESSING` : base;
 }
 
 /** Same data used for both the screen and the PDF — single source of truth. */
@@ -121,7 +122,11 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
     const targetTable = onLeftRow ? inp.lst : inp.rst;
     const sideLabel = onLeftRow ? 'LST' : 'RST';
     rows.push({
-      component: `Profile Shutter (on ${sideLabel})`, width: targetTable.widthMm, height: inp.profileShutter.heightMm, qty: 1,
+      // Displayed name renamed "Profile Shutter" → "Dressing" per the
+      // user's explicit instruction — internal field/id names (inp.
+      // profileShutter, 'profile-shutter') are unchanged, this is a label
+      // change only.
+      component: `Dressing (on ${sideLabel})`, width: targetTable.widthMm, height: inp.profileShutter.heightMm, qty: 1,
       remark: `Height = ${Math.round(inp.profileShutter.heightMm)}mm (entered); Width = ${Math.round(targetTable.widthMm)}mm, Depth = ${Math.round(targetTable.depthMm)}mm (both auto-fetched from ${sideLabel})${inp.profileShutter.light ? ' | Profile light included' : ''}`,
     });
   }
@@ -245,8 +250,10 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     components.push({
       // Plain name only — Height/Width/Depth are all now shown by their own
       // real dimension lines (below), so repeating the numbers in the
-      // caption is redundant and risks overflowing a narrow box.
-      id: 'profile-shutter', type: 'PROFILE_SHUTTER', label: 'Profile Shutter',
+      // caption is redundant and risks overflowing a narrow box. Displayed
+      // label renamed "Profile Shutter" → "Dressing" per the user's
+      // explicit instruction — id/type stay unchanged (internal keys).
+      id: 'profile-shutter', type: 'PROFILE_SHUTTER', label: 'Dressing',
       x: tableX, y: 0, width: tableW, height: bedY, qty: 1, visible: true,
       source: { formula: `Height = ${Math.round(psH)}mm (entered) | Width = ${Math.round(tableW)}mm, Depth = ${Math.round(tableD)}mm (both auto-fetched from the ${onLeft ? 'LST' : 'RST'})`, constants: [] },
     });
@@ -309,8 +316,8 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     ...(rst.enabled ? validateMeasurements({ D: rst.depthMm, W: rst.widthMm }, [{ key: 'D', label: 'RST Depth', min: 1 }, { key: 'W', label: 'RST Width', min: 1 }]) : []),
     // Width/Depth need no separate check here — they're always the mounted
     // side table's own values, already validated above.
-    ...(psActive ? validateMeasurements({ H: inp.profileShutter.heightMm }, [{ key: 'H', label: 'Profile Shutter Height', min: 1 }]) : []),
-    ...(inp.profileShutter.enabled && !psActive ? [{ id: `val-ps-${inp.profileShutter.side}`, severity: 'WARNING' as const, code: 'PROFILE_SHUTTER_NO_TABLE', message: `Profile Shutter is set to mount on the ${inp.profileShutter.side === 'left' ? 'Left' : 'Right'} Side Table, but that side table isn't added — enable it first.` }] : []),
+    ...(psActive ? validateMeasurements({ H: inp.profileShutter.heightMm }, [{ key: 'H', label: 'Dressing Height', min: 1 }]) : []),
+    ...(inp.profileShutter.enabled && !psActive ? [{ id: `val-ps-${inp.profileShutter.side}`, severity: 'WARNING' as const, code: 'PROFILE_SHUTTER_NO_TABLE', message: `Dressing is set to mount on the ${inp.profileShutter.side === 'left' ? 'Left' : 'Right'} Side Table, but that side table isn't added — enable it first.` }] : []),
     ...validateComponentBounds(components, worldWidth, worldHeight),
     ...validateDimensionIntegrity(dimensions),
   ];

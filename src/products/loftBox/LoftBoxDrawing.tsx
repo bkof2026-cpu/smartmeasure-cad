@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, type ComponentStyle } from '../../engine/CanonicalSvg';
 import { resolveLoftBoxPlan, loftBoxTitle, type LoftBoxInputs } from './loftBoxGeometry';
+import { recommendLoftDoorCount } from '../../engine/loftDoorEngine';
 import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
@@ -15,12 +16,23 @@ function loftBoxStyle(): ComponentStyle {
 }
 
 export const LoftBoxDrawing: React.FC<Props> = ({ dims }) => {
+  const W = n(dims.W) || 1000;
+  // Number of Shutters — no more fixed 6 default, per the user's explicit
+  // instruction. dims.shutterCount is 0 (see productRegistry.tsx's
+  // demoDimensions) until the user actually edits the field, at which
+  // point it holds their real chosen count and this recommendation is
+  // never consulted again — same "compute live until touched, then the
+  // user's own value always wins" pattern used for Wardrobe's Loft Door
+  // Count. Reuses the exact same shared engine (loftDoorEngine), not a
+  // separate/conflicting implementation.
+  const shutterCountRaw = n(dims.shutterCount);
+  const shutterCount = shutterCountRaw > 0 ? shutterCountRaw : recommendLoftDoorCount(W).doorCount;
   const inp: LoftBoxInputs = {
     H: n(dims.H) || 600,
-    W: n(dims.W) || 1000,
+    W,
     D: n(dims.D) || 400,
     onlyShutter: Number(dims.onlyShutter ?? 0) === 1,
-    shutterCount: n(dims.shutterCount) || 6,
+    shutterCount,
     topPanel: Number(dims.topPanel ?? 0) === 1,
     // Base measurementFields store a 'select' as its literal option string
     // (never an index) — unlike addon fields, which store an index.

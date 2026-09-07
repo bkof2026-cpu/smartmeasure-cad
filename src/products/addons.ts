@@ -57,10 +57,11 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   ],
   'openable-wardrobe': [
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
-    // Separate, directly-entered overall envelope — shown on the drawing
-    // exactly as typed, never derived from Wardrobe Width/Height or any
-    // add-on (see simpleWardrobeGeometry.ts). Its own group/colour keeps it
-    // visually distinct from the wardrobe's own carcass W/H above.
+    // Directly-entered overall envelope — never recomputed FROM the
+    // Wardrobe's own W/H (that direction still holds), but now used AS a
+    // source for Top Panel Width / Loft Height / Loft Door Count when
+    // present, per the Fix Patti / Loft engine spec. Its own group/colour
+    // keeps it visually distinct from the wardrobe's own carcass W/H above.
     { label: 'Total (Overall)', color: '#22c55e', keys: ['totalWidth', 'totalHeight'] },
   ],
   'sliding-wardrobe': [
@@ -148,8 +149,13 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       // sketch: the profile shutter sits flush on top of that table, sharing
       // its full width. Height and Depth are entered; the optional profile
       // light is a real checkbox, not a dropdown, since it's a plain on/off.
+      // Displayed name renamed "Profile Shutter" → "Dressing" per the
+      // user's explicit instruction — the internal id stays 'profile-shutter'
+      // (existing saved sessions/history reference it by id, and every
+      // other file's logic keys off this id) so this is purely a label
+      // change, no functional change.
       id: 'profile-shutter',
-      label: 'Profile Shutter',
+      label: 'Dressing',
       icon: '💡',
       description: 'Light shutter box mounted above a side table — Width and Depth both auto-fetched from that table',
       placement: 'composite',
@@ -176,14 +182,22 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
     {
-      id: 'side-panel',
-      label: 'Side Panel',
+      // Renamed from "Side Panel" per the user's explicit correction — this
+      // is the SAME existing component (position/geometry/purpose all
+      // unchanged), only its displayed name changed. Width's own
+      // defaultValue here (80) is only the static fallback shown before a
+      // real computed recommendation exists — ProductFlow.tsx overrides the
+      // displayed default live from Total Width − Wardrobe Width − Dressing
+      // Width (see the Top Panel width computation there), same "computed
+      // default, still editable" pattern as Loft Height/Door Count below.
+      id: 'top-panel',
+      label: 'Top Panel',
       icon: '▥',
-      description: 'Extra end panel beside the wardrobe (or dressing, if both are added)',
+      description: 'Extra end panel beside the wardrobe (or dressing, if both are added) — Width auto-calculated from Total Width',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
-        { key: 'W', label: 'Width', defaultValue: 80, min: 30, max: 300 },
+        { key: 'W', label: 'Width', defaultValue: 80, min: 30, max: 3000 },
         { key: 'D', label: 'Depth', defaultValue: 600, min: 300, max: 800 },
       ],
     },
@@ -191,13 +205,31 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'loft',
       label: 'Loft Above Wardrobe',
       icon: '📦',
-      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box',
+      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box. Height and Door Count are calculated automatically but stay editable.',
       placement: 'composite',
       fields: [
         { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
-        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 250, max: 650 },
+        // H/doors defaults below are only the static fallback shown before
+        // a real computed recommendation exists — ProductFlow.tsx overrides
+        // the displayed default live (Loft Height = Total Height − Wardrobe
+        // Height − 10mm; Door Count = the loftDoorEngine recommendation).
+        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
-        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 8 },
+        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 12 },
+      ],
+    },
+    {
+      id: 'fix-patti',
+      label: 'Fix Patti',
+      icon: '🟩',
+      description: 'Fixed outer panel(s) at the edge of the Loft — its width is deducted from Total Width before the Loft Door Count is calculated',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'leftW', label: 'Left Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'rightH', label: 'Right Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
       ],
     },
   ],
@@ -214,14 +246,14 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
     {
-      id: 'side-panel',
-      label: 'Side Panel',
+      id: 'top-panel',
+      label: 'Top Panel',
       icon: '▥',
-      description: 'Extra end panel beside the wardrobe (or dressing, if both are added)',
+      description: 'Extra end panel beside the wardrobe (or dressing, if both are added) — Width auto-calculated from Total Width',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
-        { key: 'W', label: 'Width', defaultValue: 80, min: 30, max: 300 },
+        { key: 'W', label: 'Width', defaultValue: 80, min: 30, max: 3000 },
         { key: 'D', label: 'Depth', defaultValue: 600, min: 300, max: 800 },
       ],
     },
@@ -229,13 +261,27 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'loft',
       label: 'Loft Above Wardrobe',
       icon: '📦',
-      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box',
+      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box. Height and Door Count are calculated automatically but stay editable.',
       placement: 'composite',
       fields: [
         { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
-        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 250, max: 650 },
+        { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
-        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 8 },
+        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 12 },
+      ],
+    },
+    {
+      id: 'fix-patti',
+      label: 'Fix Patti',
+      icon: '🟩',
+      description: 'Fixed outer panel(s) at the edge of the Loft — its width is deducted from Total Width before the Loft Door Count is calculated',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'leftW', label: 'Left Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'rightH', label: 'Right Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
       ],
     },
   ],

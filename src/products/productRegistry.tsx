@@ -18,6 +18,7 @@ import { SeparateSideTableDrawing } from './separateSideTable/SeparateSideTableD
 import { separateSideTableCutlist } from './separateSideTable/separateSideTableGeometry';
 import { LoftBoxDrawing } from './loftBox/LoftBoxDrawing';
 import { loftBoxCutlist } from './loftBox/loftBoxGeometry';
+import { recommendLoftDoorCount } from '../engine/loftDoorEngine';
 import { StudyTableDrawing } from './studyTable/StudyTableDrawing';
 import { studyTableCutlist } from './studyTable/studyTableGeometry';
 import { PartitionDrawing } from './partition/PartitionDrawing';
@@ -956,8 +957,9 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
         dressing: { enabled: false, side: 'left', widthMm: 400 },
-        sidePanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
+        topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
+        fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -985,8 +987,9 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
         dressing: { enabled: false, side: 'left', widthMm: 400 },
-        sidePanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
+        topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
+        fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -1359,22 +1362,31 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     category: 'furniture',
     roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
-    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 6, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
+    // shutterCount: 0 — a real "not yet touched" sentinel (min:1 means 0 is
+    // never a genuine value), per the user's explicit instruction: no more
+    // fixed 6 default; LoftBoxDrawing.tsx computes the live recommendation
+    // from Width via the shared loftDoorEngine until the user edits it.
+    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 0, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
     measurementFields: [
       { key: 'H', label: 'Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
       { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1000, min: 600, max: 3600 },
       { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
       { key: 'onlyShutter', label: 'Only Shutter', unit: 'bool', defaultValue: 1 },
-      { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 6, min: 1, max: 12 },
+      // defaultValue 0 here is only the FALLBACK shown before a real
+      // computed recommendation exists — LoftBoxDrawing.tsx overrides the
+      // effective value live from Width / 400 (shared loftDoorEngine).
+      { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 0, min: 1, max: 12 },
       { key: 'topPanel', label: 'Top Panel', unit: 'bool', defaultValue: 0 },
       { key: 'topPanelSide', label: 'Top Panel Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
       { key: 'topPanelWidth', label: 'Top Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 1200 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
+      const shutterCountRaw = n(dims.shutterCount);
+      const shutterCount = shutterCountRaw > 0 ? shutterCountRaw : recommendLoftDoorCount(n(dims.W) || 1000).doorCount;
       const cutRows = loftBoxCutlist({
         H: n(dims.H), W: n(dims.W), D: n(dims.D),
-        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount: n(dims.shutterCount) || 6,
+        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount,
         topPanel: Number(dims.topPanel ?? 0) === 1, topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left', topPanelWidth: n(dims.topPanelWidth) || 300,
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
@@ -1399,22 +1411,31 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     category: 'furniture',
     roomCategory: 'Kitchen',
     isFormulaVerified: true,
-    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 6, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
+    // shutterCount: 0 — a real "not yet touched" sentinel (min:1 means 0 is
+    // never a genuine value), per the user's explicit instruction: no more
+    // fixed 6 default; LoftBoxDrawing.tsx computes the live recommendation
+    // from Width via the shared loftDoorEngine until the user edits it.
+    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 0, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
     measurementFields: [
       { key: 'H', label: 'Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
       { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1000, min: 600, max: 3600 },
       { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
       { key: 'onlyShutter', label: 'Only Shutter', unit: 'bool', defaultValue: 1 },
-      { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 6, min: 1, max: 12 },
+      // defaultValue 0 here is only the FALLBACK shown before a real
+      // computed recommendation exists — LoftBoxDrawing.tsx overrides the
+      // effective value live from Width / 400 (shared loftDoorEngine).
+      { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 0, min: 1, max: 12 },
       { key: 'topPanel', label: 'Top Panel', unit: 'bool', defaultValue: 0 },
       { key: 'topPanelSide', label: 'Top Panel Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
       { key: 'topPanelWidth', label: 'Top Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 1200 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
+      const shutterCountRaw = n(dims.shutterCount);
+      const shutterCount = shutterCountRaw > 0 ? shutterCountRaw : recommendLoftDoorCount(n(dims.W) || 1000).doorCount;
       const cutRows = loftBoxCutlist({
         H: n(dims.H), W: n(dims.W), D: n(dims.D),
-        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount: n(dims.shutterCount) || 6,
+        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount,
         topPanel: Number(dims.topPanel ?? 0) === 1, topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left', topPanelWidth: n(dims.topPanelWidth) || 300,
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));

@@ -8,7 +8,8 @@ import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSe
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
 import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeSidePanelInput, type WardrobeLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidth, type FixPattiPosition } from '../engine/loftDoorEngine';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
@@ -109,29 +110,90 @@ function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>,
   return { lst, rst, profileShutter };
 }
 
+const FIX_PATTI_POSITIONS: FixPattiPosition[] = ['none', 'left', 'right', 'both'];
+
+/** Real Wardrobe/Loft/Fix Patti add-on state, with the "auto-calculated
+ * default, still editable" pattern the spec requires for Top Panel Width,
+ * Loft Height, and Loft Door Count: `addonDims[...]` only holds a REAL
+ * value once the user has actually typed one (see handleAddonDimChange) —
+ * until then this derives the live computed default from the shared
+ * loftDoorEngine / the Wardrobe's own current Width/Dressing/Total Width,
+ * so the UI shows a real recommendation on first render, not a fixed
+ * placeholder constant, without ever overwriting a value the user already
+ * set (§32 "Do not unexpectedly overwrite a user's manual value"). */
 function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, number | string>, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
   const isWardrobe = productId === 'openable-wardrobe' || productId === 'sliding-wardrobe';
   const SIDE_OPTS: WardrobeSide[] = ['left', 'right', 'both'];
+  const wardrobeW = n(dims.W ?? 0);
+  const wardrobeH = n(dims.H ?? 0);
   const dressing: WardrobeDressingInput = {
     enabled: isWardrobe && selectedAddons.has('dressing'),
     side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
     widthMm: (addonDims['dressing']?.W) ?? 400,
   };
-  const sidePanel: WardrobeSidePanelInput = {
-    enabled: isWardrobe && selectedAddons.has('side-panel'),
-    side: SIDE_OPTS[(addonDims['side-panel']?.side) ?? 0] ?? 'left',
-    widthMm: (addonDims['side-panel']?.W) ?? 80,
-    depthMm: (addonDims['side-panel']?.D) ?? 600,
+  const dressingTotalW = dressing.enabled ? (dressing.side === 'both' ? dressing.widthMm * 2 : dressing.widthMm) : 0;
+
+  // Fix Patti — read first (before Top Panel/Loft) since its width feeds
+  // the Loft Door Count calculation below.
+  const fixPatti: WardrobeFixPattiInput = {
+    position: FIX_PATTI_POSITIONS[(addonDims['fix-patti']?.position) ?? 0] ?? 'none',
+    leftHeightMm: (addonDims['fix-patti']?.leftH) ?? 400,
+    leftWidthMm: (addonDims['fix-patti']?.leftW) ?? 100,
+    rightHeightMm: (addonDims['fix-patti']?.rightH) ?? 400,
+    rightWidthMm: (addonDims['fix-patti']?.rightW) ?? 100,
   };
+
+  // Room/Total Width — entered directly (see productRegistry.tsx's
+  // 'totalWidth' field); falls back to the composite Wardrobe+Dressing
+  // width when not entered (0), same "defaults to the composite when not
+  // overridden" convention the Wardrobe drawing's own outer dimension
+  // line already used before this feature.
+  const enteredTotalW = n(dims.totalWidth ?? 0);
+  const totalWidthForCalc = enteredTotalW > 0 ? enteredTotalW : wardrobeW + dressingTotalW;
+
+  // Top Panel — renamed from Side Panel; SAME existing geometry/position.
+  // Width's live computed default = Total Width − Wardrobe Width −
+  // Dressing Width (spec §4/§38) — only used to seed the DISPLAYED
+  // default before the user has touched the field; once addonDims holds a
+  // real value, that always wins.
+  const topPanelWidthDefault = Math.max(0, totalWidthForCalc - wardrobeW - dressingTotalW);
+  const topPanel: WardrobeTopPanelInput = {
+    enabled: isWardrobe && selectedAddons.has('top-panel'),
+    side: SIDE_OPTS[(addonDims['top-panel']?.side) ?? 0] ?? 'left',
+    widthMm: (addonDims['top-panel']?.W) ?? topPanelWidthDefault,
+    depthMm: (addonDims['top-panel']?.D) ?? 600,
+  };
+
+  // Loft Height — live computed default = Total Height − Wardrobe Height
+  // − 10mm gap (spec §17/§21/§37), falling back to the Wardrobe's own
+  // Height when Total Height isn't entered (0), so there's always a real,
+  // sane starting recommendation rather than a fixed 400mm placeholder
+  // once real Height data exists.
+  const enteredTotalH = n(dims.totalHeight ?? 0);
+  const loftHeightDefault = enteredTotalH > 0 ? loftHeightForWardrobe(enteredTotalH, wardrobeH) : 400;
+
+  const loftMode: 'door' | 'box' = ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door';
+  const loftDepthMm = (addonDims['loft']?.D) ?? 350;
+  // Loft Width — per the user's final, explicit correction:
+  //   Loft Width = Total Room Width − Left Fix Patti − Right Fix Patti
+  // Wardrobe Width, Dressing Width and Top Panel Width are NEVER part of
+  // this deduction (they're components below the Loft, not beside it) —
+  // that's the Top Panel Width formula above, a completely separate
+  // calculation. loft.widthMm here is therefore already the final USABLE
+  // Loft Door Width — Door Count / One Door Width / the Loft drawing all
+  // use it directly with no further Fix Patti subtraction downstream.
+  const usableW = usableLoftDoorWidth(totalWidthForCalc, fixPatti);
+  const doorCountDefault = recommendLoftDoorCount(usableW).doorCount;
+
   const loft: WardrobeLoftInput = {
     enabled: isWardrobe && selectedAddons.has('loft'),
-    mode: ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door',
-    widthMm: n(dims.W ?? 0),
-    heightMm: (addonDims['loft']?.H) ?? 400,
-    depthMm: (addonDims['loft']?.D) ?? 350,
-    doorCount: (addonDims['loft']?.doors) ?? 2,
+    mode: loftMode,
+    widthMm: usableW,
+    heightMm: (addonDims['loft']?.H) ?? loftHeightDefault,
+    depthMm: loftDepthMm,
+    doorCount: (addonDims['loft']?.doors) ?? doorCountDefault,
   };
-  return { dressing, sidePanel, loft };
+  return { dressing, topPanel, loft, fixPatti };
 }
 
 function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
@@ -192,11 +254,10 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
     };
   }
   if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
-    const { dressing, sidePanel, loft } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
-    const loftWithWidth = { ...loft, widthMm: loft.widthMm || n(dims.W ?? 0) };
-    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, sidePanel, loft: loftWithWidth });
+    const { dressing, topPanel, loft, fixPatti } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
-      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} sidePanel={sidePanel} loft={loft} />,
+      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
     };
   }
@@ -612,7 +673,22 @@ export const ProductFlow: React.FC = () => {
     markInProgress();
   }, [markInProgress]);
 
-  const handleAddonToggle = useCallback((addonId: string, def: AddonDef) => {
+  // liveComputedKeys lists which of this addon's OWN field keys have a real
+  // live-computed recommendation elsewhere (deriveWardrobeAddonInputs /
+  // the field renderer's own effectiveDefault) — those fields are
+  // deliberately left OUT of the toggle-on seed entirely, so
+  // addonDims[addonId][key] stays undefined (and the `??` fallback to the
+  // live computation keeps firing on every render) until the user actually
+  // types into that field. Seeding them with the addon's static
+  // field.defaultValue immediately on toggle-on — which this used to do
+  // unconditionally — was a real bug caught during this feature's own
+  // verification: it made the field's own stored value a real non-
+  // undefined number right away, permanently freezing it at the OLD fixed
+  // default and silently defeating both "auto-calculate on first load" and
+  // "recalculate live when Room Total Width/Height changes" (spec §14/§17/
+  // §23), even though the seeded starting value happened to look
+  // superficially correct at the exact moment of toggling on.
+  const handleAddonToggle = useCallback((addonId: string, def: AddonDef, liveComputedKeys?: string[]) => {
     setSelectedAddons((prev) => {
       const next = new Set(prev);
       if (next.has(addonId)) {
@@ -621,7 +697,11 @@ export const ProductFlow: React.FC = () => {
         next.add(addonId);
         setAddonDims((d) => ({
           ...d,
-          [addonId]: Object.fromEntries(def.fields.map((f) => [f.key, f.defaultValue])),
+          [addonId]: Object.fromEntries(
+            def.fields
+              .filter((f) => !liveComputedKeys?.includes(f.key))
+              .map((f) => [f.key, f.defaultValue]),
+          ),
         }));
       }
       return next;
@@ -810,7 +890,19 @@ export const ProductFlow: React.FC = () => {
   // whichever product is currently active on screen.
   const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
-  const { dressing: wardrobeDressing, sidePanel: wardrobeSidePanel, loft: wardrobeLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
+  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
+  // Live-computed defaults for the Wardrobe's own auto-calculated-but-
+  // editable fields (Top Panel Width, Loft Height, Loft Door Count) — the
+  // generic "Add Extra Items" field renderer below falls back to a plain
+  // static field.defaultValue otherwise, which would show the OLD fixed
+  // placeholder (e.g. "400") instead of the real recommendation computed
+  // above. Only these three keys are overridden; every other addon field
+  // on every other product keeps using its own static defaultValue exactly
+  // as before.
+  const wardrobeComputedAddonDefaults: Record<string, Record<string, number>> = isWardrobe ? {
+    'top-panel': { W: wardrobeTopPanel.widthMm },
+    loft: { H: wardrobeLoft.heightMm, doors: wardrobeLoft.doorCount },
+  } : {};
   const isShoeRack = selectedId === 'shoe-rack';
   const { twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor } = deriveShoeRackAddonInputs(selectedId, selectedAddons, addonDims);
 
@@ -831,7 +923,7 @@ export const ProductFlow: React.FC = () => {
     // treatment as the Bed: a plain W x H carcass with Depth shown as the
     // "/" diagonal leader, plus optional Side Dressing / Side Panel / Loft.
     if (isWardrobe) {
-      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} sidePanel={wardrobeSidePanel} loft={wardrobeLoft} />;
+      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} topPanel={wardrobeTopPanel} loft={wardrobeLoft} fixPatti={wardrobeFixPatti} />;
     }
 
     // Shoe Rack — no base dims; entirely the two optional boxes.
@@ -864,7 +956,7 @@ export const ProductFlow: React.FC = () => {
       const cutlist: PdfCutRow[] = selectedId === 'bed'
         ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
-        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, sidePanel: wardrobeSidePanel, loft: wardrobeLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
@@ -1512,12 +1604,18 @@ export const ProductFlow: React.FC = () => {
                   {addons.map((addon) => {
                     const active = selectedAddons.has(addon.id);
                     const adDims = addonDims[addon.id] ?? {};
+                    // Live-computed default (Top Panel Width / Loft Height /
+                    // Loft Door Count) when this exact addon+field has one —
+                    // falls back to the field's own static defaultValue for
+                    // everything else, on every other product, unchanged.
+                    const effectiveDefault = (key: string, staticDefault: number): number =>
+                      wardrobeComputedAddonDefaults[addon.id]?.[key] ?? staticDefault;
                     return (
                       <div key={addon.id} className="rounded-xl overflow-hidden"
                         style={{ border: `1px solid ${active ? '#7c3aed' : '#1e293b'}`, background: active ? '#13082a' : '#0e1624' }}>
                         {/* Addon header row */}
                         <button
-                          onClick={() => handleAddonToggle(addon.id, addon)}
+                          onClick={() => handleAddonToggle(addon.id, addon, wardrobeComputedAddonDefaults[addon.id] ? Object.keys(wardrobeComputedAddonDefaults[addon.id]) : undefined)}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-left">
                           <span className="text-xl flex-shrink-0">{addon.icon}</span>
                           <div className="flex-1 min-w-0">
@@ -1559,7 +1657,7 @@ export const ProductFlow: React.FC = () => {
                                   <>
                                     <div className="flex gap-1">
                                       <MeasurementNumberInput
-                                        value={Number(adDims[field.key] ?? field.defaultValue)}
+                                        value={Number(adDims[field.key] ?? effectiveDefault(field.key, field.defaultValue))}
                                         onCommit={(val) => handleAddonDimChange(addon.id, field.key, val)}
                                         min={field.min} max={field.max} step={field.step ?? 1}
                                         className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"

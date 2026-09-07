@@ -31,7 +31,7 @@ export interface ComponentStyle {
 // hardware thin — never uniform, which is what read as "CAD box" flat.
 const DEFAULT_STYLE: ComponentStyle = { fill: '#f0eee8', stroke: '#333', strokeWidth: 1 };
 
-function defaultStyleFor(c: ComponentSpec): ComponentStyle {
+export function defaultStyleFor(c: ComponentSpec): ComponentStyle {
   const t = c.type.toUpperCase();
   if (t.includes('DOOR') || t.includes('SHUTTER') || t.includes('FACIA')) return { fill: '#eee9e0', stroke: '#777', strokeWidth: 1.1 };
   if (t.includes('MIRROR')) return { fill: '#dbe9f5', stroke: '#5b7c99', strokeWidth: 1 };
