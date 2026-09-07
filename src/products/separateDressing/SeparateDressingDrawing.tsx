@@ -18,6 +18,7 @@ interface Props {
 // sketch — matched by id prefix, since a zone is now several real
 // components (a frame + N rows/drawers) rather than one.
 function separateDressingComponentStyle(c: ComponentSpec): ComponentStyle {
+  if (c.id === 'skirting') return { fill: '#c4b8a0', stroke: '#8a7a5c', strokeWidth: 1 };
   const stroke = c.id.startsWith('dressing-box') ? DRESSING_BOX_COLOR
     : c.id.startsWith('switch-board') ? SWITCH_BOARD_COLOR
     : c.id.startsWith('base-storage') ? BASE_STORAGE_COLOR
@@ -37,6 +38,7 @@ export const SeparateDressingDrawing: React.FC<Props> = ({ dims }) => {
     // dimension when identical" rule only kicks in once this is actually
     // entered differently.
     baseStorageW: dims.baseStorageW !== undefined && dims.baseStorageW !== '' ? n(dims.baseStorageW) : W,
+    skirtingEnabled: Number(dims.skirtingEnabled ?? 0) === 1,
   };
   const drawing = resolveSeparateDressingPlan(inp);
   const [selected, setSelected] = useState<ComponentSpec | DimensionLine | null>(null);

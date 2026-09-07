@@ -48,12 +48,12 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     // measurement-form label needs a bright, readable color regardless of
     // what shade the drawing itself uses for that component's outline.
     { label: 'Mirror', color: '#e2e8f0', keys: ['mirrorW', 'mirrorH'] },
-    { label: 'Base Storage', color: '#0891b2', keys: ['baseH', 'baseW', 'baseD'] },
+    { label: 'Base Storage', color: '#0891b2', keys: ['baseH', 'baseW', 'baseD', 'skirtingEnabled'] },
   ],
   'separate-dressing': [
     { label: 'Total',         color: '#ea580c', keys: ['H', 'W', 'D'] },
     { label: 'Dressing Box',  color: '#2563eb', keys: ['dressingBoxH'] },
-    { label: 'Base Storage',  color: '#ea580c', keys: ['baseStorageH', 'baseStorageW'] },
+    { label: 'Base Storage',  color: '#ea580c', keys: ['baseStorageH', 'baseStorageW', 'skirtingEnabled'] },
   ],
   'openable-wardrobe': [
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },

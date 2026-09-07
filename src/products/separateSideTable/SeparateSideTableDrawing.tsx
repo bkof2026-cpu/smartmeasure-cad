@@ -11,6 +11,7 @@ interface Props {
 }
 
 function componentStyle(c: ComponentSpec): ComponentStyle {
+  if (c.id === 'skirting') return { fill: '#c4b8a0', stroke: '#8a7a5c', strokeWidth: 1 };
   const stroke = c.id === 'mirror' ? '#111827' : c.id.startsWith('base-storage') ? '#0891b2' : '#333';
   return { fill: '#f0eee8', stroke, strokeWidth: 1.2 };
 }
@@ -22,6 +23,7 @@ export const SeparateSideTableDrawing: React.FC<Props> = ({ dims }) => {
     baseH: n(dims.baseH) || 600,
     baseW: n(dims.baseW) || 500,
     baseD: n(dims.baseD) || 400,
+    skirtingEnabled: Number(dims.skirtingEnabled ?? 0) === 1,
   };
   const drawing = resolveSeparateSideTablePlan(inp);
   const [selected, setSelected] = useState<ComponentSpec | DimensionLine | null>(null);

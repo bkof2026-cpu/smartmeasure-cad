@@ -21,7 +21,16 @@ export interface SeparateDressingInputs {
   dressingBoxH: number; // independent — the dressing box's own height
   baseStorageH: number;
   baseStorageW: number; // defaults to W; only shown as its own dimension when it actually differs
+  // Optional 70mm skirting strip at the very bottom of the stack (Base
+  // Storage is the only zone that touches the floor). Toggle-controlled,
+  // per the user's explicit instruction: off by default. Total Height (H)
+  // stays the true overall floor-to-top figure — only Base Storage's own
+  // Height is reduced for its carcass.
+  skirtingEnabled: boolean;
 }
+
+// Same fixed 70mm skirting constant used everywhere else in this codebase.
+export const SEPARATE_DRESSING_SKIRTING_HEIGHT_MM = 70;
 
 export interface SeparateDressingCutRow {
   component: string;
@@ -65,19 +74,34 @@ export const BASE_STORAGE_DRAWER_COUNT = 3;
 
 export function separateDressingCutlist(inp: SeparateDressingInputs): SeparateDressingCutRow[] {
   const trueH = switchBoardTrueH(inp);
-  const drawerH = inp.baseStorageH / BASE_STORAGE_DRAWER_COUNT;
-  return [
+  // Skirting comes out of Base Storage's OWN carcass only — its entered
+  // Height stays the true floor-to-top figure for that zone, matching the
+  // same convention as Wardrobe/Shoe Rack/Separate Side Table. Total
+  // Height (H) and Switch Board's own leftover-space math are unaffected.
+  const skirtH = inp.skirtingEnabled && inp.baseStorageH > SEPARATE_DRESSING_SKIRTING_HEIGHT_MM ? SEPARATE_DRESSING_SKIRTING_HEIGHT_MM : 0;
+  const baseBodyH = inp.baseStorageH - skirtH;
+  const drawerH = baseBodyH / BASE_STORAGE_DRAWER_COUNT;
+  const rows: SeparateDressingCutRow[] = [
     { component: 'Dressing Box', width: inp.W, height: inp.dressingBoxH, qty: 1, remark: `Width = Total Width (${Math.round(inp.W)}mm, shared) | Height entered independently | Depth = Total Depth (${Math.round(inp.D)}mm, shared)` },
     { component: 'Switch Board', width: inp.W, height: trueH, qty: 1, remark: `Visual zone only — Height = Total Height − Dressing Box Height − Base Storage Height (${Math.round(inp.H)} − ${Math.round(inp.dressingBoxH)} − ${Math.round(inp.baseStorageH)} = ${Math.round(trueH)}mm)${trueH < 20 ? ' — drawn as a thin nominal band on screen' : ''}` },
-    { component: 'Base Storage (frame)', width: inp.baseStorageW, height: inp.baseStorageH, qty: 1, remark: `Width entered (defaults to Total Width) | Height entered independently | Depth = Total Depth (shared)` },
-    { component: `Base Storage — Drawer Front (×${BASE_STORAGE_DRAWER_COUNT})`, width: inp.baseStorageW, height: drawerH, qty: BASE_STORAGE_DRAWER_COUNT, remark: `Drawer Height = Base Storage Height / ${BASE_STORAGE_DRAWER_COUNT}` },
+    { component: 'Base Storage (frame)', width: inp.baseStorageW, height: baseBodyH, qty: 1, remark: skirtH > 0 ? `Width entered (defaults to Total Width) | Height = ${Math.round(inp.baseStorageH)}mm entered − ${skirtH}mm skirting = ${Math.round(baseBodyH)}mm carcass | Depth = Total Depth (shared)` : `Width entered (defaults to Total Width) | Height entered independently | Depth = Total Depth (shared)` },
+    { component: `Base Storage — Drawer Front (×${BASE_STORAGE_DRAWER_COUNT})`, width: inp.baseStorageW, height: drawerH, qty: BASE_STORAGE_DRAWER_COUNT, remark: `Drawer Height = Base Storage carcass Height / ${BASE_STORAGE_DRAWER_COUNT}` },
   ];
+  if (skirtH > 0) {
+    rows.push({ component: 'Skirting', width: inp.baseStorageW, height: skirtH, qty: 1, remark: `Fixed ${skirtH}mm skirting strip at the bottom of Base Storage — real board height, not derived from Width/Depth` });
+  }
+  return rows;
 }
 
 export function resolveSeparateDressingPlan(inp: SeparateDressingInputs): ResolvedDrawing {
   const { H, W, D } = inp;
   const sbH = switchBoardDrawnH(inp);
   const widthDiffers = Math.abs(inp.baseStorageW - W) > 0.5;
+  // Skirting comes out of Base Storage's own carcass only (see cutlist
+  // comment above) — Total Height (H) and the Switch Board's own leftover
+  // space are unaffected.
+  const skirtH = inp.skirtingEnabled && inp.baseStorageH > SEPARATE_DRESSING_SKIRTING_HEIGHT_MM ? SEPARATE_DRESSING_SKIRTING_HEIGHT_MM : 0;
+  const baseBodyH = inp.baseStorageH - skirtH;
 
   const leaderMargin = 90; // room for the Height dimension on the left
   const topPad = 90; // room above the stack for the Depth "/" leader
@@ -141,7 +165,7 @@ export function resolveSeparateDressingPlan(inp: SeparateDressingInputs): Resolv
   // reuses existing, proven rendering rather than hand-drawing new marks.
   const bsY = sbY + sbH;
   const bsRows = BASE_STORAGE_DRAWER_COUNT;
-  const rowH = inp.baseStorageH / bsRows;
+  const rowH = baseBodyH / bsRows;
   // The "Base Storage" name reads on the MIDDLE drawer itself (centered in
   // that box, like every other component's own caption) rather than off to
   // the side — the middle drawer has the most clear room, away from the
@@ -151,33 +175,57 @@ export function resolveSeparateDressingPlan(inp: SeparateDressingInputs): Resolv
     components.push({
       id: `base-storage-drawer-${i}`, type: 'DRAWER_FRONT', label: i === middleDrawerIdx ? 'Base Storage' : '',
       x: stackX + 3, y: bsY + i * rowH + 3, width: inp.baseStorageW - 6, height: rowH - 6, qty: 1, visible: true,
-      source: { formula: `Drawer ${i + 1} of ${bsRows} — Width = Base Storage Width, Height = Base Storage Height / ${bsRows}`, constants: [] },
+      source: { formula: `Drawer ${i + 1} of ${bsRows} — Width = Base Storage Width, Height = Base Storage carcass Height / ${bsRows}`, constants: [] },
     });
   }
   // A thin outer frame around the whole bank, drawn behind the drawer
   // fronts (unshifted to the start) and the anchor for its own Width/
   // Height dimensions below — unlabeled itself, since the middle drawer
-  // now carries the "Base Storage" name.
+  // now carries the "Base Storage" name. Height is the carcass (post-
+  // skirting) height — a skirting strip below fills the rest, per the
+  // user's explicit instruction.
   components.unshift({
-    id: 'base-storage', type: 'BASE_STORAGE_FRAME', label: '', x: stackX, y: bsY, width: inp.baseStorageW, height: inp.baseStorageH, qty: 1, visible: true,
-    source: { formula: `Width = ${Math.round(inp.baseStorageW)}mm (entered) | Height = ${Math.round(inp.baseStorageH)}mm (entered) — ${bsRows} drawers`, constants: [] },
+    id: 'base-storage', type: 'BASE_STORAGE_FRAME', label: '', x: stackX, y: bsY, width: inp.baseStorageW, height: baseBodyH, qty: 1, visible: true,
+    source: { formula: skirtH > 0 ? `Width = ${Math.round(inp.baseStorageW)}mm (entered) | Height = ${Math.round(inp.baseStorageH)}mm entered − ${skirtH}mm skirting = ${Math.round(baseBodyH)}mm carcass — ${bsRows} drawers` : `Width = ${Math.round(inp.baseStorageW)}mm (entered) | Height = ${Math.round(inp.baseStorageH)}mm (entered) — ${bsRows} drawers`, constants: [] },
   });
+
+  // Skirting — a real, labeled strip at the very bottom of the stack,
+  // below Base Storage's own carcass. Drawing-only when the toggle is
+  // off: no strip, no reserved space.
+  if (skirtH > 0) {
+    const skirtY = bsY + baseBodyH;
+    components.push({
+      id: 'skirting', type: 'SKIRTING', label: `Skirting — ${skirtH}mm`, x: stackX, y: skirtY, width: inp.baseStorageW, height: skirtH, qty: 1, visible: true,
+      source: { formula: `Fixed ${skirtH}mm skirting strip — real board height, not derived from Width/Depth`, constants: [] },
+    });
+  }
 
   // ── Depth — single shared "/" diagonal leader (Total = Dressing Box = Base Storage). ──
   const diag = insideDiagonal(stackX, stackY, W, inp.dressingBoxH, 'right-down');
   lines.push({ x1: stackX, y1: stackY, x2: diag.x2, y2: diag.y2, color: DIAG, label: `${Math.round(D)} mm (D)` });
 
   // ── Height — one real dimension spanning the whole stack (Total Height). ─
-  dimReqs.push({ axis: 'v', x1: stackX, y1: stackY, x2: stackX, y2: bsY + inp.baseStorageH, edge: 'left', componentIds: ['dressing-box', 'switch-board', 'base-storage'], label: `${Math.round(H)} mm (H)`, source: { formula: 'Total Height = Dressing Box H + Switch Board H + Base Storage H', constants: [] }, color: BASE_STORAGE_COLOR });
+  // bsY + baseBodyH + skirtH is the TRUE floor line (includes skirting when
+  // present) — numerically equal to bsY + inp.baseStorageH, since Total
+  // Height (H) is meant to span the full floor-to-top figure either way.
+  const stackBottomY = bsY + baseBodyH + skirtH;
+  dimReqs.push({ axis: 'v', x1: stackX, y1: stackY, x2: stackX, y2: stackBottomY, edge: 'left', componentIds: ['dressing-box', 'switch-board', 'base-storage'], label: `${Math.round(H)} mm (H)`, source: { formula: 'Total Height = Dressing Box H + Switch Board H + Base Storage H (skirting included)', constants: [] }, color: BASE_STORAGE_COLOR });
 
   // ── Width — one shared dimension unless Base Storage Width actually differs. ──
-  dimReqs.push({ axis: 'h', x1: stackX, y1: bsY + inp.baseStorageH, x2: stackX + W, y2: bsY + inp.baseStorageH, edge: 'bottom', componentIds: ['dressing-box', 'switch-board'], label: `${Math.round(W)} mm (W)`, source: { formula: 'Total Width = Dressing Box W = Switch Board W', constants: [] }, color: BASE_STORAGE_COLOR });
+  dimReqs.push({ axis: 'h', x1: stackX, y1: stackBottomY, x2: stackX + W, y2: stackBottomY, edge: 'bottom', componentIds: ['dressing-box', 'switch-board'], label: `${Math.round(W)} mm (W)`, source: { formula: 'Total Width = Dressing Box W = Switch Board W', constants: [] }, color: BASE_STORAGE_COLOR });
   if (widthDiffers) {
-    dimReqs.push({ axis: 'h', x1: stackX, y1: bsY + inp.baseStorageH + 26, x2: stackX + inp.baseStorageW, y2: bsY + inp.baseStorageH + 26, edge: 'bottom', componentIds: ['base-storage'], label: `${Math.round(inp.baseStorageW)} mm (Storage W)`, source: { formula: 'Base Storage Width (entered, differs from Total Width)', constants: [] }, color: BASE_STORAGE_COLOR });
+    // Sits on Base Storage's own carcass/skirting boundary (not the true
+    // floor line) when skirting is present — matching the same convention
+    // Wardrobe/Shoe Rack use: Width is a carcass fact, Skirting gets its
+    // own separate dimension.
+    dimReqs.push({ axis: 'h', x1: stackX, y1: bsY + baseBodyH + 26, x2: stackX + inp.baseStorageW, y2: bsY + baseBodyH + 26, edge: 'bottom', componentIds: ['base-storage'], label: `${Math.round(inp.baseStorageW)} mm (Storage W)`, source: { formula: 'Base Storage Width (entered, differs from Total Width)', constants: [] }, color: BASE_STORAGE_COLOR });
+  }
+  if (skirtH > 0) {
+    dimReqs.push({ axis: 'v', x1: stackX + Math.max(W, inp.baseStorageW) + 16, y1: bsY + baseBodyH, x2: stackX + Math.max(W, inp.baseStorageW) + 16, y2: stackBottomY, edge: 'right', componentIds: ['skirting'], label: `${skirtH} mm (Skirting)`, source: { formula: `Fixed ${skirtH}mm skirting board`, constants: [] } });
   }
 
-  const worldWidth = Math.max(stackX + Math.max(W, inp.baseStorageW) + 90, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
-  const worldHeight = Math.max(bsY + inp.baseStorageH + (widthDiffers ? 50 : 30), ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
+  const worldWidth = Math.max(stackX + Math.max(W, inp.baseStorageW) + (skirtH > 0 ? 46 : 90), ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
+  const worldHeight = Math.max(stackBottomY + (widthDiffers ? 50 : 30), ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
   const dimensions = resolveDimensions(dimReqs);
   const issues = [

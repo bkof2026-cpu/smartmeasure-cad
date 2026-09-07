@@ -1193,7 +1193,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     category: 'furniture',
     roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
-    demoDimensions: { H: 2100, W: 1200, D: 600, dressingBoxH: 1400, baseStorageH: 700, baseStorageW: 1200 },
+    demoDimensions: { H: 2100, W: 1200, D: 600, dressingBoxH: 1400, baseStorageH: 700, baseStorageW: 1200, skirtingEnabled: 0 },
     measurementFields: [
       { key: 'H', label: 'Total Height', unit: 'mm', defaultValue: 2100, min: 1200, max: 2700 },
       { key: 'W', label: 'Total Width', unit: 'mm', defaultValue: 1200, min: 600, max: 2400 },
@@ -1201,12 +1201,18 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       { key: 'dressingBoxH', label: 'Dressing Box Height', unit: 'mm', defaultValue: 1400, min: 400, max: 2000 },
       { key: 'baseStorageH', label: 'Base Storage Height', unit: 'mm', defaultValue: 700, min: 300, max: 1200 },
       { key: 'baseStorageW', label: 'Base Storage Width', unit: 'mm', defaultValue: 1200, min: 300, max: 2400 },
+      // Optional — off by default. When on, a fixed 70mm skirting strip is
+      // drawn below Base Storage (the only zone that touches the floor)
+      // and subtracted from its own entered Height; Total Height stays
+      // the true overall floor-to-top figure. Drawing-only.
+      { key: 'skirtingEnabled', label: 'Add Skirting (70mm)', unit: 'bool', defaultValue: 0 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
       const cutRows = separateDressingCutlist({
         H: n(dims.H), W: n(dims.W), D: n(dims.D),
         dressingBoxH: n(dims.dressingBoxH), baseStorageH: n(dims.baseStorageH), baseStorageW: n(dims.baseStorageW) || n(dims.W),
+        skirtingEnabled: Number(dims.skirtingEnabled ?? 0) === 1,
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -1318,17 +1324,22 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     category: 'furniture',
     roomCategory: 'Master Bedroom',
     isFormulaVerified: true,
-    demoDimensions: { mirrorW: 500, mirrorH: 700, baseH: 600, baseW: 500, baseD: 400 },
+    demoDimensions: { mirrorW: 500, mirrorH: 700, baseH: 600, baseW: 500, baseD: 400, skirtingEnabled: 0 },
     measurementFields: [
       { key: 'mirrorW', label: 'Mirror Width', unit: 'mm', defaultValue: 500, min: 300, max: 900 },
       { key: 'mirrorH', label: 'Mirror Height', unit: 'mm', defaultValue: 700, min: 400, max: 1200 },
       { key: 'baseH', label: 'Base Storage Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
       { key: 'baseW', label: 'Base Storage Width', unit: 'mm', defaultValue: 500, min: 300, max: 900 },
       { key: 'baseD', label: 'Base Storage Depth', unit: 'mm', defaultValue: 400, min: 300, max: 600 },
+      // Optional — off by default. When on, a fixed 70mm skirting strip is
+      // drawn below Base Storage (the only zone that touches the floor)
+      // and subtracted from its own entered Height; drawing-only, per the
+      // user's explicit instruction.
+      { key: 'skirtingEnabled', label: 'Add Skirting (70mm)', unit: 'bool', defaultValue: 0 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
-      const cutRows = separateSideTableCutlist({ mirrorW: n(dims.mirrorW), mirrorH: n(dims.mirrorH), baseH: n(dims.baseH), baseW: n(dims.baseW), baseD: n(dims.baseD) });
+      const cutRows = separateSideTableCutlist({ mirrorW: n(dims.mirrorW), mirrorH: n(dims.mirrorH), baseH: n(dims.baseH), baseW: n(dims.baseW), baseD: n(dims.baseD), skirtingEnabled: Number(dims.skirtingEnabled ?? 0) === 1 });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
     DrawingComponent: (props) => <SeparateSideTableDrawing dims={props.dims} />,
