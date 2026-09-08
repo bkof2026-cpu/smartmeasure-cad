@@ -964,6 +964,11 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         storage: { position: 'none', left: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 }, right: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 } },
         openBox: { position: 'none', left: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 }, right: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 } },
         studyTable: { enabled: false, side: 'left', heightMm: 750, widthMm: 1200, depthMm: 600 },
+        adjacentLoft: {
+          enabled: false, side: 'left', mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2,
+          fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
+          khacha: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
+        },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -998,6 +1003,11 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         storage: { position: 'none', left: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 }, right: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 } },
         openBox: { position: 'none', left: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 }, right: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 } },
         studyTable: { enabled: false, side: 'left', heightMm: 750, widthMm: 1200, depthMm: 600 },
+        adjacentLoft: {
+          enabled: false, side: 'left', mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2,
+          fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
+          khacha: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
+        },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },

@@ -8,7 +8,7 @@ import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSe
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
 import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
 import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
@@ -273,7 +273,45 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     depthMm: (addonDims['study-table']?.D) ?? 600,
   };
 
-  return { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable };
+  // L-Shaped Loft — Wall B, a fully independent second Loft standing on
+  // the adjacent wall, using the EXACT SAME door-count/width formulas as
+  // Wall A (the main Loft) above, but calculated completely
+  // independently — its own entered Width, its own Fix Patti/Khacha
+  // (never combined with Wall A's), never combined into one width for
+  // door calculation, per the user's own explicit instruction.
+  const alFixPatti: WardrobeFixPattiInput = {
+    position: FIX_PATTI_POSITIONS[(addonDims['adjacent-loft']?.fpPosition) ?? 0] ?? 'none',
+    leftHeightMm: (addonDims['adjacent-loft']?.fpLeftH) ?? 400,
+    leftWidthMm: (addonDims['adjacent-loft']?.fpLeftW) ?? 100,
+    rightHeightMm: (addonDims['adjacent-loft']?.fpRightH) ?? 400,
+    rightWidthMm: (addonDims['adjacent-loft']?.fpRightW) ?? 100,
+  };
+  const alKhacha: WardrobeKhachaInput = {
+    position: KHACHA_POSITIONS[(addonDims['adjacent-loft']?.khPosition) ?? 0] ?? 'none',
+    leftHeightMm: (addonDims['adjacent-loft']?.khLeftH) ?? 400,
+    leftWidthMm: (addonDims['adjacent-loft']?.khLeftW) ?? 100,
+    rightHeightMm: (addonDims['adjacent-loft']?.khRightH) ?? 400,
+    rightWidthMm: (addonDims['adjacent-loft']?.khRightW) ?? 100,
+  };
+  // Wall B's own entered Total Width (its own room-wall span, entirely
+  // separate from Wall A's) — its usable Loft Door Width is this value
+  // minus Wall B's own Fix Patti + Khacha, same shared formula as Wall A.
+  const alEnteredWidth = (addonDims['adjacent-loft']?.totalW) ?? 2000;
+  const alUsableW = usableLoftDoorWidthWithKhacha(alEnteredWidth, alFixPatti, alKhacha);
+  const alDoorCountDefault = recommendLoftDoorCount(alUsableW).doorCount;
+  const adjacentLoft: WardrobeAdjacentLoftInput = {
+    enabled: isWardrobe && selectedAddons.has('adjacent-loft'),
+    side: ((addonDims['adjacent-loft']?.side) ?? 0) === 1 ? 'right' : 'left',
+    mode: ((addonDims['adjacent-loft']?.mode) ?? 0) === 1 ? 'box' : 'door',
+    widthMm: alUsableW,
+    heightMm: (addonDims['adjacent-loft']?.H) ?? 400,
+    depthMm: (addonDims['adjacent-loft']?.D) ?? 350,
+    doorCount: (addonDims['adjacent-loft']?.doors) ?? alDoorCountDefault,
+    fixPatti: alFixPatti,
+    khacha: alKhacha,
+  };
+
+  return { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft };
 }
 
 function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
@@ -334,10 +372,10 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
     };
   }
   if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
-    const { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
-    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
+    const { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
-      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} />,
+      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} adjacentLoft={adjacentLoft} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
     };
   }
@@ -968,7 +1006,7 @@ export const ProductFlow: React.FC = () => {
   // whichever product is currently active on screen.
   const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
-  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
+  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
   // Live-computed defaults for the Wardrobe's own auto-calculated-but-
   // editable fields (Top Panel Width, Loft Height, Loft Door Count) — the
   // generic "Add Extra Items" field renderer below falls back to a plain
@@ -989,6 +1027,10 @@ export const ProductFlow: React.FC = () => {
       rightD: wardrobeStorage.right.depthMm, rightDoors: wardrobeStorage.right.doorCount,
     },
     'open-box': { leftD: wardrobeOpenBox.left.depthMm, rightD: wardrobeOpenBox.right.depthMm },
+    // Wall B's own Door Count — auto-recommended from Wall B's own
+    // entered Width (after its own Fix Patti/Khacha), same shared
+    // loftDoorEngine formula as Wall A, same live-recalc pattern.
+    'adjacent-loft': { doors: wardrobeAdjacentLoft.doorCount },
   } : {};
   const isShoeRack = selectedId === 'shoe-rack';
   const { twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor } = deriveShoeRackAddonInputs(selectedId, selectedAddons, addonDims);
@@ -1010,7 +1052,7 @@ export const ProductFlow: React.FC = () => {
     // treatment as the Bed: a plain W x H carcass with Depth shown as the
     // "/" diagonal leader, plus optional Side Dressing / Side Panel / Loft.
     if (isWardrobe) {
-      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} topPanel={wardrobeTopPanel} loft={wardrobeLoft} fixPatti={wardrobeFixPatti} khacha={wardrobeKhacha} storage={wardrobeStorage} openBox={wardrobeOpenBox} studyTable={wardrobeStudyTable} />;
+      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} topPanel={wardrobeTopPanel} loft={wardrobeLoft} fixPatti={wardrobeFixPatti} khacha={wardrobeKhacha} storage={wardrobeStorage} openBox={wardrobeOpenBox} studyTable={wardrobeStudyTable} adjacentLoft={wardrobeAdjacentLoft} />;
     }
 
     // Shoe Rack — no base dims; entirely the two optional boxes.
@@ -1043,7 +1085,7 @@ export const ProductFlow: React.FC = () => {
       const cutlist: PdfCutRow[] = selectedId === 'bed'
         ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
-        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
@@ -1248,7 +1290,7 @@ export const ProductFlow: React.FC = () => {
       // already were — omitting them here would double-render each as a
       // crude RectDetail box UNDER the real, already-correct composite
       // drawing above.
-      (isWardrobe && (a.id === 'dressing' || a.id === 'top-panel' || a.id === 'side-panel' || a.id === 'loft' || a.id === 'fix-patti' || a.id === 'khacha' || a.id === 'storage' || a.id === 'open-box' || a.id === 'study-table')) ||
+      (isWardrobe && (a.id === 'dressing' || a.id === 'top-panel' || a.id === 'side-panel' || a.id === 'loft' || a.id === 'fix-patti' || a.id === 'khacha' || a.id === 'storage' || a.id === 'open-box' || a.id === 'study-table' || a.id === 'adjacent-loft')) ||
       (isShoeRack && (a.id === 'two-door-box' || a.id === 'single-door-box'))
     )
   );
@@ -1714,21 +1756,30 @@ export const ProductFlow: React.FC = () => {
                     // Common Left/Right/Both/None conditional-fields
                     // mechanism (one rule, reused by every addon that
                     // declares sideOf fields — Fix Patti, Khacha, Extra
-                    // Storage, Open Box, and any future one — never
-                    // hand-rolled per addon). Finds this addon's own
-                    // position/side dropdown (any field with `options`
-                    // whose choices include 'Left'/'Right'), decodes its
-                    // current stored index back to which side(s) are
-                    // actually active, and that set drives which
-                    // sideOf-tagged fields render below. An addon with no
-                    // such dropdown, or a field with no sideOf, is
-                    // unaffected — it always renders exactly as before.
-                    const positionField = addon.fields.find((f) => f.options?.some((o) => o === 'Left' || o === 'Right'));
-                    const positionValue = positionField ? String(positionField.options![Number(adDims[positionField.key] ?? positionField.defaultValue)] ?? '').toLowerCase() : null;
-                    const activeSides = positionValue
-                      ? { left: positionValue === 'left' || positionValue === 'both', right: positionValue === 'right' || positionValue === 'both' }
-                      : { left: true, right: true };
-                    const visibleFields = addon.fields.filter((f) => !f.sideOf || activeSides[f.sideOf]);
+                    // Storage, Open Box, L-Shaped Loft, and any future one
+                    // — never hand-rolled per addon). Every Left/Right(/
+                    // Both/None) dropdown in this addon (there can be more
+                    // than one — e.g. L-Shaped Loft has its own Fix Patti
+                    // position AND Khacha position, two independent
+                    // groups) gets decoded to which side(s) are active;
+                    // each sideOf-tagged field is then checked against
+                    // whichever group its own groupKey names (or, when
+                    // unset, the addon's SOLE such dropdown — the original
+                    // single-group behaviour every existing addon still
+                    // uses unchanged).
+                    const positionFields = addon.fields.filter((f) => f.options?.some((o) => o === 'Left' || o === 'Right'));
+                    const activeSidesByKey: Record<string, { left: boolean; right: boolean }> = {};
+                    for (const pf of positionFields) {
+                      const v = String(pf.options![Number(adDims[pf.key] ?? pf.defaultValue)] ?? '').toLowerCase();
+                      activeSidesByKey[pf.key] = { left: v === 'left' || v === 'both', right: v === 'right' || v === 'both' };
+                    }
+                    const soleGroupKey = positionFields.length === 1 ? positionFields[0].key : undefined;
+                    const visibleFields = addon.fields.filter((f) => {
+                      if (!f.sideOf) return true;
+                      const groupKey = f.groupKey ?? soleGroupKey;
+                      const activeSides = groupKey ? activeSidesByKey[groupKey] : undefined;
+                      return activeSides ? activeSides[f.sideOf] : true;
+                    });
                     return (
                       <div key={addon.id} className="rounded-xl overflow-hidden"
                         style={{ border: `1px solid ${active ? '#7c3aed' : '#1e293b'}`, background: active ? '#13082a' : '#0e1624', opacity: isBlocked ? 0.45 : 1 }}>

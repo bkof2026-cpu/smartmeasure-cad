@@ -18,17 +18,25 @@ export interface AddonField {
    * Same "plain numbers everywhere" convention as `options` above. */
   kind?: 'checkbox';
   /** Marks this field as belonging to one side of a Left/Right/Both
-   * position dropdown elsewhere in the SAME addon (conventionally a field
-   * named 'position' or 'side' with options including 'Left'/'Right'/
-   * 'Both', optionally 'None'). When set, the field renders ONLY when the
-   * addon's own position value actually includes that side — 'left'
-   * fields show for Left/Both, 'right' fields show for Right/Both, and
-   * neither shows for None. A field with no sideOf (e.g. the position
-   * dropdown itself, or a side-agnostic field) always renders. This is
-   * the single, common mechanism every Left/Right/Both/None addon (Fix
-   * Patti, Khacha, Extra Storage, Open Box, and any future one) should
-   * use — never hand-roll per-addon conditional rendering. */
+   * position dropdown elsewhere in the SAME addon. When set, the field
+   * renders ONLY when that dropdown's current value actually includes
+   * that side — 'left' fields show for Left/Both, 'right' fields show
+   * for Right/Both, and neither shows for None. A field with no sideOf
+   * (e.g. the position dropdown itself, or a side-agnostic field) always
+   * renders. This is the single, common mechanism every Left/Right/Both/
+   * None addon (Fix Patti, Khacha, Extra Storage, Open Box, and any
+   * future one) should use — never hand-roll per-addon conditional
+   * rendering. */
   sideOf?: 'left' | 'right';
+  /** Which position/side dropdown field (by its own `key`) controls this
+   * field's sideOf visibility, when an addon has MORE THAN ONE such
+   * dropdown (e.g. L-Shaped Loft's own Fix Patti position and Khacha
+   * position are two independent Left/Right/Both/None groups in the same
+   * addon). Omit when an addon has only one Left/Right(/Both/None)
+   * dropdown — the renderer falls back to that addon's sole such field
+   * automatically, so every existing single-group addon (Fix Patti,
+   * Khacha, Storage, Open Box) needs no groupKey at all. */
+  groupKey?: string;
 }
 
 // placement: 'composite' = shown INSIDE the main drawing
@@ -325,6 +333,42 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 800 },
       ],
     },
+    {
+      // L-Shaped Loft — Wall B, a fully independent second Loft on the
+      // adjacent wall (Left or Right of the main Wardrobe), using the
+      // SAME door-count/width formulas as the main Loft above (Wall A),
+      // calculated completely independently — its own Total Width, its
+      // own Height/Depth, its own Fix Patti AND Khacha (both optional,
+      // both manual H×W per side, never combined with Wall A's own).
+      id: 'adjacent-loft',
+      label: 'L-Shaped Loft (Adjacent Wall)',
+      icon: '📐',
+      description: 'A second, independent Loft on the adjacent wall — same door-count formula as the main Loft, its own Total Width/Height/Fix Patti/Khacha, never combined with the main Loft’s.',
+      placement: 'composite',
+      fields: [
+        { key: 'side', label: 'Adjacent Loft Side', defaultValue: 0, min: 0, max: 1, options: ['Left', 'Right'] },
+        { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
+        { key: 'totalW', label: 'Wall B Total Width', defaultValue: 2000, min: 600, max: 6000 },
+        // H/doors defaults below are only the static fallback shown before
+        // a real computed recommendation exists — ProductFlow.tsx's own
+        // wardrobeComputedAddonDefaults overrides the displayed default
+        // live (Door Count = the loftDoorEngine recommendation from Wall
+        // B's own usable width).
+        { key: 'H', label: 'Wall B Loft Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'doors', label: 'Wall B Door Count', defaultValue: 2, min: 1, max: 12 },
+        { key: 'fpPosition', label: 'Wall B Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'fpLeftH', label: 'Wall B Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'fpPosition' },
+        { key: 'fpLeftW', label: 'Wall B Left Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left', groupKey: 'fpPosition' },
+        { key: 'fpRightH', label: 'Wall B Right Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right', groupKey: 'fpPosition' },
+        { key: 'fpRightW', label: 'Wall B Right Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right', groupKey: 'fpPosition' },
+        { key: 'khPosition', label: 'Wall B Khacha Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'khLeftH', label: 'Wall B Left Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'khPosition' },
+        { key: 'khLeftW', label: 'Wall B Left Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left', groupKey: 'khPosition' },
+        { key: 'khRightH', label: 'Wall B Right Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right', groupKey: 'khPosition' },
+        { key: 'khRightW', label: 'Wall B Right Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right', groupKey: 'khPosition' },
+      ],
+    },
   ],
   'sliding-wardrobe': [
     {
@@ -451,6 +495,31 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'H', label: 'Height', defaultValue: 750, min: 600, max: 900 },
         { key: 'W', label: 'Width', defaultValue: 1200, min: 600, max: 2400 },
         { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 800 },
+      ],
+    },
+    {
+      id: 'adjacent-loft',
+      label: 'L-Shaped Loft (Adjacent Wall)',
+      icon: '📐',
+      description: 'A second, independent Loft on the adjacent wall — same door-count formula as the main Loft, its own Total Width/Height/Fix Patti/Khacha, never combined with the main Loft’s.',
+      placement: 'composite',
+      fields: [
+        { key: 'side', label: 'Adjacent Loft Side', defaultValue: 0, min: 0, max: 1, options: ['Left', 'Right'] },
+        { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
+        { key: 'totalW', label: 'Wall B Total Width', defaultValue: 2000, min: 600, max: 6000 },
+        { key: 'H', label: 'Wall B Loft Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'doors', label: 'Wall B Door Count', defaultValue: 2, min: 1, max: 12 },
+        { key: 'fpPosition', label: 'Wall B Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'fpLeftH', label: 'Wall B Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'fpPosition' },
+        { key: 'fpLeftW', label: 'Wall B Left Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left', groupKey: 'fpPosition' },
+        { key: 'fpRightH', label: 'Wall B Right Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right', groupKey: 'fpPosition' },
+        { key: 'fpRightW', label: 'Wall B Right Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right', groupKey: 'fpPosition' },
+        { key: 'khPosition', label: 'Wall B Khacha Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'khLeftH', label: 'Wall B Left Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'khPosition' },
+        { key: 'khLeftW', label: 'Wall B Left Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left', groupKey: 'khPosition' },
+        { key: 'khRightH', label: 'Wall B Right Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right', groupKey: 'khPosition' },
+        { key: 'khRightW', label: 'Wall B Right Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right', groupKey: 'khPosition' },
       ],
     },
   ],

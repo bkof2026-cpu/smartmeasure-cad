@@ -173,6 +173,28 @@ export interface WardrobeLoftInput {
   doorCount: number;
 }
 
+// L-Shaped Loft — Wall B, a second, fully independent Loft standing on
+// the ADJACENT wall (Left or Right of the main Wardrobe structure), per
+// the user's own reference sketch. Uses the EXACT SAME rules as the main
+// Loft (Wall A) — same Total Width/Height/Door Count formulas, same
+// shared loftDoorEngine, same real Fix Patti + Khacha option (both
+// optional, both manual H×W per side, both deduct from THIS wall's own
+// usable width only — never combined with Wall A's Fix Patti/Khacha,
+// per the user's explicit "left side pe khacha aur fixed patti alag se
+// hoga" instruction). Wall A and Wall B are calculated completely
+// independently — never combined into one width for door calculation.
+export interface WardrobeAdjacentLoftInput {
+  enabled: boolean;
+  side: 'left' | 'right';
+  mode: LoftMode;
+  widthMm: number; // this wall's own usable Loft Door Width (after its own Fix Patti/Khacha)
+  heightMm: number;
+  depthMm: number;
+  doorCount: number;
+  fixPatti: WardrobeFixPattiInput;
+  khacha: WardrobeKhachaInput;
+}
+
 export interface SimpleWardrobeInputs {
   W: number; // wardrobe width
   H: number; // wardrobe height
@@ -185,6 +207,7 @@ export interface SimpleWardrobeInputs {
   storage: WardrobeStorageInput;
   openBox: WardrobeOpenBoxInput;
   studyTable: WardrobeStudyTableInput;
+  adjacentLoft: WardrobeAdjacentLoftInput;
   // Separate, explicitly-entered overall envelope values — per the user's
   // own instruction, these are NOT derived/recomputed from W/H + add-ons;
   // whatever is typed here is exactly what the drawing's outer "Total
@@ -214,6 +237,7 @@ function activeParts(inp: SimpleWardrobeInputs): string[] {
   if (inp.storage.position !== 'none') parts.push('STORAGE');
   if (inp.openBox.position !== 'none') parts.push('OPEN BOX');
   if (inp.studyTable.enabled) parts.push('STUDY TABLE');
+  if (inp.adjacentLoft.enabled) parts.push('L-SHAPED LOFT');
   return parts;
 }
 
@@ -314,6 +338,32 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     const sideLabel = inp.studyTable.side === 'both' ? 'Left + Right' : inp.studyTable.side === 'left' ? 'Left' : 'Right';
     rows.push({ component: `Study Table (${sideLabel}, attached)`, width: inp.studyTable.widthMm, height: inp.studyTable.heightMm, qty: 1, remark: `Height x Width x Depth = ${Math.round(inp.studyTable.heightMm)}×${Math.round(inp.studyTable.widthMm)}×${Math.round(inp.studyTable.depthMm)}mm — see the separate Study Table section below for its full cutlist (same engine as the standalone Study Table product)` });
   }
+  if (inp.adjacentLoft.enabled) {
+    // Wall B — a fully independent Loft, calculated with the EXACT SAME
+    // rules as Wall A (the main Loft) above, but never combined with it:
+    // its own usable width (already Fix Patti/Khacha-deducted upstream),
+    // its own Door Count/One Door Width.
+    const al = inp.adjacentLoft;
+    const alSideLabel = al.side === 'left' ? 'Left' : 'Right';
+    const alCount = Math.max(1, Math.round(al.doorCount) || 1);
+    const alDoorW = loftOneDoorWidth(al.widthMm, alCount);
+    rows.push({ component: `L-Shaped Loft (${alSideLabel} Wall) Door (x${alCount})`, width: alDoorW, height: al.heightMm, qty: alCount, remark: `Wall B Usable Width = ${Math.round(al.widthMm)}mm (own Fix Patti/Khacha already deducted, independent of Wall A) | Deduction = ${alCount} × 2 = ${alCount * 2}mm | Each Door = (${Math.round(al.widthMm)} − ${alCount * 2}) / ${alCount} = ${alDoorW.toFixed(2)}mm` });
+    if (al.mode === 'box') {
+      rows.push({ component: `L-Shaped Loft (${alSideLabel} Wall) Depth`, width: al.widthMm, height: al.depthMm, qty: 1, remark: `Depth = ${Math.round(al.depthMm)}mm (entered) — Width shown here is the full Wall B Width for reference only; see individual doors above for real cut widths` });
+    }
+    if (al.fixPatti.position === 'left' || al.fixPatti.position === 'both') {
+      rows.push({ component: `L-Shaped Loft (${alSideLabel} Wall) Fix Patti (Left)`, width: al.fixPatti.leftWidthMm, height: al.fixPatti.leftHeightMm, qty: 1, remark: `Height x Width (both entered) — Wall B's own Fix Patti, independent of Wall A's` });
+    }
+    if (al.fixPatti.position === 'right' || al.fixPatti.position === 'both') {
+      rows.push({ component: `L-Shaped Loft (${alSideLabel} Wall) Fix Patti (Right)`, width: al.fixPatti.rightWidthMm, height: al.fixPatti.rightHeightMm, qty: 1, remark: `Height x Width (both entered) — Wall B's own Fix Patti, independent of Wall A's` });
+    }
+    if (al.khacha.position === 'left' || al.khacha.position === 'both') {
+      rows.push({ component: `L-Shaped Loft (${alSideLabel} Wall) Khacha (Left)`, width: al.khacha.leftWidthMm, height: al.khacha.leftHeightMm, qty: 1, remark: `Height x Width (both entered) — Wall B's own Khacha, independent of Wall A's` });
+    }
+    if (al.khacha.position === 'right' || al.khacha.position === 'both') {
+      rows.push({ component: `L-Shaped Loft (${alSideLabel} Wall) Khacha (Right)`, width: al.khacha.rightWidthMm, height: al.khacha.rightHeightMm, qty: 1, remark: `Height x Width (both entered) — Wall B's own Khacha, independent of Wall A's` });
+    }
+  }
   return rows;
 }
 
@@ -338,8 +388,17 @@ function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, 
 }
 
 export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDrawing {
-  const { W, H, D, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, totalWidthMm, totalHeightMm } = inp;
-  const leaderMargin = 150; // room for the Wardrobe's own Depth "/" leader
+  const { W, H, D, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, adjacentLoft, totalWidthMm, totalHeightMm } = inp;
+  // room for the Wardrobe's own Depth "/" leader — extended when a
+  // LEFT-side L-Shaped Loft (Wall B) is active, since that column is
+  // drawn even further left, outside every other component's own
+  // origin (roomWallX/leaderMargin). Computed up front so every X
+  // coordinate below (including roomWallX itself) already accounts for
+  // it, rather than letting Wall B's column go to a negative, off-
+  // canvas X. 130 (column width) + 60 (real visual gap) matches the
+  // alColW/alGap constants used where Wall B is actually drawn, below.
+  const leftAdjacentLoftMargin = adjacentLoft.enabled && adjacentLoft.side === 'left' ? 130 + 60 : 0;
+  const leaderMargin = 150 + leftAdjacentLoftMargin;
 
   // Skirting — a real 70mm board strip at the bottom of the wardrobe
   // carcass (and Side Dressing, which sits on the same floor line). The
@@ -585,6 +644,94 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   }
 
   const wardrobeY = topPad + loftH;
+
+  // L-Shaped Loft — Wall B, a fully independent second Loft standing on
+  // the adjacent wall (Left or Right of the main structure), drawn as its
+  // own separate, visually disconnected column — never merged with Wall
+  // A's own row above, per the reference sketch (Wall B floats to the
+  // side with a real gap, its own outline, its own door stack). The
+  // divided formula-width becomes each door's real cut width (used
+  // correctly in the cutlist above); in THIS drawing those doors are
+  // stacked vertically (top-to-bottom bands, each spanning the column's
+  // full drawn width) rather than side-by-side, per the user's explicit
+  // confirmation of the reference sketch's own layout — Wall B reads as
+  // a vertical run on the adjacent wall, not a second horizontal row.
+  const alGap = 60; // real visual gap between Wall B and the rest of the drawing — never touching
+  let adjacentLoftWorldLeft = 0; // tracks how far left Wall B's own column reaches, for worldWidth below
+  if (inp.adjacentLoft.enabled) {
+    const al = inp.adjacentLoft;
+    const alColW = 130; // fixed drawn column width — Wall B's real Width lives in its door-count formula, not this column's screen footprint (same convention as the Wardrobe's own fixed leaderMargin)
+    const alX = al.side === 'left' ? roomWallX - alGap - alColW : loftX + roomWallWidth + alGap;
+    const alY = topPad;
+    const alH = wardrobeY + bodyH - alY; // spans the SAME full vertical extent as the rest of the composite (Loft row through Wardrobe floor), matching the reference sketch's floor-to-ceiling column
+    adjacentLoftWorldLeft = al.side === 'left' ? alX : adjacentLoftWorldLeft;
+
+    components.push({
+      id: 'adjacent-loft', type: 'PLATFORM_TOP', label: 'L-Shaped Loft', x: alX, y: alY, width: alColW, height: alH, qty: 1, visible: true,
+      source: { formula: `Wall B (${al.side}) — independent Loft on the adjacent wall, own Height(${Math.round(al.heightMm)}mm)/Width(${Math.round(al.widthMm)}mm)/Depth(${Math.round(al.depthMm)}mm), same door-count formula as Wall A, split into ${al.doorCount} doors`, constants: [] },
+    });
+
+    // Wall B's own Fix Patti + Khacha — independent of Wall A's, drawn at
+    // the OUTER (far) edge of this column, per the user's explicit
+    // "iski bhi fix patti aur khacha alag honi chahiye" instruction.
+    const alFp = al.fixPatti;
+    const alHasLeftFP = alFp.position === 'left' || alFp.position === 'both';
+    const alHasRightFP = alFp.position === 'right' || alFp.position === 'both';
+    const alKh = al.khacha;
+    const alHasLeftKhacha = alKh.position === 'left' || alKh.position === 'both';
+    const alHasRightKhacha = alKh.position === 'right' || alKh.position === 'both';
+    // "Outer" edge is whichever edge faces away from the main structure —
+    // for a Left-side Wall B that's its own left edge; for a Right-side
+    // Wall B that's its own right edge.
+    const outerIsLeftEdge = al.side === 'left';
+    const fpBandH = Math.min(60, alH * 0.15);
+    if (alHasLeftFP || alHasRightFP) {
+      const fpY = outerIsLeftEdge ? alY : alY + alH - fpBandH;
+      const fpSide = alHasLeftFP ? alFp.leftHeightMm : alFp.rightHeightMm;
+      const fpSideW = alHasLeftFP ? alFp.leftWidthMm : alFp.rightWidthMm;
+      components.push({
+        id: 'adjacent-fix-patti', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fpSide)}×${Math.round(fpSideW)}`,
+        x: alX, y: fpY, width: alColW, height: fpBandH, qty: 1, visible: true,
+        source: { formula: `Wall B Fix Patti — Height x Width (both entered) — independent of Wall A's own Fix Patti, subtracted from Wall B's own Width`, constants: [] },
+      });
+    }
+    if (alHasLeftKhacha || alHasRightKhacha) {
+      const khY = outerIsLeftEdge ? alY + fpBandH : alY + alH - fpBandH * 2;
+      const khSide = alHasLeftKhacha ? alKh.leftHeightMm : alKh.rightHeightMm;
+      const khSideW = alHasLeftKhacha ? alKh.leftWidthMm : alKh.rightWidthMm;
+      components.push({
+        id: 'adjacent-khacha', type: 'KHACHA', label: `Khacha\n${Math.round(khSide)}×${Math.round(khSideW)}`,
+        x: alX, y: khY, width: alColW, height: fpBandH, qty: 1, visible: true,
+        source: { formula: `Wall B Khacha — Height x Width (both entered) — independent of Wall A's own Khacha, subtracted (together with Fix Patti) from Wall B's own Width`, constants: [] },
+      });
+    }
+
+    // Doors — Wall B's own formula-resolved doors, stacked vertically
+    // (top-to-bottom bands) rather than side-by-side, per the confirmed
+    // reference layout. al.widthMm is already Wall B's own usable Width
+    // (its own Fix Patti/Khacha already deducted upstream, exactly like
+    // Wall A's loft.widthMm) — no further deduction here.
+    {
+      const alCount = Math.max(1, Math.round(al.doorCount) || 1);
+      const doorH = alH / alCount;
+      const alDoorW = loftOneDoorWidth(al.widthMm, alCount);
+      let doorCursorY = alY;
+      for (let i = 0; i < alCount; i++) {
+        components.push({
+          id: `adjacent-loft-door-${i}`, type: 'DOOR', label: `${Math.round(alDoorW)}`,
+          x: alX + 2, y: doorCursorY, width: alColW - 4, height: doorH - 2, qty: 1, visible: true, noHandle: true,
+          source: { formula: `Wall B Door ${i + 1} of ${alCount} — Width = (Wall B Width(${Math.round(al.widthMm)}) − ${alCount}×2) / ${alCount} = ${alDoorW.toFixed(2)}mm (real cut width; drawn as a vertical band on the adjacent wall)`, constants: [] },
+        });
+        doorCursorY += doorH;
+      }
+    }
+
+    // Height/Width/Depth get their own real callouts — same diagonal-D
+    // convention as every other component in this drawing.
+    dimReqs.push({ axis: 'v', x1: alX - 20, y1: alY, x2: alX - 20, y2: alY + alH, edge: 'left', componentIds: ['adjacent-loft'], label: `${Math.round(al.heightMm)} mm (Wall B H)`, source: { formula: 'Wall B Loft Height (entered, independent of Wall A)', constants: [] } });
+    const alDiag = insideDiagonal(alX, alY, alColW, alH, 'right-down');
+    lines.push({ x1: alX, y1: alY, x2: alDiag.x2, y2: alDiag.y2, color: DIAG, label: `${Math.round(al.depthMm)} mm (Wall B D)` });
+  }
 
   // Wardrobe — a plain W x bodyH carcass (entered H minus the skirting
   // strip below it), Depth shown as the "/" diagonal leader at its own
@@ -858,7 +1005,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // wider still), which can genuinely exceed the wardrobe's own composite
   // totalWidth once the Loft/room-wall alignment fix means the two are no
   // longer assumed equal.
-  const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + roomWallWidth + 20 : 0, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
+  // adjacentLoftRightEdge covers a RIGHT-side Wall B, which can extend
+  // the canvas further right than the room-wall span alone would — a
+  // LEFT-side Wall B is already covered by the leaderMargin/roomWallX
+  // shift above (everything else's own origin already makes room for it).
+  const adjacentLoftRightEdge = adjacentLoft.enabled && adjacentLoft.side === 'right' ? loftX + roomWallWidth + 60 + 130 + 20 : 0;
+  const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + roomWallWidth + 20 : 0, adjacentLoftRightEdge, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
   const worldHeight = Math.max(wardrobeY + bodyH + skirtH + (leftExtra + rightExtra > 0 ? 70 : 20), ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
   // The Dressing Height leader sits right beside a narrow box whose own
@@ -905,6 +1057,22 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     ...(dressing.enabled && dressing.drawerCount > 0 ? validateMeasurements({ H: dressing.totalDrawerHeightMm }, [{ key: 'H', label: 'Total Drawer Height', min: 1 }]) : []),
     ...(dressing.enabled && dressing.drawerCount > 0 && dressing.totalDrawerHeightMm > bodyH ? [{ id: 'val-drawer-height-exceeds', severity: 'WARNING' as const, code: 'DRAWER_HEIGHT_EXCEEDS_DRESSING', message: `⚠ Total Drawer Height (${Math.round(dressing.totalDrawerHeightMm)}mm) exceeds Dressing Height (${Math.round(bodyH)}mm) — clamped to fit.` }] : []),
     ...(inp.studyTable.enabled ? validateMeasurements({ H: inp.studyTable.heightMm, W: inp.studyTable.widthMm, D: inp.studyTable.depthMm }, [{ key: 'H', label: 'Study Table Height', min: 1 }, { key: 'W', label: 'Study Table Width', min: 1 }, { key: 'D', label: 'Study Table Depth', min: 1 }]) : []),
+    ...(adjacentLoft.enabled ? validateMeasurements({ H: adjacentLoft.heightMm, W: adjacentLoft.widthMm }, [{ key: 'H', label: 'L-Shaped Loft (Wall B) Height', min: 1 }, { key: 'W', label: 'L-Shaped Loft (Wall B) Width', min: 1 }]) : []),
+    ...(adjacentLoft.enabled && (adjacentLoft.fixPatti.position === 'left' || adjacentLoft.fixPatti.position === 'both') ? validateMeasurements({ H: adjacentLoft.fixPatti.leftHeightMm, W: adjacentLoft.fixPatti.leftWidthMm }, [{ key: 'H', label: 'Wall B Left Fix Patti Height', min: 1 }, { key: 'W', label: 'Wall B Left Fix Patti Width', min: 1 }]) : []),
+    ...(adjacentLoft.enabled && (adjacentLoft.fixPatti.position === 'right' || adjacentLoft.fixPatti.position === 'both') ? validateMeasurements({ H: adjacentLoft.fixPatti.rightHeightMm, W: adjacentLoft.fixPatti.rightWidthMm }, [{ key: 'H', label: 'Wall B Right Fix Patti Height', min: 1 }, { key: 'W', label: 'Wall B Right Fix Patti Width', min: 1 }]) : []),
+    ...(adjacentLoft.enabled && (adjacentLoft.khacha.position === 'left' || adjacentLoft.khacha.position === 'both') ? validateMeasurements({ H: adjacentLoft.khacha.leftHeightMm, W: adjacentLoft.khacha.leftWidthMm }, [{ key: 'H', label: 'Wall B Left Khacha Height', min: 1 }, { key: 'W', label: 'Wall B Left Khacha Width', min: 1 }]) : []),
+    ...(adjacentLoft.enabled && (adjacentLoft.khacha.position === 'right' || adjacentLoft.khacha.position === 'both') ? validateMeasurements({ H: adjacentLoft.khacha.rightHeightMm, W: adjacentLoft.khacha.rightWidthMm }, [{ key: 'H', label: 'Wall B Right Khacha Height', min: 1 }, { key: 'W', label: 'Wall B Right Khacha Width', min: 1 }]) : []),
+    // Wall B door width standard (310–400mm) — same real WARNING
+    // treatment as Wall A's own check, using Wall B's own width only.
+    ...(() => {
+      if (!adjacentLoft.enabled) return [];
+      const count = Math.max(1, Math.round(adjacentLoft.doorCount) || 1);
+      const oneDoorW = loftOneDoorWidth(adjacentLoft.widthMm, count);
+      const status = loftDoorWidthStatus(oneDoorW);
+      if (status === 'below-min') return [{ id: 'val-adjacent-loft-door-narrow', severity: 'WARNING' as const, code: 'ADJACENT_LOFT_DOOR_TOO_NARROW', message: `⚠ Wall B door width below 310mm (currently ${oneDoorW.toFixed(0)}mm) — reduce Door Count or increase Wall B Width.` }];
+      if (status === 'above-max') return [{ id: 'val-adjacent-loft-door-wide', severity: 'WARNING' as const, code: 'ADJACENT_LOFT_DOOR_TOO_WIDE', message: `⚠ Wall B door width exceeds 400mm (currently ${oneDoorW.toFixed(0)}mm) — increase Door Count.` }];
+      return [];
+    })(),
     // Total Width (entered) must be a real, physically consistent room
     // measurement — it can never be narrower than the furniture actually
     // placed against it (Wardrobe + Dressing + Top Panel + Storage

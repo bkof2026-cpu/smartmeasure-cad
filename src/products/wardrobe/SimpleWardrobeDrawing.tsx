@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, defaultStyleFor, type ComponentStyle } from '../../engine/CanonicalSvg';
-import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput } from './simpleWardrobeGeometry';
+import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
 import { DrawingInspector } from '../../engine/DrawingInspector';
 import { StudyTableDrawing } from '../studyTable/StudyTableDrawing';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
@@ -16,6 +16,10 @@ const DEFAULT_STORAGE: WardrobeStorageInput = { position: 'none', left: DEFAULT_
 const DEFAULT_OPEN_BOX_SIDE = { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 };
 const DEFAULT_OPEN_BOX: WardrobeOpenBoxInput = { position: 'none', left: DEFAULT_OPEN_BOX_SIDE, right: DEFAULT_OPEN_BOX_SIDE };
 const DEFAULT_STUDY_TABLE: WardrobeStudyTableInput = { enabled: false, side: 'left', heightMm: 750, widthMm: 1200, depthMm: 600 };
+const DEFAULT_ADJACENT_LOFT: WardrobeAdjacentLoftInput = {
+  enabled: false, side: 'left', mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2,
+  fixPatti: DEFAULT_FIX_PATTI, khacha: DEFAULT_KHACHA,
+};
 
 interface Props {
   dims: Record<string, number | string>;
@@ -27,6 +31,7 @@ interface Props {
   storage?: WardrobeStorageInput;
   openBox?: WardrobeOpenBoxInput;
   studyTable?: WardrobeStudyTableInput;
+  adjacentLoft?: WardrobeAdjacentLoftInput;
 }
 
 // Fix Patti and Khacha both use the spec's green colour convention, but in
@@ -50,7 +55,7 @@ function componentStyle(c: ComponentSpec): ComponentStyle {
   return defaultStyleFor(c);
 }
 
-export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable }) => {
+export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft }) => {
   const W = n(dims.W);
   const inp: SimpleWardrobeInputs = {
     W, H: n(dims.H), D: n(dims.D),
@@ -62,6 +67,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
     storage: storage ?? DEFAULT_STORAGE,
     openBox: openBox ?? DEFAULT_OPEN_BOX,
     studyTable: studyTable ?? DEFAULT_STUDY_TABLE,
+    adjacentLoft: adjacentLoft ?? DEFAULT_ADJACENT_LOFT,
     // Separate, directly-entered overall envelope — see
     // simpleWardrobeGeometry.ts's own comment: never derived/recomputed,
     // shown exactly as typed. Absent/0 simply hides the outer line. Now
