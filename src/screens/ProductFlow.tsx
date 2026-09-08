@@ -23,7 +23,7 @@ import {
 } from '../pdf/pdfEngine';
 
 const n = (v: number | string) => Number(v);
-type WorkspaceTab = 'measure' | 'drawing' | 'evidence' | 'validation' | 'pdf' | 'history' | 'my-stats';
+type WorkspaceTab = 'measure' | 'drawing' | 'evidence' | 'pdf' | 'history' | 'my-stats';
 
 // Product Categories spec — fixed display order (§19), independent of
 // PRODUCT_REGISTRY's own array order, so reordering the registry later
@@ -917,14 +917,6 @@ export const ProductFlow: React.FC = () => {
     };
   }, [showHistory, recentHistory.length]);
 
-  const validationIssues = (product?.measurementFields ?? []).flatMap((field) => {
-    const value = Number(dims[field.key] ?? field.defaultValue);
-    if (!Number.isFinite(value)) return [{ level: 'error' as const, message: `${field.label} must be a number.` }];
-    if (field.min !== undefined && value < field.min) return [{ level: 'error' as const, message: `${field.label} is below the minimum of ${field.min} ${field.unit}.` }];
-    if (field.max !== undefined && value > field.max) return [{ level: 'error' as const, message: `${field.label} exceeds the maximum of ${field.max} ${field.unit}.` }];
-    return [];
-  });
-
   // Loads the currently-selected product's own saved Evidence Note into the
   // draft whenever the product changes, so switching products (or the PDF
   // reading it later) never shows a different product's note.
@@ -1539,7 +1531,6 @@ export const ProductFlow: React.FC = () => {
           ['measure', 'Measure'],
           ['drawing', 'Drawing'],
           ['evidence', 'Evidence'],
-          ['validation', 'Validation'],
           ['pdf', 'PDF'],
           ['history', 'History'],
           ['my-stats', 'My Stats'],
@@ -1979,19 +1970,6 @@ export const ProductFlow: React.FC = () => {
         </div>
       )}
 
-      {activeWorkspace === 'validation' && (
-        <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
-          <div className="max-w-3xl rounded-xl border p-5" style={{ background: '#111827', borderColor: '#243045' }}>
-            <div className="mb-4 text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>Validation / Review</div>
-            {validationIssues.length === 0 ? (
-              <div className="rounded-lg border px-4 py-4" style={{ background: '#0c2a1a', borderColor: '#10b981', color: '#6ee7b7' }}>✓ All {product.name} measurements are within the registered input ranges.</div>
-            ) : (
-              <div className="flex flex-col gap-2">{validationIssues.map((issue, index) => <div key={`${issue.message}-${index}`} className="rounded-lg border px-4 py-3 text-sm" style={{ background: '#450a0a', borderColor: '#ef4444', color: '#fca5a5' }}>⚠ {issue.message}</div>)}</div>
-            )}
-            <div className="mt-5 grid gap-2 md:grid-cols-2">{product.measurementFields.map((field) => <div key={field.key} className="rounded-lg px-3 py-2" style={{ background: '#0f172a' }}><span className="text-xs" style={{ color: '#94a3b8' }}>{field.label}</span><span className="float-right text-xs font-mono" style={{ color: '#60a5fa' }}>{String(dims[field.key] ?? field.defaultValue)} {field.unit}</span></div>)}</div>
-          </div>
-        </div>
-      )}
 
       {activeWorkspace === 'pdf' && (() => {
         const hasMultiple = todoProducts.length > 1;

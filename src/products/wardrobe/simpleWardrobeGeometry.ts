@@ -905,6 +905,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     ...(dressing.enabled && dressing.drawerCount > 0 ? validateMeasurements({ H: dressing.totalDrawerHeightMm }, [{ key: 'H', label: 'Total Drawer Height', min: 1 }]) : []),
     ...(dressing.enabled && dressing.drawerCount > 0 && dressing.totalDrawerHeightMm > bodyH ? [{ id: 'val-drawer-height-exceeds', severity: 'WARNING' as const, code: 'DRAWER_HEIGHT_EXCEEDS_DRESSING', message: `⚠ Total Drawer Height (${Math.round(dressing.totalDrawerHeightMm)}mm) exceeds Dressing Height (${Math.round(bodyH)}mm) — clamped to fit.` }] : []),
     ...(inp.studyTable.enabled ? validateMeasurements({ H: inp.studyTable.heightMm, W: inp.studyTable.widthMm, D: inp.studyTable.depthMm }, [{ key: 'H', label: 'Study Table Height', min: 1 }, { key: 'W', label: 'Study Table Width', min: 1 }, { key: 'D', label: 'Study Table Depth', min: 1 }]) : []),
+    // Total Width (entered) must be a real, physically consistent room
+    // measurement — it can never be narrower than the furniture actually
+    // placed against it (Wardrobe + Dressing + Top Panel + Storage
+    // column). A smaller entered value isn't a valid alternate layout;
+    // it's a data-entry mistake that would otherwise silently draw the
+    // Loft narrower than the structure it sits above. Real WARNING (not
+    // CRITICAL) since the Loft still draws something coherent — the
+    // Loft's own drawn Width just genuinely reads as too narrow, which
+    // this message explains rather than leaving unexplained.
+    ...(totalWidthMm && totalWidthMm > 0 && totalWidthMm < totalWidth ? [{ id: 'val-total-width-too-small', severity: 'WARNING' as const, code: 'TOTAL_WIDTH_SMALLER_THAN_FURNITURE', message: `⚠ Total Width entered (${Math.round(totalWidthMm)}mm) is smaller than the Wardrobe+Dressing+Top Panel width (${Math.round(totalWidth)}mm) — Total Width should be the full room span and can never be narrower than the furniture placed in it.` }] : []),
     ...(topPanel.enabled ? validateMeasurements({ W: topPanel.widthMm, D: topPanel.depthMm }, [{ key: 'W', label: 'Top Panel Width', min: 1 }, { key: 'D', label: 'Top Panel Depth', min: 1 }]) : []),
     ...(loft.enabled ? validateMeasurements({ W: loft.widthMm, H: loft.heightMm }, [{ key: 'W', label: 'Loft Width', min: 1 }, { key: 'H', label: 'Loft Height', min: 1 }]) : []),
     ...(loft.enabled && (fixPatti.position === 'left' || fixPatti.position === 'both') ? validateMeasurements({ H: fixPatti.leftHeightMm, W: fixPatti.leftWidthMm }, [{ key: 'H', label: 'Left Fix Patti Height', min: 1 }, { key: 'W', label: 'Left Fix Patti Width', min: 1 }]) : []),
