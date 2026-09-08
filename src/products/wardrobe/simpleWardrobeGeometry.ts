@@ -241,7 +241,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // before to stay on-canvas when no Loft pushes wardrobeY down further.
   const topPad = 130;
   const totalWidth = leftExtra + W + rightExtra;
-  const loftX = leaderMargin;
+  // roomWallX — the SINGLE shared left origin every top-level element in
+  // this drawing is positioned from: the Loft row (Fix Patti + doors), the
+  // Wardrobe/Dressing/Top Panel stack below it, and the Room Wall boundary
+  // line itself. Per the user's explicit correction: "the Loft is not
+  // properly aligned... build the drawing from a common coordinate system
+  // ... every component must derive its position from the parent
+  // geometry" — so this is deliberately the ONE constant every other X
+  // coordinate below is an offset from, never a second independent margin.
+  const roomWallX = leaderMargin;
+  const loftX = roomWallX;
   let loftH = 0;
   // The Loft's own real (doors-only) width — per the user's FINAL, explicit
   // formula:
@@ -270,6 +279,18 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const leftFPW = hasLeftFP ? Math.max(0, fp.leftWidthMm) : 0;
   const rightFPW = hasRightFP ? Math.max(0, fp.rightWidthMm) : 0;
   const doorsAreaX = loftX + leftFPW;
+  // The TRUE room-wall-to-room-wall span (Room Wall A → Room Wall B), per
+  // the user's explicit correction — this is what the Loft row and the
+  // outer "Total Width" dimension both measure against, NOT the lower
+  // Wardrobe/Dressing composite's own (possibly narrower) width. Prefers
+  // the raw entered Total Width (the true wall measurement) whenever it's
+  // set; falls back to the Loft row's own natural extent (Fix Patti +
+  // doors) when Total Width isn't entered, and finally to the lower
+  // composite when there's no Loft at all.
+  const loftRowWidth = leftFPW + loftFrameWidth + rightFPW;
+  const roomWallWidth = loft.enabled
+    ? Math.max(totalWidthMm && totalWidthMm > 0 ? totalWidthMm : 0, loftRowWidth, totalWidth)
+    : totalWidth;
   if (loft.enabled) {
     loftH = loft.heightMm;
     const loftY = topPad;
@@ -347,6 +368,30 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       const rowFullWidth = leftFPW + loftFrameWidth + rightFPW;
       lines.push({ x1: loftX + rowFullWidth * 0.5, y1: gapY, x2: loftX + rowFullWidth * 0.5 + 40, y2: gapY + 24, color: '#64748b', label: '10 mm GAP' });
     }
+
+    // Room Wall boundary — a real, labeled marker for whichever span is
+    // WIDER: the Loft row (Fix Patti + doors) or the lower Wardrobe/
+    // Dressing/Top Panel composite below it. Per the user's explicit
+    // correction: the Loft must "not extend into unrelated blank space" —
+    // when the two differ (e.g. entered Total Width=3400 but Wardrobe+
+    // Dressing=2800), the leftover span on the wider side is real wall
+    // space, not a drawing bug, so it must read as one: a dashed wall-line
+    // + label, not empty canvas. Both left edges already share roomWallX,
+    // so only the RIGHT edges can differ — compare them directly rather
+    // than the Loft row's own right edge against itself (which is always
+    // trivially equal to roomWallWidth and would never show a gap here).
+    const loftRowRightEdge = doorsAreaX + loftFrameWidth + rightFPW;
+    const lowerStructureRightEdge = loftX + totalWidth;
+    const wallGap = loftRowRightEdge - lowerStructureRightEdge;
+    if (Math.abs(wallGap) > 1) {
+      const wallY = loftY + loftH / 2;
+      const gapLeftX = Math.min(loftRowRightEdge, lowerStructureRightEdge);
+      const gapRightX = Math.max(loftRowRightEdge, lowerStructureRightEdge);
+      lines.push({
+        x1: gapLeftX, y1: wallY, x2: gapRightX, y2: wallY,
+        color: '#94a3b8', dashed: true, label: `Room Wall (${Math.round(gapRightX - gapLeftX)}mm)`,
+      });
+    }
   }
 
   const wardrobeY = topPad + loftH;
@@ -412,7 +457,17 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // its own distinct label/formula so it's never confused with — or
   // silently overwritten by — the add-on-derived total above.
   if (totalWidthMm && totalWidthMm > 0) {
-    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + totalWidth, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} mm (Total Width, entered)`, source: { formula: 'Total Width (entered directly, not derived from Wardrobe Width or add-ons)', constants: [] } });
+    // This dimension's VISUAL span must match its own label — per the
+    // user's explicit correction ("dimensions must follow the corrected
+    // geometry... do not leave dimensions attached to old coordinates").
+    // Spanning to `loftX + totalWidth` (the lower composite's own,
+    // possibly-narrower width) here was a real bug: the line would end
+    // short of where its "Total Width, entered" label claims whenever the
+    // entered Total Width exceeds the Wardrobe+Dressing+Top Panel
+    // composite (exactly the Loft-alignment scenario this fix addresses).
+    // roomWallWidth is the same true wall-to-wall span the Loft row itself
+    // is now measured against.
+    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + Math.max(totalWidthMm, totalWidth), y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} mm (Total Width, entered)`, source: { formula: 'Total Width (entered directly, not derived from Wardrobe Width or add-ons)', constants: [] } });
   }
   if (totalHeightMm && totalHeightMm > 0) {
     dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: Math.min(topPad, wardrobeY), x2: wardrobeX + W, y2: wardrobeY + bodyH + skirtH, edge: 'right', componentIds: [], label: `${Math.round(totalHeightMm)} mm (Total Height, entered)`, source: { formula: 'Total Height (entered directly, not derived from Wardrobe Height or add-ons)', constants: [] } });
@@ -443,11 +498,22 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH + 24, x2: dx + dressR, y2: wardrobeY + bodyH + 24, edge: 'bottom', componentIds: ['dress-r'], label: `${Math.round(dressR)} mm (W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
   }
 
-  // Skirting — a real, labeled strip along the FULL composite floor line
-  // (Dressing + Wardrobe + Top Panel together, matching how a real
-  // skirting/plinth board runs continuously under the whole unit), filling
-  // the entered-Height-minus-carcass gap. Drawing-only — no new
-  // measurement field, and never shown in the Measurements panel.
+  // Skirting — a real, labeled strip along the ACTUAL lower-product
+  // footprint only (Dressing + Wardrobe + Top Panel), matching how a real
+  // skirting/plinth board runs continuously under the whole unit — never
+  // the full Room Total Width, per the user's explicit correction ("Do NOT
+  // automatically make Skirting Width = Room Total Width... clipped to the
+  // actual lower component footprint"). totalWidth here is exactly that
+  // footprint (topPanelL/dressL/W/dressR/topPanelR — the same components
+  // this loop already draws), deliberately NOT roomWallWidth/loftFrameWidth
+  // above. Per the user's own explicit formula — Skirting Width = Wardrobe
+  // Width + Dressing (if given) + Study Table (if given) — Study Table
+  // would extend this same footprint the moment it becomes a real Wardrobe
+  // add-on component (it isn't wired in yet; there's no Study Table input
+  // reaching this module today, so nothing to add to totalWidth until that
+  // add-on exists — this comment is the extension point for when it does).
+  // Drawing-only: no new measurement field, never shown in the
+  // Measurements panel.
   if (skirtH > 0) {
     const skirtY = wardrobeY + bodyH;
     const skirtX = wardrobeX - dressL - topPanelL;
@@ -500,10 +566,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
 
   // +26 covers the skirting dimension line's own +16 offset past the
   // composite's right edge (see above) plus its label's own drawn width.
-  // Also covers the full Loft row (Fix Patti + loftFrameWidth + Fix
-  // Patti), which can genuinely exceed the wardrobe's own composite
-  // totalWidth when a larger Total Width is entered.
-  const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + leftFPW + loftFrameWidth + rightFPW + 20 : 0, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
+  // Also covers the full room-wall span (roomWallWidth — Fix Patti +
+  // loftFrameWidth + Fix Patti, or the raw entered Total Width if that's
+  // wider still), which can genuinely exceed the wardrobe's own composite
+  // totalWidth once the Loft/room-wall alignment fix means the two are no
+  // longer assumed equal.
+  const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + roomWallWidth + 20 : 0, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
   const worldHeight = Math.max(wardrobeY + bodyH + skirtH + (leftExtra + rightExtra > 0 ? 70 : 20), ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
   // The Dressing Height leader sits right beside a narrow box whose own
