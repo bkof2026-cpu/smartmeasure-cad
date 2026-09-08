@@ -8,8 +8,8 @@ import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSe
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
 import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput } from '../products/wardrobe/simpleWardrobeGeometry';
-import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidth, type FixPattiPosition } from '../engine/loftDoorEngine';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
@@ -111,6 +111,7 @@ function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>,
 }
 
 const FIX_PATTI_POSITIONS: FixPattiPosition[] = ['none', 'left', 'right', 'both'];
+const KHACHA_POSITIONS: KhachaPosition[] = ['none', 'left', 'right', 'both'];
 
 /** Real Wardrobe/Loft/Fix Patti add-on state, with the "auto-calculated
  * default, still editable" pattern the spec requires for Top Panel Width,
@@ -141,6 +142,17 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     leftWidthMm: (addonDims['fix-patti']?.leftW) ?? 100,
     rightHeightMm: (addonDims['fix-patti']?.rightH) ?? 400,
     rightWidthMm: (addonDims['fix-patti']?.rightW) ?? 100,
+  };
+
+  // Khacha — a real, separate component from Fix Patti (never merged
+  // data, per the spec's own explicit rule). Read alongside Fix Patti
+  // since BOTH widths feed the Loft Door Count calculation together.
+  const khacha: WardrobeKhachaInput = {
+    position: KHACHA_POSITIONS[(addonDims['khacha']?.position) ?? 0] ?? 'none',
+    leftHeightMm: (addonDims['khacha']?.leftH) ?? 400,
+    leftWidthMm: (addonDims['khacha']?.leftW) ?? 100,
+    rightHeightMm: (addonDims['khacha']?.rightH) ?? 400,
+    rightWidthMm: (addonDims['khacha']?.rightW) ?? 100,
   };
 
   // Room/Total Width — entered directly (see productRegistry.tsx's
@@ -174,15 +186,18 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
 
   const loftMode: 'door' | 'box' = ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door';
   const loftDepthMm = (addonDims['loft']?.D) ?? 350;
-  // Loft Width — per the user's final, explicit correction:
-  //   Loft Width = Total Room Width − Left Fix Patti − Right Fix Patti
+  // Loft Width — per the user's final, explicit correction, now also
+  // covering Khacha:
+  //   Loft Width = Total Room Width − Fix Patti (Left+Right) − Khacha (Left+Right)
   // Wardrobe Width, Dressing Width and Top Panel Width are NEVER part of
   // this deduction (they're components below the Loft, not beside it) —
   // that's the Top Panel Width formula above, a completely separate
   // calculation. loft.widthMm here is therefore already the final USABLE
   // Loft Door Width — Door Count / One Door Width / the Loft drawing all
-  // use it directly with no further Fix Patti subtraction downstream.
-  const usableW = usableLoftDoorWidth(totalWidthForCalc, fixPatti);
+  // use it directly with no further Fix Patti/Khacha subtraction
+  // downstream. Fix Patti and Khacha stack (both subtracted together),
+  // never replace each other, per the spec's own §17 worked example.
+  const usableW = usableLoftDoorWidthWithKhacha(totalWidthForCalc, fixPatti, khacha);
   const doorCountDefault = recommendLoftDoorCount(usableW).doorCount;
 
   const loft: WardrobeLoftInput = {
@@ -193,7 +208,7 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     depthMm: loftDepthMm,
     doorCount: (addonDims['loft']?.doors) ?? doorCountDefault,
   };
-  return { dressing, topPanel, loft, fixPatti };
+  return { dressing, topPanel, loft, fixPatti, khacha };
 }
 
 function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
@@ -254,10 +269,10 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
     };
   }
   if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
-    const { dressing, topPanel, loft, fixPatti } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
-    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
+    const { dressing, topPanel, loft, fixPatti, khacha } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, khacha, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
-      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} />,
+      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
     };
   }
@@ -890,7 +905,7 @@ export const ProductFlow: React.FC = () => {
   // whichever product is currently active on screen.
   const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
-  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
+  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
   // Live-computed defaults for the Wardrobe's own auto-calculated-but-
   // editable fields (Top Panel Width, Loft Height, Loft Door Count) — the
   // generic "Add Extra Items" field renderer below falls back to a plain
@@ -923,7 +938,7 @@ export const ProductFlow: React.FC = () => {
     // treatment as the Bed: a plain W x H carcass with Depth shown as the
     // "/" diagonal leader, plus optional Side Dressing / Side Panel / Loft.
     if (isWardrobe) {
-      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} topPanel={wardrobeTopPanel} loft={wardrobeLoft} fixPatti={wardrobeFixPatti} />;
+      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} topPanel={wardrobeTopPanel} loft={wardrobeLoft} fixPatti={wardrobeFixPatti} khacha={wardrobeKhacha} />;
     }
 
     // Shoe Rack — no base dims; entirely the two optional boxes.
@@ -956,7 +971,7 @@ export const ProductFlow: React.FC = () => {
       const cutlist: PdfCutRow[] = selectedId === 'bed'
         ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
-        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));

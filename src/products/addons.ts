@@ -232,6 +232,23 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
       ],
     },
+    {
+      // Khacha — a real, separate component from Fix Patti (never merged
+      // data). Same shape, tracked independently, and BOTH deduct from the
+      // usable Loft door area together when both are present.
+      id: 'khacha',
+      label: 'Khacha',
+      icon: '🟢',
+      description: 'Fixed corner panel(s) at the outer edge of the Loft, beyond Fix Patti — its width is also deducted from the usable Loft Door Width',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Khacha Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Khacha Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'leftW', label: 'Left Khacha Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'rightH', label: 'Right Khacha Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400 },
+      ],
+    },
   ],
   'sliding-wardrobe': [
     {
@@ -282,6 +299,23 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'leftW', label: 'Left Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
         { key: 'rightH', label: 'Right Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
+      ],
+    },
+    {
+      // Khacha — a real, separate component from Fix Patti (never merged
+      // data). Same shape, tracked independently, and BOTH deduct from the
+      // usable Loft door area together when both are present.
+      id: 'khacha',
+      label: 'Khacha',
+      icon: '🟢',
+      description: 'Fixed corner panel(s) at the outer edge of the Loft, beyond Fix Patti — its width is also deducted from the usable Loft Door Width',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Khacha Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Khacha Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'leftW', label: 'Left Khacha Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'rightH', label: 'Right Khacha Height', defaultValue: 400, min: 100, max: 900 },
+        { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400 },
       ],
     },
   ],

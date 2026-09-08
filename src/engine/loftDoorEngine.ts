@@ -140,6 +140,50 @@ export function usableLoftDoorWidth(totalWidth: number, fixPatti: FixPattiInput)
   return Math.max(0, totalWidth - totalFixPattiWidth(fixPatti));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Khacha — a real, separate component from Fix Patti (spec §16/§17/§50: "Do
+// not merge their data"). Same None/Left/Right/Both shape and the same kind
+// of width deduction from the usable Loft door area, but tracked completely
+// independently — a Loft can have Fix Patti AND Khacha at the same time, on
+// the same or different sides, and both widths are deducted together
+// (§17's own worked example: Wall=2500, FixPatti=100, Khacha=150 → usable
+// door width = 2250, i.e. both deductions stack, they don't replace each
+// other).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Khacha positions — same shape as Fix Patti Position, tracked separately. */
+export type KhachaPosition = 'none' | 'left' | 'right' | 'both';
+
+export interface KhachaInput {
+  position: KhachaPosition;
+  leftHeightMm: number;
+  leftWidthMm: number;
+  rightHeightMm: number;
+  rightWidthMm: number;
+}
+
+/** Total Khacha Width — same None/Left/Right/Both deduction shape as Fix
+ * Patti, computed independently (never combined into the same fields). */
+export function totalKhachaWidth(khacha: KhachaInput): number {
+  switch (khacha.position) {
+    case 'left': return Math.max(0, khacha.leftWidthMm);
+    case 'right': return Math.max(0, khacha.rightWidthMm);
+    case 'both': return Math.max(0, khacha.leftWidthMm) + Math.max(0, khacha.rightWidthMm);
+    default: return 0;
+  }
+}
+
+/** Usable Loft Door Width with BOTH Fix Patti and Khacha deducted together
+ * (spec §17: "if Khacha occupies part of the Loft door area, its applicable
+ * Width must be deducted from the usable door width" — stacking with, not
+ * replacing, the Fix Patti deduction). This is the generalized version of
+ * usableLoftDoorWidth() above for callers that also carry a Khacha input;
+ * the two-arg version above stays for callers with no Khacha concept yet
+ * (e.g. the standalone Loft Box, which has no Khacha in this spec). */
+export function usableLoftDoorWidthWithKhacha(totalWidth: number, fixPatti: FixPattiInput, khacha: KhachaInput): number {
+  return Math.max(0, totalWidth - totalFixPattiWidth(fixPatti) - totalKhachaWidth(khacha));
+}
+
 /** Loft Height for a Wardrobe + Loft product — the exact formula from the
  * spec (§17/§21): Total Height − Wardrobe Height − 10mm fixed gap. Never
  * negative (a Wardrobe Height that already exceeds Total Height is a real

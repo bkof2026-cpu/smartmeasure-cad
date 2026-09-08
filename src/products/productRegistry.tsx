@@ -960,6 +960,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
         fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
+        khacha: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -990,6 +991,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
         fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
+        khacha: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },

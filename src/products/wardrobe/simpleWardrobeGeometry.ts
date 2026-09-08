@@ -2,8 +2,8 @@ import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engin
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
 import {
-  loftOneDoorWidth, loftDoorWidthStatus,
-  type FixPattiInput, type FixPattiPosition,
+  loftOneDoorWidth, loftDoorWidthStatus, totalKhachaWidth,
+  type FixPattiInput, type FixPattiPosition, type KhachaInput, type KhachaPosition,
 } from '../../engine/loftDoorEngine';
 
 // Wardrobe's skirting is a fixed, real board height — same 70mm constant
@@ -70,6 +70,24 @@ export interface WardrobeFixPattiInput {
   rightWidthMm: number;
 }
 
+// Khacha — a real, separate component from BOTH Fix Patti and Top Panel
+// (spec §16/§50: "Do not merge their data"). Same None/Left/Right/Both
+// shape and the same H×W-both-entered pattern as Fix Patti, but tracked
+// completely independently: a Loft can have Fix Patti AND Khacha at once,
+// on the same or different sides, and both widths deduct from the usable
+// Loft door area TOGETHER (spec §17's worked example: Wall=2500,
+// FixPatti=100, Khacha=150 → usable = 2250 — both stack, neither replaces
+// the other). Drawn even further outward than Fix Patti (outermost of the
+// two), matching the reference sketch where Khacha sits at the very
+// corner/edge of the room, beyond the Fix Patti strip.
+export interface WardrobeKhachaInput {
+  position: KhachaPosition;
+  leftHeightMm: number;
+  leftWidthMm: number;
+  rightHeightMm: number;
+  rightWidthMm: number;
+}
+
 export type LoftMode = 'door' | 'box';
 
 export interface WardrobeLoftInput {
@@ -95,6 +113,7 @@ export interface SimpleWardrobeInputs {
   topPanel: WardrobeTopPanelInput;
   loft: WardrobeLoftInput;
   fixPatti: WardrobeFixPattiInput;
+  khacha: WardrobeKhachaInput;
   // Separate, explicitly-entered overall envelope values — per the user's
   // own instruction, these are NOT derived/recomputed from W/H + add-ons;
   // whatever is typed here is exactly what the drawing's outer "Total
@@ -120,6 +139,7 @@ function activeParts(inp: SimpleWardrobeInputs): string[] {
   if (inp.topPanel.enabled) parts.push('TOP PANEL');
   if (inp.loft.enabled) parts.push(inp.loft.mode === 'box' ? 'LOFT BOX' : 'LOFT');
   if (inp.fixPatti.position !== 'none') parts.push('FIX PATTI');
+  if (inp.khacha.position !== 'none') parts.push('KHACHA');
   return parts;
 }
 
@@ -150,6 +170,14 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     }
     if (inp.fixPatti.position === 'right' || inp.fixPatti.position === 'both') {
       rows.push({ component: 'Fix Patti (Right)', width: inp.fixPatti.rightWidthMm, height: inp.fixPatti.rightHeightMm, qty: 1, remark: `Height x Width (both entered) — separate from Top Panel; its width is deducted from Total Width before the Loft Door Count is calculated` });
+    }
+  }
+  if (inp.khacha.position !== 'none') {
+    if (inp.khacha.position === 'left' || inp.khacha.position === 'both') {
+      rows.push({ component: 'Khacha (Left)', width: inp.khacha.leftWidthMm, height: inp.khacha.leftHeightMm, qty: 1, remark: `Height x Width (both entered) — separate from Fix Patti and Top Panel; its width is deducted (together with any Fix Patti) from the usable Loft door area` });
+    }
+    if (inp.khacha.position === 'right' || inp.khacha.position === 'both') {
+      rows.push({ component: 'Khacha (Right)', width: inp.khacha.rightWidthMm, height: inp.khacha.rightHeightMm, qty: 1, remark: `Height x Width (both entered) — separate from Fix Patti and Top Panel; its width is deducted (together with any Fix Patti) from the usable Loft door area` });
     }
   }
   if (inp.loft.enabled) {
@@ -197,7 +225,7 @@ function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, 
 }
 
 export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDrawing {
-  const { W, H, D, dressing, topPanel, loft, fixPatti, totalWidthMm, totalHeightMm } = inp;
+  const { W, H, D, dressing, topPanel, loft, fixPatti, khacha, totalWidthMm, totalHeightMm } = inp;
   const leaderMargin = 150; // room for the Wardrobe's own Depth "/" leader
 
   // Skirting — a real 70mm board strip at the bottom of the wardrobe
@@ -278,16 +306,27 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const hasRightFP = fp.position === 'right' || fp.position === 'both';
   const leftFPW = hasLeftFP ? Math.max(0, fp.leftWidthMm) : 0;
   const rightFPW = hasRightFP ? Math.max(0, fp.rightWidthMm) : 0;
-  const doorsAreaX = loftX + leftFPW;
+  // Khacha — a real, separate component from Fix Patti (never merged data,
+  // per the spec's own "Do not merge their data" rule). Drawn even further
+  // outward than Fix Patti (outermost of the two, at the very room-wall
+  // corner), matching the reference sketch. Reserves its own real
+  // horizontal space the same way Fix Patti does — the doors area starts
+  // only after BOTH a side's Khacha and Fix Patti reservations.
+  const kh = inp.khacha;
+  const hasLeftKhacha = kh.position === 'left' || kh.position === 'both';
+  const hasRightKhacha = kh.position === 'right' || kh.position === 'both';
+  const leftKhachaW = hasLeftKhacha ? Math.max(0, kh.leftWidthMm) : 0;
+  const rightKhachaW = hasRightKhacha ? Math.max(0, kh.rightWidthMm) : 0;
+  const doorsAreaX = loftX + leftKhachaW + leftFPW;
   // The TRUE room-wall-to-room-wall span (Room Wall A → Room Wall B), per
   // the user's explicit correction — this is what the Loft row and the
   // outer "Total Width" dimension both measure against, NOT the lower
   // Wardrobe/Dressing composite's own (possibly narrower) width. Prefers
   // the raw entered Total Width (the true wall measurement) whenever it's
-  // set; falls back to the Loft row's own natural extent (Fix Patti +
-  // doors) when Total Width isn't entered, and finally to the lower
-  // composite when there's no Loft at all.
-  const loftRowWidth = leftFPW + loftFrameWidth + rightFPW;
+  // set; falls back to the Loft row's own natural extent (Khacha + Fix
+  // Patti + doors) when Total Width isn't entered, and finally to the
+  // lower composite when there's no Loft at all.
+  const loftRowWidth = leftKhachaW + leftFPW + loftFrameWidth + rightFPW + rightKhachaW;
   const roomWallWidth = loft.enabled
     ? Math.max(totalWidthMm && totalWidthMm > 0 ? totalWidthMm : 0, loftRowWidth, totalWidth)
     : totalWidth;
@@ -304,18 +343,18 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // out the same way.
     components.push({
       id: 'loft', type: 'PLATFORM_TOP', label: '', x: doorsAreaX, y: loftY, width: loftFrameWidth, height: loftH, qty: 1, visible: true,
-      source: { formula: `Width = Total Room Width − Fix Patti (Left+Right) | Height = Total Height − Wardrobe Height − 10mm gap | split into ${loft.doorCount} doors`, constants: [] },
+      source: { formula: `Width = Total Room Width − Fix Patti (Left+Right) − Khacha (Left+Right) | Height = Total Height − Wardrobe Height − 10mm gap | split into ${loft.doorCount} doors`, constants: [] },
     });
 
     // Fix Patti — a real, separate component from Top Panel, drawn at the
     // OUTER edge(s) of the room (green, per the spec's own colour
     // convention — see FIX_PATTI's componentStyle in
-    // SimpleWardrobeDrawing.tsx), beside the Loft's own door span, not
-    // inside it.
+    // SimpleWardrobeDrawing.tsx), beside the Loft's own door span (and just
+    // inside any Khacha on the same side — Khacha sits further out still).
     if (hasLeftFP) {
       components.push({
         id: 'fix-patti-left', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fp.leftHeightMm)}×${Math.round(fp.leftWidthMm)}`,
-        x: loftX, y: loftY, width: leftFPW, height: loftH, qty: 1, visible: true,
+        x: loftX + leftKhachaW, y: loftY, width: leftFPW, height: loftH, qty: 1, visible: true,
         source: { formula: `Left Fix Patti — Height x Width (both entered) | subtracted from Total Room Width to get the Loft Width`, constants: [] },
       });
     }
@@ -324,6 +363,26 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
         id: 'fix-patti-right', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fp.rightHeightMm)}×${Math.round(fp.rightWidthMm)}`,
         x: doorsAreaX + loftFrameWidth, y: loftY, width: rightFPW, height: loftH, qty: 1, visible: true,
         source: { formula: `Right Fix Patti — Height x Width (both entered) | subtracted from Total Room Width to get the Loft Width`, constants: [] },
+      });
+    }
+
+    // Khacha — a real, separate component from Fix Patti, drawn at the
+    // VERY outer edge of the room (further out than Fix Patti), per the
+    // spec's own §16/§50 "do not merge their data" rule and the reference
+    // sketch's own layout (Khacha sits at the extreme corner, beyond the
+    // Fix Patti strip).
+    if (hasLeftKhacha) {
+      components.push({
+        id: 'khacha-left', type: 'KHACHA', label: `Khacha\n${Math.round(kh.leftHeightMm)}×${Math.round(kh.leftWidthMm)}`,
+        x: loftX, y: loftY, width: leftKhachaW, height: loftH, qty: 1, visible: true,
+        source: { formula: `Left Khacha — Height x Width (both entered) | subtracted (together with any Fix Patti) from the usable Loft door area`, constants: [] },
+      });
+    }
+    if (hasRightKhacha) {
+      components.push({
+        id: 'khacha-right', type: 'KHACHA', label: `Khacha\n${Math.round(kh.rightHeightMm)}×${Math.round(kh.rightWidthMm)}`,
+        x: doorsAreaX + loftFrameWidth + rightFPW, y: loftY, width: rightKhachaW, height: loftH, qty: 1, visible: true,
+        source: { formula: `Right Khacha — Height x Width (both entered) | subtracted (together with any Fix Patti) from the usable Loft door area`, constants: [] },
       });
     }
 
@@ -365,7 +424,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // bottom edge, pointing into the real gap band above the Wardrobe.
     if (totalHeightMm && totalHeightMm > 0) {
       const gapY = loftY + loftH;
-      const rowFullWidth = leftFPW + loftFrameWidth + rightFPW;
+      const rowFullWidth = loftRowWidth;
       lines.push({ x1: loftX + rowFullWidth * 0.5, y1: gapY, x2: loftX + rowFullWidth * 0.5 + 40, y2: gapY + 24, color: '#64748b', label: '10 mm GAP' });
     }
 
@@ -380,7 +439,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // so only the RIGHT edges can differ — compare them directly rather
     // than the Loft row's own right edge against itself (which is always
     // trivially equal to roomWallWidth and would never show a gap here).
-    const loftRowRightEdge = doorsAreaX + loftFrameWidth + rightFPW;
+    const loftRowRightEdge = doorsAreaX + loftFrameWidth + rightFPW + rightKhachaW;
     const lowerStructureRightEdge = loftX + totalWidth;
     const wallGap = loftRowRightEdge - lowerStructureRightEdge;
     if (Math.abs(wallGap) > 1) {
@@ -619,6 +678,8 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     ...(loft.enabled ? validateMeasurements({ W: loft.widthMm, H: loft.heightMm }, [{ key: 'W', label: 'Loft Width', min: 1 }, { key: 'H', label: 'Loft Height', min: 1 }]) : []),
     ...(loft.enabled && (fixPatti.position === 'left' || fixPatti.position === 'both') ? validateMeasurements({ H: fixPatti.leftHeightMm, W: fixPatti.leftWidthMm }, [{ key: 'H', label: 'Left Fix Patti Height', min: 1 }, { key: 'W', label: 'Left Fix Patti Width', min: 1 }]) : []),
     ...(loft.enabled && (fixPatti.position === 'right' || fixPatti.position === 'both') ? validateMeasurements({ H: fixPatti.rightHeightMm, W: fixPatti.rightWidthMm }, [{ key: 'H', label: 'Right Fix Patti Height', min: 1 }, { key: 'W', label: 'Right Fix Patti Width', min: 1 }]) : []),
+    ...(loft.enabled && (khacha.position === 'left' || khacha.position === 'both') ? validateMeasurements({ H: khacha.leftHeightMm, W: khacha.leftWidthMm }, [{ key: 'H', label: 'Left Khacha Height', min: 1 }, { key: 'W', label: 'Left Khacha Width', min: 1 }]) : []),
+    ...(loft.enabled && (khacha.position === 'right' || khacha.position === 'both') ? validateMeasurements({ H: khacha.rightHeightMm, W: khacha.rightWidthMm }, [{ key: 'H', label: 'Right Khacha Height', min: 1 }, { key: 'W', label: 'Right Khacha Width', min: 1 }]) : []),
     // Door width standard (310–400mm) — a real WARNING, not a hard block,
     // per the spec's own "⚠ Door width below/exceeds..." wording (not a
     // CRITICAL that stops PDF generation the way a genuinely invalid
@@ -626,7 +687,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     ...(() => {
       if (!loft.enabled) return [];
       // loft.widthMm is already the usable Loft Width (Total Room Width −
-      // Fix Patti) — no further Fix Patti subtraction here.
+      // Fix Patti − Khacha) — no further deduction here.
       const usableW = loft.widthMm;
       const count = Math.max(1, Math.round(loft.doorCount) || 1);
       const oneDoorW = loftOneDoorWidth(usableW, count);
