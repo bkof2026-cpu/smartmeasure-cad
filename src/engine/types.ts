@@ -36,6 +36,12 @@ export interface ComponentSpec {
   qty: number;
   visible: boolean;
   source: ComponentSource;
+  /** Suppresses the default drawn door/drawer pull handle for this
+   * component even though its `type` would otherwise qualify (e.g. a
+   * Loft door drawn without hardware, per the user's own reference
+   * sketches, which never show a handle on Loft doors). Every other
+   * pull-type component elsewhere keeps its handle unchanged. */
+  noHandle?: boolean;
 }
 
 export type DimensionEdge = 'top' | 'bottom' | 'left' | 'right';

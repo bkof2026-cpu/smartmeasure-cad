@@ -203,7 +203,7 @@ export function TechnicalDrawingSvg({
         // a row of doors/drawers, derived from real position, not guessed.
         const worldCx = c.x + c.width / 2;
         const handleOnRight = worldCx < worldWidth / 2;
-        const showHandle = isPullType(c.type) && pw > 14 && ph > 10;
+        const showHandle = isPullType(c.type) && pw > 14 && ph > 10 && !c.noHandle;
         return (
           <g key={c.id} onClick={() => onSelectComponent?.(c)} style={{ cursor: onSelectComponent ? 'pointer' : undefined }}>
             <rect x={px} y={py} width={pw} height={ph} fill={style.fill} stroke={selected ? '#2563eb' : style.stroke} strokeWidth={selected ? 2.2 : (style.strokeWidth ?? 1)} strokeDasharray={selected ? undefined : style.strokeDasharray} />

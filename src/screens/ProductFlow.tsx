@@ -1720,6 +1720,24 @@ export const ProductFlow: React.FC = () => {
                     // user understands why it's unavailable instead of
                     // wondering where it went.
                     const isBlocked = addon.id === 'study-table' && selectedAddons.has('dressing');
+                    // Common Left/Right/Both/None conditional-fields
+                    // mechanism (one rule, reused by every addon that
+                    // declares sideOf fields — Fix Patti, Khacha, Extra
+                    // Storage, Open Box, and any future one — never
+                    // hand-rolled per addon). Finds this addon's own
+                    // position/side dropdown (any field with `options`
+                    // whose choices include 'Left'/'Right'), decodes its
+                    // current stored index back to which side(s) are
+                    // actually active, and that set drives which
+                    // sideOf-tagged fields render below. An addon with no
+                    // such dropdown, or a field with no sideOf, is
+                    // unaffected — it always renders exactly as before.
+                    const positionField = addon.fields.find((f) => f.options?.some((o) => o === 'Left' || o === 'Right'));
+                    const positionValue = positionField ? String(positionField.options![Number(adDims[positionField.key] ?? positionField.defaultValue)] ?? '').toLowerCase() : null;
+                    const activeSides = positionValue
+                      ? { left: positionValue === 'left' || positionValue === 'both', right: positionValue === 'right' || positionValue === 'both' }
+                      : { left: true, right: true };
+                    const visibleFields = addon.fields.filter((f) => !f.sideOf || activeSides[f.sideOf]);
                     return (
                       <div key={addon.id} className="rounded-xl overflow-hidden"
                         style={{ border: `1px solid ${active ? '#7c3aed' : '#1e293b'}`, background: active ? '#13082a' : '#0e1624', opacity: isBlocked ? 0.45 : 1 }}>
@@ -1745,7 +1763,7 @@ export const ProductFlow: React.FC = () => {
                         {/* Addon fields */}
                         {active && (
                           <div className="px-3 pb-3 flex flex-col gap-2 border-t" style={{ borderColor: '#2d1f4a' }}>
-                            {addon.fields.map((field) => (
+                            {visibleFields.map((field) => (
                               <div key={field.key} className="flex flex-col gap-0.5 mt-2">
                                 <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>{field.label}{!field.options && field.kind !== 'checkbox' && ' (mm)'}</label>
                                 {field.kind === 'checkbox' ? (

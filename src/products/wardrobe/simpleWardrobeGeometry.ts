@@ -535,7 +535,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       for (let i = 0; i < count; i++) {
         components.push({
           id: `loft-door-${i}`, type: 'DOOR', label: `${Math.round(doorW)}`,
-          x: doorCursorX, y: loftY + 2, width: doorW, height: loftH - 4, qty: 1, visible: true,
+          x: doorCursorX, y: loftY + 2, width: doorW, height: loftH - 4, qty: 1, visible: true, noHandle: true,
           source: { formula: `Loft Door ${i + 1} of ${count} — Width = (Loft Width(${Math.round(loftFrameWidth)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm`, constants: [] },
         });
         doorCursorX += doorW + gapMm;

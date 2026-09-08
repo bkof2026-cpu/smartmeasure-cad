@@ -17,6 +17,18 @@ export interface AddonField {
    * (checked), decoded to a boolean by the product's own geometry resolver.
    * Same "plain numbers everywhere" convention as `options` above. */
   kind?: 'checkbox';
+  /** Marks this field as belonging to one side of a Left/Right/Both
+   * position dropdown elsewhere in the SAME addon (conventionally a field
+   * named 'position' or 'side' with options including 'Left'/'Right'/
+   * 'Both', optionally 'None'). When set, the field renders ONLY when the
+   * addon's own position value actually includes that side — 'left'
+   * fields show for Left/Both, 'right' fields show for Right/Both, and
+   * neither shows for None. A field with no sideOf (e.g. the position
+   * dropdown itself, or a side-agnostic field) always renders. This is
+   * the single, common mechanism every Left/Right/Both/None addon (Fix
+   * Patti, Khacha, Extra Storage, Open Box, and any future one) should
+   * use — never hand-roll per-addon conditional rendering. */
+  sideOf?: 'left' | 'right';
 }
 
 // placement: 'composite' = shown INSIDE the main drawing
@@ -229,10 +241,10 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'leftW', label: 'Left Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
-        { key: 'rightH', label: 'Right Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'leftH', label: 'Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right' },
       ],
     },
     {
@@ -246,10 +258,10 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Khacha Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Khacha Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'leftW', label: 'Left Khacha Width', defaultValue: 100, min: 30, max: 400 },
-        { key: 'rightH', label: 'Right Khacha Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'leftH', label: 'Left Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right' },
       ],
     },
     {
@@ -266,14 +278,14 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Storage Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200 },
-        { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800 },
-        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8 },
-        { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200 },
-        { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800 },
-        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8 },
+        { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'left' },
+        { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'left' },
+        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'right' },
+        { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'right' },
+        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'right' },
       ],
     },
     {
@@ -287,12 +299,12 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Open Box Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Open Box Height', defaultValue: 300, min: 100, max: 900 },
-        { key: 'leftW', label: 'Left Open Box Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'leftD', label: 'Left Open Box Depth', defaultValue: 600, min: 200, max: 800 },
-        { key: 'rightH', label: 'Right Open Box Height', defaultValue: 300, min: 100, max: 900 },
-        { key: 'rightW', label: 'Right Open Box Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'leftH', label: 'Left Open Box Height', defaultValue: 300, min: 100, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Open Box Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'left' },
+        { key: 'leftD', label: 'Left Open Box Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Open Box Height', defaultValue: 300, min: 100, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Open Box Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'right' },
+        { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'right' },
       ],
     },
     {
@@ -362,10 +374,10 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'leftW', label: 'Left Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
-        { key: 'rightH', label: 'Right Fix Patti Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'leftH', label: 'Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right' },
       ],
     },
     {
@@ -379,10 +391,10 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Khacha Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Khacha Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'leftW', label: 'Left Khacha Width', defaultValue: 100, min: 30, max: 400 },
-        { key: 'rightH', label: 'Right Khacha Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400 },
+        { key: 'leftH', label: 'Left Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Khacha Height', defaultValue: 400, min: 100, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400, sideOf: 'right' },
       ],
     },
     {
@@ -399,14 +411,14 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Storage Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200 },
-        { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800 },
-        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8 },
-        { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200 },
-        { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800 },
-        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8 },
+        { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'left' },
+        { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'left' },
+        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'right' },
+        { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'right' },
+        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'right' },
       ],
     },
     {
@@ -420,12 +432,12 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       placement: 'composite',
       fields: [
         { key: 'position', label: 'Open Box Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Open Box Height', defaultValue: 300, min: 100, max: 900 },
-        { key: 'leftW', label: 'Left Open Box Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'leftD', label: 'Left Open Box Depth', defaultValue: 600, min: 200, max: 800 },
-        { key: 'rightH', label: 'Right Open Box Height', defaultValue: 300, min: 100, max: 900 },
-        { key: 'rightW', label: 'Right Open Box Width', defaultValue: 600, min: 200, max: 1500 },
-        { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'leftH', label: 'Left Open Box Height', defaultValue: 300, min: 100, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Open Box Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'left' },
+        { key: 'leftD', label: 'Left Open Box Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Open Box Height', defaultValue: 300, min: 100, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Open Box Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'right' },
+        { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'right' },
       ],
     },
     {
