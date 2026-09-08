@@ -142,9 +142,16 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   const dressingTotalW = dressing.enabled ? (dressing.side === 'both' ? dressing.widthMm * 2 : dressing.widthMm) : 0;
 
   // Fix Patti — read first (before Top Panel/Loft) since its width feeds
-  // the Loft Door Count calculation below.
+  // the Loft Door Count calculation below. position is forced to 'none'
+  // whenever the Fix Patti addon card itself isn't selected — a real bug
+  // fixed here: addonDims['fix-patti'].position PERSISTS in state once
+  // ever set (e.g. toggled to Left/Both then the whole addon toggled back
+  // off), and without this selectedAddons check that stale position kept
+  // silently deducting from Wall A's usable Loft width forever, even
+  // after the addon card showed "not selected" in the UI — exactly the
+  // "phantom Fix Patti sliver eating into the Loft width" bug reported.
   const fixPatti: WardrobeFixPattiInput = {
-    position: FIX_PATTI_POSITIONS[(addonDims['fix-patti']?.position) ?? 0] ?? 'none',
+    position: isWardrobe && selectedAddons.has('fix-patti') ? (FIX_PATTI_POSITIONS[(addonDims['fix-patti']?.position) ?? 0] ?? 'none') : 'none',
     leftHeightMm: (addonDims['fix-patti']?.leftH) ?? 400,
     leftWidthMm: (addonDims['fix-patti']?.leftW) ?? 100,
     rightHeightMm: (addonDims['fix-patti']?.rightH) ?? 400,
@@ -154,8 +161,9 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   // Khacha — a real, separate component from Fix Patti (never merged
   // data, per the spec's own explicit rule). Read alongside Fix Patti
   // since BOTH widths feed the Loft Door Count calculation together.
+  // Same selectedAddons gate as Fix Patti above, same real bug fixed.
   const khacha: WardrobeKhachaInput = {
-    position: KHACHA_POSITIONS[(addonDims['khacha']?.position) ?? 0] ?? 'none',
+    position: isWardrobe && selectedAddons.has('khacha') ? (KHACHA_POSITIONS[(addonDims['khacha']?.position) ?? 0] ?? 'none') : 'none',
     leftHeightMm: (addonDims['khacha']?.leftH) ?? 400,
     leftWidthMm: (addonDims['khacha']?.leftW) ?? 100,
     rightHeightMm: (addonDims['khacha']?.rightH) ?? 400,
@@ -221,11 +229,19 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   // Storage Doors using Room Width, Loft Width, Wardrobe Width"). Depth
   // defaults to Wardrobe Depth (spec §28), same "live computed default,
   // still editable" pattern as Loft Height/Door Count.
-  const storagePosition = SIDE_OR_NONE_OPTS[(addonDims['storage']?.position) ?? 0] ?? 'none';
+  // storagePosition/openBoxPosition below are the RAW stored dropdown
+  // value, which PERSISTS once ever set even after the addon card itself
+  // is toggled back off — storage/openBox.position (and every left/right
+  // .enabled below) must gate on selectedAddons too, the same real bug
+  // just fixed for Fix Patti/Khacha above (a stale Left/Both position
+  // would otherwise keep drawing a phantom Storage/Open Box even after
+  // the addon showed "not selected" in the UI).
+  const storageAddonActive = isWardrobe && selectedAddons.has('storage');
+  const storagePosition = storageAddonActive ? (SIDE_OR_NONE_OPTS[(addonDims['storage']?.position) ?? 0] ?? 'none') : 'none';
   const storageLeftWidth = (addonDims['storage']?.leftW) ?? 600;
   const storageRightWidth = (addonDims['storage']?.rightW) ?? 600;
   const storage: WardrobeStorageInput = {
-    position: isWardrobe && selectedAddons.has('storage') ? storagePosition : 'none',
+    position: storagePosition,
     left: {
       enabled: storagePosition === 'left' || storagePosition === 'both',
       heightMm: (addonDims['storage']?.leftH) ?? 450,
@@ -244,9 +260,10 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
 
   // Open Box — a real box beside the Wardrobe/Dressing, no door
   // calculation. Depth also defaults to Wardrobe Depth (spec §28).
-  const openBoxPosition = SIDE_OR_NONE_OPTS[(addonDims['open-box']?.position) ?? 0] ?? 'none';
+  const openBoxAddonActive = isWardrobe && selectedAddons.has('open-box');
+  const openBoxPosition = openBoxAddonActive ? (SIDE_OR_NONE_OPTS[(addonDims['open-box']?.position) ?? 0] ?? 'none') : 'none';
   const openBox: WardrobeOpenBoxInput = {
-    position: isWardrobe && selectedAddons.has('open-box') ? openBoxPosition : 'none',
+    position: openBoxPosition,
     left: {
       enabled: openBoxPosition === 'left' || openBoxPosition === 'both',
       heightMm: (addonDims['open-box']?.leftH) ?? 300,
