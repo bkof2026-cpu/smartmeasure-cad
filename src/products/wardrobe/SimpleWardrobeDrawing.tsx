@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, defaultStyleFor, type ComponentStyle } from '../../engine/CanonicalSvg';
-import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput } from './simpleWardrobeGeometry';
+import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput } from './simpleWardrobeGeometry';
 import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
@@ -10,6 +10,10 @@ const DEFAULT_TOP_PANEL: WardrobeTopPanelInput = { enabled: false, side: 'left',
 const DEFAULT_LOFT: WardrobeLoftInput = { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 };
 const DEFAULT_FIX_PATTI: WardrobeFixPattiInput = { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 };
 const DEFAULT_KHACHA: WardrobeKhachaInput = { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 };
+const DEFAULT_STORAGE_SIDE = { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 };
+const DEFAULT_STORAGE: WardrobeStorageInput = { position: 'none', left: DEFAULT_STORAGE_SIDE, right: DEFAULT_STORAGE_SIDE };
+const DEFAULT_OPEN_BOX_SIDE = { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 };
+const DEFAULT_OPEN_BOX: WardrobeOpenBoxInput = { position: 'none', left: DEFAULT_OPEN_BOX_SIDE, right: DEFAULT_OPEN_BOX_SIDE };
 
 interface Props {
   dims: Record<string, number | string>;
@@ -18,6 +22,8 @@ interface Props {
   loft?: WardrobeLoftInput;
   fixPatti?: WardrobeFixPattiInput;
   khacha?: WardrobeKhachaInput;
+  storage?: WardrobeStorageInput;
+  openBox?: WardrobeOpenBoxInput;
 }
 
 // Fix Patti and Khacha both use the spec's green colour convention, but in
@@ -32,10 +38,16 @@ interface Props {
 function componentStyle(c: ComponentSpec): ComponentStyle {
   if (c.type === 'FIX_PATTI') return { fill: '#dcfce7', stroke: '#16a34a', strokeWidth: 1.5 };
   if (c.type === 'KHACHA') return { fill: '#bbf7d0', stroke: '#15803d', strokeWidth: 1.5 };
+  // Storage Box doors reuse the same style as Loft/Loft Box doors (a real
+  // shuttered door), Open Box gets a distinct open-front look (dashed
+  // stroke reads as "no door/shutter" at a glance) so the two never get
+  // confused despite sitting in the same reserved column.
+  if (c.type === 'STORAGE_DOOR') return defaultStyleFor({ ...c, type: 'DOOR' });
+  if (c.type === 'OPEN_BOX') return { fill: '#f8fafc', stroke: '#64748b', strokeWidth: 1.2, strokeDasharray: '4 2' };
   return defaultStyleFor(c);
 }
 
-export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha }) => {
+export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha, storage, openBox }) => {
   const W = n(dims.W);
   const inp: SimpleWardrobeInputs = {
     W, H: n(dims.H), D: n(dims.D),
@@ -44,6 +56,8 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
     loft: loft ?? DEFAULT_LOFT,
     fixPatti: fixPatti ?? DEFAULT_FIX_PATTI,
     khacha: khacha ?? DEFAULT_KHACHA,
+    storage: storage ?? DEFAULT_STORAGE,
+    openBox: openBox ?? DEFAULT_OPEN_BOX,
     // Separate, directly-entered overall envelope — see
     // simpleWardrobeGeometry.ts's own comment: never derived/recomputed,
     // shown exactly as typed. Absent/0 simply hides the outer line. Now

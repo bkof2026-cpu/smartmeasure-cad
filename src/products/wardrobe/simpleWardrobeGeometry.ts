@@ -88,6 +88,44 @@ export interface WardrobeKhachaInput {
   rightWidthMm: number;
 }
 
+// Extra Storage — a real box beside the Wardrobe/Dressing (spec §26-31),
+// with its OWN door calculation using the SAME shared loftDoorEngine
+// formulas (2mm gap, 310-400mm standard, /400 recommendation) applied to
+// Storage Width alone — never Room/Loft/Wardrobe Width (spec §29's own
+// explicit "Do NOT calculate Storage Doors using Room Width, Loft Width,
+// Wardrobe Width" rule). Depth defaults to Wardrobe Depth (spec §28) but
+// stays editable per-side.
+export interface WardrobeStorageSideInput {
+  enabled: boolean;
+  heightMm: number;
+  widthMm: number;
+  depthMm: number;
+  // The door count actually used for the drawing/cutlist — same "resolved
+  // upstream, drawn here" pattern as WardrobeLoftInput.doorCount.
+  doorCount: number;
+}
+export interface WardrobeStorageInput {
+  position: WardrobeSide | 'none';
+  left: WardrobeStorageSideInput;
+  right: WardrobeStorageSideInput;
+}
+
+// Open Box — a real box beside the Wardrobe/Dressing (spec §32-35), no
+// door calculation at all (it's an open box, not a shuttered one) — just
+// W×H×D per side. Sits BELOW Storage on the same side when both are
+// present (spec §33/§36); alone in the storage area when Storage isn't.
+export interface WardrobeOpenBoxSideInput {
+  enabled: boolean;
+  heightMm: number;
+  widthMm: number;
+  depthMm: number;
+}
+export interface WardrobeOpenBoxInput {
+  position: WardrobeSide | 'none';
+  left: WardrobeOpenBoxSideInput;
+  right: WardrobeOpenBoxSideInput;
+}
+
 export type LoftMode = 'door' | 'box';
 
 export interface WardrobeLoftInput {
@@ -114,6 +152,8 @@ export interface SimpleWardrobeInputs {
   loft: WardrobeLoftInput;
   fixPatti: WardrobeFixPattiInput;
   khacha: WardrobeKhachaInput;
+  storage: WardrobeStorageInput;
+  openBox: WardrobeOpenBoxInput;
   // Separate, explicitly-entered overall envelope values — per the user's
   // own instruction, these are NOT derived/recomputed from W/H + add-ons;
   // whatever is typed here is exactly what the drawing's outer "Total
@@ -140,6 +180,8 @@ function activeParts(inp: SimpleWardrobeInputs): string[] {
   if (inp.loft.enabled) parts.push(inp.loft.mode === 'box' ? 'LOFT BOX' : 'LOFT');
   if (inp.fixPatti.position !== 'none') parts.push('FIX PATTI');
   if (inp.khacha.position !== 'none') parts.push('KHACHA');
+  if (inp.storage.position !== 'none') parts.push('STORAGE');
+  if (inp.openBox.position !== 'none') parts.push('OPEN BOX');
   return parts;
 }
 
@@ -201,6 +243,30 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
       rows.push({ component: 'Loft Box Depth', width: inp.loft.widthMm, height: inp.loft.depthMm, qty: 1, remark: `Depth = ${Math.round(inp.loft.depthMm)}mm (entered, shown as the / leader) — Width shown here is the full Loft Width for reference only; see individual doors above for real cut widths` });
     }
   }
+  if (inp.storage.position !== 'none') {
+    const sides: Array<['Left' | 'Right', WardrobeStorageSideInput]> = [];
+    if ((inp.storage.position === 'left' || inp.storage.position === 'both') && inp.storage.left.enabled) sides.push(['Left', inp.storage.left]);
+    if ((inp.storage.position === 'right' || inp.storage.position === 'both') && inp.storage.right.enabled) sides.push(['Right', inp.storage.right]);
+    for (const [sideLabel, s] of sides) {
+      // Storage Box has its OWN door calculation, from Storage Width ONLY
+      // (spec §29's own explicit "Do NOT calculate Storage Doors using
+      // Room Width, Loft Width, Wardrobe Width" rule) — same shared
+      // loftDoorEngine formula, just a different width source, per the
+      // spec's own "Use the same Loft door calculation logic" (§30).
+      const count = Math.max(1, Math.round(s.doorCount) || 1);
+      const doorW = loftOneDoorWidth(s.widthMm, count);
+      rows.push({ component: `Storage Box (${sideLabel}) Door (x${count})`, width: doorW, height: s.heightMm, qty: count, remark: `Storage Width = ${Math.round(s.widthMm)}mm (independent of Room/Loft/Wardrobe Width) | Deduction = ${count} × 2 = ${count * 2}mm | Each Door = (${Math.round(s.widthMm)} − ${count * 2}) / ${count} = ${doorW.toFixed(2)}mm` });
+      rows.push({ component: `Storage Box (${sideLabel}) Depth`, width: s.widthMm, height: s.depthMm, qty: 1, remark: `Depth = ${Math.round(s.depthMm)}mm (defaults to Wardrobe Depth, editable) — Width shown here is the full Storage Width for reference only; see individual doors above for real cut widths` });
+    }
+  }
+  if (inp.openBox.position !== 'none') {
+    const sides: Array<['Left' | 'Right', WardrobeOpenBoxSideInput]> = [];
+    if ((inp.openBox.position === 'left' || inp.openBox.position === 'both') && inp.openBox.left.enabled) sides.push(['Left', inp.openBox.left]);
+    if ((inp.openBox.position === 'right' || inp.openBox.position === 'both') && inp.openBox.right.enabled) sides.push(['Right', inp.openBox.right]);
+    for (const [sideLabel, b] of sides) {
+      rows.push({ component: `Open Box (${sideLabel})`, width: b.widthMm, height: b.heightMm, qty: 1, remark: `Width x Height (both entered) | Depth = ${Math.round(b.depthMm)}mm (defaults to Wardrobe Depth, editable) — no door/shutter, a real open box` });
+    }
+  }
   return rows;
 }
 
@@ -225,7 +291,7 @@ function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, 
 }
 
 export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDrawing {
-  const { W, H, D, dressing, topPanel, loft, fixPatti, khacha, totalWidthMm, totalHeightMm } = inp;
+  const { W, H, D, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, totalWidthMm, totalHeightMm } = inp;
   const leaderMargin = 150; // room for the Wardrobe's own Depth "/" leader
 
   // Skirting — a real 70mm board strip at the bottom of the wardrobe
@@ -249,8 +315,26 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const topPanelL = topPanel.enabled && topPanel.side !== 'right' ? topPanel.depthMm : 0;
   const topPanelR = topPanel.enabled && topPanel.side !== 'left' ? topPanel.depthMm : 0;
 
-  const leftExtra = topPanelL + dressL;
-  const rightExtra = dressR + topPanelR;
+  // Extra Storage + Open Box — real boxes beside the Wardrobe/Dressing
+  // stack (spec §26-36), reserving their own horizontal space the same
+  // way Dressing/Top Panel do. Storage sits above Open Box on the SAME
+  // side when both are present (spec §33/§36); each side's reserved width
+  // is simply the WIDER of its own active Storage/Open Box (they stack
+  // vertically, not side-by-side, so they never both add to the
+  // horizontal footprint at once).
+  const storageActiveL = storage.position === 'left' || storage.position === 'both' ? storage.left : null;
+  const storageActiveR = storage.position === 'right' || storage.position === 'both' ? storage.right : null;
+  const openBoxActiveL = openBox.position === 'left' || openBox.position === 'both' ? openBox.left : null;
+  const openBoxActiveR = openBox.position === 'right' || openBox.position === 'both' ? openBox.right : null;
+  const hasStorageL = !!storageActiveL?.enabled;
+  const hasStorageR = !!storageActiveR?.enabled;
+  const hasOpenBoxL = !!openBoxActiveL?.enabled;
+  const hasOpenBoxR = !!openBoxActiveR?.enabled;
+  const storageColL = Math.max(hasStorageL ? storageActiveL!.widthMm : 0, hasOpenBoxL ? openBoxActiveL!.widthMm : 0);
+  const storageColR = Math.max(hasStorageR ? storageActiveR!.widthMm : 0, hasOpenBoxR ? openBoxActiveR!.widthMm : 0);
+
+  const leftExtra = storageColL + topPanelL + dressL;
+  const rightExtra = dressR + topPanelR + storageColR;
   const wardrobeX = leaderMargin + leftExtra;
 
   const components: ComponentSpec[] = [];
@@ -623,6 +707,68 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     dimReqs.push({ axis: 'v', x1: px + topPanelR, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY + topPanel.widthMm, edge: 'right', componentIds: [], label: `${Math.round(topPanel.widthMm)} mm (W)`, source: { formula: 'Top Panel Width (auto-calculated from Total Width, editable)', constants: [] } });
   }
 
+  // Extra Storage + Open Box — real boxes drawn OUTSIDE Top Panel/Dressing
+  // (the outermost column in the composite, per storageColL/storageColR
+  // above), with Storage stacked ABOVE Open Box on the same side when
+  // both are present (spec §33/§36 — "Storage above, Open Box below"),
+  // and each one's own real door/leader-arrow treatment.
+  const storageBoxLeaderGap = 16;
+  function drawStorageColumn(side: 'left' | 'right', colX: number, colW: number, storageSide: WardrobeStorageSideInput | null, openBoxSide: WardrobeOpenBoxSideInput | null) {
+    const hasStorage = !!storageSide?.enabled;
+    const hasOpenBox = !!openBoxSide?.enabled;
+    if (!hasStorage && !hasOpenBox) return;
+    // Storage occupies the TOP portion of the reserved column, Open Box
+    // the BOTTOM — matching the reference's "Storage above, Open Box
+    // below" stacking. When only one is present, it simply fills the
+    // whole bodyH height on its own (spec §33 "do not leave an empty
+    // Storage Box placeholder" — no phantom box for the absent one).
+    const storageH = hasStorage ? (hasOpenBox ? bodyH * 0.55 : bodyH) : 0;
+    const openBoxH = hasOpenBox ? bodyH - storageH : 0;
+    let cursorY = wardrobeY;
+    if (hasStorage && storageSide) {
+      const count = Math.max(1, Math.round(storageSide.doorCount) || 1);
+      const doorW = loftOneDoorWidth(storageSide.widthMm, count);
+      const gapMm = 2;
+      let doorCursorX = colX;
+      for (let i = 0; i < count; i++) {
+        components.push({
+          id: `storage-${side}-door-${i}`, type: 'STORAGE_DOOR', label: count === 1 ? `Storage\n${Math.round(doorW)}` : `${Math.round(doorW)}`,
+          x: doorCursorX, y: cursorY, width: doorW, height: storageH, qty: 1, visible: true,
+          source: { formula: `Storage Box (${side}) Door ${i + 1} of ${count} — Width = (Storage Width(${Math.round(storageSide.widthMm)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm — from Storage Width only, never Room/Loft/Wardrobe Width`, constants: [] },
+        });
+        doorCursorX += doorW + gapMm;
+      }
+      // Small leader-arrow callouts for Height/Depth — kept OUTSIDE the
+      // component (per spec §35 "DO NOT squeeze the dimension text into
+      // the component... use Leader Arrow + Measurement Text") since the
+      // column is often narrow.
+      const leaderX = side === 'left' ? colX - storageBoxLeaderGap : colX + colW + storageBoxLeaderGap;
+      dimReqs.push({ axis: 'v', x1: leaderX, y1: cursorY, x2: leaderX, y2: cursorY + storageH, edge: side === 'left' ? 'left' : 'right', componentIds: [], label: `${Math.round(storageSide.heightMm)} mm (Storage H)`, source: { formula: 'Storage Height (entered)', constants: [] } });
+      const storageDiag = insideDiagonal(colX, cursorY, colW, storageH, side === 'left' ? 'left-down' : 'right-down');
+      lines.push({ x1: colX + (side === 'left' ? colW : 0), y1: cursorY, x2: storageDiag.x2, y2: storageDiag.y2, color: DIAG, label: `${Math.round(storageSide.depthMm)} mm (D)` });
+      cursorY += storageH;
+    }
+    if (hasOpenBox && openBoxSide) {
+      components.push({
+        id: `open-box-${side}`, type: 'OPEN_BOX', label: `Open Box\n${Math.round(openBoxSide.widthMm)}×${Math.round(openBoxSide.heightMm)}`,
+        x: colX, y: cursorY, width: colW, height: openBoxH, qty: 1, visible: true,
+        source: { formula: `Open Box (${side}) — Width x Height (both entered), no door/shutter`, constants: [] },
+      });
+      const leaderX = side === 'left' ? colX - storageBoxLeaderGap : colX + colW + storageBoxLeaderGap;
+      dimReqs.push({ axis: 'v', x1: leaderX, y1: cursorY, x2: leaderX, y2: cursorY + openBoxH, edge: side === 'left' ? 'left' : 'right', componentIds: [`open-box-${side}`], label: `${Math.round(openBoxSide.heightMm)} mm (Open Box H)`, source: { formula: 'Open Box Height (entered)', constants: [] } });
+      const openBoxDiag = insideDiagonal(colX, cursorY, colW, openBoxH, side === 'left' ? 'left-down' : 'right-down');
+      lines.push({ x1: colX + (side === 'left' ? colW : 0), y1: cursorY, x2: openBoxDiag.x2, y2: openBoxDiag.y2, color: DIAG, label: `${Math.round(openBoxSide.depthMm)} mm (D)` });
+    }
+  }
+  if (storageColL > 0) {
+    const colX = wardrobeX - dressL - topPanelL - storageColL;
+    drawStorageColumn('left', colX, storageColL, hasStorageL ? storageActiveL : null, hasOpenBoxL ? openBoxActiveL : null);
+  }
+  if (storageColR > 0) {
+    const colX = wardrobeX + W + dressR + topPanelR;
+    drawStorageColumn('right', colX, storageColR, hasStorageR ? storageActiveR : null, hasOpenBoxR ? openBoxActiveR : null);
+  }
+
   // +26 covers the skirting dimension line's own +16 offset past the
   // composite's right edge (see above) plus its label's own drawn width.
   // Also covers the full room-wall span (roomWallWidth — Fix Patti +
@@ -695,6 +841,25 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       if (status === 'below-min') return [{ id: 'val-loft-door-narrow', severity: 'WARNING' as const, code: 'LOFT_DOOR_TOO_NARROW', message: `⚠ Door width below 310mm (currently ${oneDoorW.toFixed(0)}mm) — reduce Door Count or increase Total Width.` }];
       if (status === 'above-max') return [{ id: 'val-loft-door-wide', severity: 'WARNING' as const, code: 'LOFT_DOOR_TOO_WIDE', message: `⚠ Door width exceeds 400mm (currently ${oneDoorW.toFixed(0)}mm) — increase Door Count.` }];
       return [];
+    })(),
+    ...(hasStorageL ? validateMeasurements({ H: storageActiveL!.heightMm, W: storageActiveL!.widthMm, D: storageActiveL!.depthMm }, [{ key: 'H', label: 'Left Storage Height', min: 1 }, { key: 'W', label: 'Left Storage Width', min: 1 }, { key: 'D', label: 'Left Storage Depth', min: 1 }]) : []),
+    ...(hasStorageR ? validateMeasurements({ H: storageActiveR!.heightMm, W: storageActiveR!.widthMm, D: storageActiveR!.depthMm }, [{ key: 'H', label: 'Right Storage Height', min: 1 }, { key: 'W', label: 'Right Storage Width', min: 1 }, { key: 'D', label: 'Right Storage Depth', min: 1 }]) : []),
+    ...(hasOpenBoxL ? validateMeasurements({ H: openBoxActiveL!.heightMm, W: openBoxActiveL!.widthMm, D: openBoxActiveL!.depthMm }, [{ key: 'H', label: 'Left Open Box Height', min: 1 }, { key: 'W', label: 'Left Open Box Width', min: 1 }, { key: 'D', label: 'Left Open Box Depth', min: 1 }]) : []),
+    ...(hasOpenBoxR ? validateMeasurements({ H: openBoxActiveR!.heightMm, W: openBoxActiveR!.widthMm, D: openBoxActiveR!.depthMm }, [{ key: 'H', label: 'Right Open Box Height', min: 1 }, { key: 'W', label: 'Right Open Box Width', min: 1 }, { key: 'D', label: 'Right Open Box Depth', min: 1 }]) : []),
+    // Storage Box door width standard (310–400mm) — same real WARNING
+    // treatment as the Loft's own door-width check, per side, using
+    // Storage Width ONLY (never Room/Loft/Wardrobe Width, spec §29).
+    ...(() => {
+      const out: { id: string; severity: 'WARNING'; code: string; message: string }[] = [];
+      for (const [side, s] of [['Left', hasStorageL ? storageActiveL : null], ['Right', hasStorageR ? storageActiveR : null]] as const) {
+        if (!s) continue;
+        const count = Math.max(1, Math.round(s.doorCount) || 1);
+        const oneDoorW = loftOneDoorWidth(s.widthMm, count);
+        const status = loftDoorWidthStatus(oneDoorW);
+        if (status === 'below-min') out.push({ id: `val-storage-door-narrow-${side}`, severity: 'WARNING', code: 'STORAGE_DOOR_TOO_NARROW', message: `⚠ ${side} Storage door width below 310mm (currently ${oneDoorW.toFixed(0)}mm) — reduce Door Count or increase Storage Width.` });
+        if (status === 'above-max') out.push({ id: `val-storage-door-wide-${side}`, severity: 'WARNING', code: 'STORAGE_DOOR_TOO_WIDE', message: `⚠ ${side} Storage door width exceeds 400mm (currently ${oneDoorW.toFixed(0)}mm) — increase Door Count.` });
+      }
+      return out;
     })(),
     ...validateComponentBounds(components, worldWidth, worldHeight),
     ...validateDimensionIntegrity(dimensions),

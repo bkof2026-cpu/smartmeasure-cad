@@ -24,6 +24,10 @@ export interface ComponentStyle {
   fill: string;
   stroke: string;
   strokeWidth?: number;
+  // For a component with no real door/shutter (e.g. Open Box) — a dashed
+  // outline reads as "open front" at a glance, distinct from every solid-
+  // bordered real door/panel component. Optional; solid when unset.
+  strokeDasharray?: string;
 }
 
 // Line-weight hierarchy, matching real technical-drawing convention: outer
@@ -202,7 +206,7 @@ export function TechnicalDrawingSvg({
         const showHandle = isPullType(c.type) && pw > 14 && ph > 10;
         return (
           <g key={c.id} onClick={() => onSelectComponent?.(c)} style={{ cursor: onSelectComponent ? 'pointer' : undefined }}>
-            <rect x={px} y={py} width={pw} height={ph} fill={style.fill} stroke={selected ? '#2563eb' : style.stroke} strokeWidth={selected ? 2.2 : (style.strokeWidth ?? 1)} />
+            <rect x={px} y={py} width={pw} height={ph} fill={style.fill} stroke={selected ? '#2563eb' : style.stroke} strokeWidth={selected ? 2.2 : (style.strokeWidth ?? 1)} strokeDasharray={selected ? undefined : style.strokeDasharray} />
             {showHandle && (
               ph >= pw ? (
                 // Tall component (door) — vertical pull near the swing edge.

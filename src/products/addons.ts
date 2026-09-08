@@ -249,6 +249,49 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400 },
       ],
     },
+    {
+      // Extra Storage — a real box beside the Wardrobe/Dressing, with its
+      // OWN door calculation from Storage Width alone (never Room/Loft/
+      // Wardrobe Width). Depth defaults to Wardrobe Depth (spec §28) via
+      // ProductFlow.tsx's live-computed-default pattern, same as Loft
+      // Height/Door Count — the defaultValue here is only the static
+      // fallback shown before that real default exists.
+      id: 'storage',
+      label: 'Extra Storage',
+      icon: '📦',
+      description: 'Storage box beside the Wardrobe/Dressing, with its own door count calculated from Storage Width only',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Storage Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200 },
+        { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8 },
+        { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200 },
+        { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8 },
+      ],
+    },
+    {
+      // Open Box — a real box beside the Wardrobe/Dressing, no door
+      // calculation (an open box, not a shuttered one). Sits BELOW Storage
+      // on the same side when both are present.
+      id: 'open-box',
+      label: 'Open Box',
+      icon: '🔲',
+      description: 'Open storage box beside the Wardrobe/Dressing — no door/shutter. Sits below Extra Storage on the same side when both are added.',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Open Box Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Open Box Height', defaultValue: 300, min: 100, max: 900 },
+        { key: 'leftW', label: 'Left Open Box Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'leftD', label: 'Left Open Box Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'rightH', label: 'Right Open Box Height', defaultValue: 300, min: 100, max: 900 },
+        { key: 'rightW', label: 'Right Open Box Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800 },
+      ],
+    },
   ],
   'sliding-wardrobe': [
     {
@@ -316,6 +359,49 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'leftW', label: 'Left Khacha Width', defaultValue: 100, min: 30, max: 400 },
         { key: 'rightH', label: 'Right Khacha Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'rightW', label: 'Right Khacha Width', defaultValue: 100, min: 30, max: 400 },
+      ],
+    },
+    {
+      // Extra Storage — a real box beside the Wardrobe/Dressing, with its
+      // OWN door calculation from Storage Width alone (never Room/Loft/
+      // Wardrobe Width). Depth defaults to Wardrobe Depth (spec §28) via
+      // ProductFlow.tsx's live-computed-default pattern, same as Loft
+      // Height/Door Count — the defaultValue here is only the static
+      // fallback shown before that real default exists.
+      id: 'storage',
+      label: 'Extra Storage',
+      icon: '📦',
+      description: 'Storage box beside the Wardrobe/Dressing, with its own door count calculated from Storage Width only',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Storage Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200 },
+        { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8 },
+        { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200 },
+        { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8 },
+      ],
+    },
+    {
+      // Open Box — a real box beside the Wardrobe/Dressing, no door
+      // calculation (an open box, not a shuttered one). Sits BELOW Storage
+      // on the same side when both are present.
+      id: 'open-box',
+      label: 'Open Box',
+      icon: '🔲',
+      description: 'Open storage box beside the Wardrobe/Dressing — no door/shutter. Sits below Extra Storage on the same side when both are added.',
+      placement: 'composite',
+      fields: [
+        { key: 'position', label: 'Open Box Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'leftH', label: 'Left Open Box Height', defaultValue: 300, min: 100, max: 900 },
+        { key: 'leftW', label: 'Left Open Box Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'leftD', label: 'Left Open Box Depth', defaultValue: 600, min: 200, max: 800 },
+        { key: 'rightH', label: 'Right Open Box Height', defaultValue: 300, min: 100, max: 900 },
+        { key: 'rightW', label: 'Right Open Box Width', defaultValue: 600, min: 200, max: 1500 },
+        { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800 },
       ],
     },
   ],
