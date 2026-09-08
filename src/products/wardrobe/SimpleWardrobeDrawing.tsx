@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, defaultStyleFor, type ComponentStyle } from '../../engine/CanonicalSvg';
-import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput } from './simpleWardrobeGeometry';
+import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput } from './simpleWardrobeGeometry';
 import { DrawingInspector } from '../../engine/DrawingInspector';
+import { StudyTableDrawing } from '../studyTable/StudyTableDrawing';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
 const n = (v: number | string | undefined) => Number(v ?? 0);
-const DEFAULT_DRESSING: WardrobeDressingInput = { enabled: false, side: 'left', widthMm: 400 };
+const DEFAULT_DRESSING: WardrobeDressingInput = { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 };
 const DEFAULT_TOP_PANEL: WardrobeTopPanelInput = { enabled: false, side: 'left', widthMm: 80, depthMm: 600 };
 const DEFAULT_LOFT: WardrobeLoftInput = { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 };
 const DEFAULT_FIX_PATTI: WardrobeFixPattiInput = { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 };
@@ -14,6 +15,7 @@ const DEFAULT_STORAGE_SIDE = { enabled: false, heightMm: 450, widthMm: 600, dept
 const DEFAULT_STORAGE: WardrobeStorageInput = { position: 'none', left: DEFAULT_STORAGE_SIDE, right: DEFAULT_STORAGE_SIDE };
 const DEFAULT_OPEN_BOX_SIDE = { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 };
 const DEFAULT_OPEN_BOX: WardrobeOpenBoxInput = { position: 'none', left: DEFAULT_OPEN_BOX_SIDE, right: DEFAULT_OPEN_BOX_SIDE };
+const DEFAULT_STUDY_TABLE: WardrobeStudyTableInput = { enabled: false, side: 'left', heightMm: 750, widthMm: 1200, depthMm: 600 };
 
 interface Props {
   dims: Record<string, number | string>;
@@ -24,6 +26,7 @@ interface Props {
   khacha?: WardrobeKhachaInput;
   storage?: WardrobeStorageInput;
   openBox?: WardrobeOpenBoxInput;
+  studyTable?: WardrobeStudyTableInput;
 }
 
 // Fix Patti and Khacha both use the spec's green colour convention, but in
@@ -47,7 +50,7 @@ function componentStyle(c: ComponentSpec): ComponentStyle {
   return defaultStyleFor(c);
 }
 
-export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha, storage, openBox }) => {
+export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable }) => {
   const W = n(dims.W);
   const inp: SimpleWardrobeInputs = {
     W, H: n(dims.H), D: n(dims.D),
@@ -58,6 +61,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
     khacha: khacha ?? DEFAULT_KHACHA,
     storage: storage ?? DEFAULT_STORAGE,
     openBox: openBox ?? DEFAULT_OPEN_BOX,
+    studyTable: studyTable ?? DEFAULT_STUDY_TABLE,
     // Separate, directly-entered overall envelope — see
     // simpleWardrobeGeometry.ts's own comment: never derived/recomputed,
     // shown exactly as typed. Absent/0 simply hides the outer line. Now
@@ -68,6 +72,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
   };
   const drawing = resolveSimpleWardrobePlan(inp);
   const [selected, setSelected] = useState<ComponentSpec | DimensionLine | null>(null);
+  const st = studyTable ?? DEFAULT_STUDY_TABLE;
 
   return (
     <div>
@@ -84,6 +89,20 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
         selectedComponentId={selected && 'type' in selected ? selected.id : null}
       />
       <DrawingInspector selected={selected} issues={drawing.issues} formulaStatus={drawing.formulaStatus} />
+      {/* Study Table attached to the Wardrobe (spec §23-25) — rendered as
+          its OWN separate section using the exact same standalone Study
+          Table product's drawing/measurement engine, per the spec's
+          explicit "Do NOT create a second Study Table calculation
+          system" rule. Never merged into the Wardrobe's own coordinate
+          space above — it's a genuinely separate product-style drawing,
+          placed directly below so it reads as physically attached beside
+          the Wardrobe/Dressing (matching the reference layout) without
+          requiring a second geometry engine. */}
+      {st.enabled && (
+        <div style={{ marginTop: 16 }}>
+          <StudyTableDrawing dims={{ H: st.heightMm, W: st.widthMm, D: st.depthMm, storage: 'None', storageW: 0, sidePanel: 'None' }} />
+        </div>
+      )}
     </div>
   );
 };

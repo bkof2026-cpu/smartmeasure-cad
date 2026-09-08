@@ -956,13 +956,14 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     computeCutlist: (dims) => {
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
-        dressing: { enabled: false, side: 'left', widthMm: 400 },
+        dressing: { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 },
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
         fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
         khacha: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
         storage: { position: 'none', left: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 }, right: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 } },
         openBox: { position: 'none', left: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 }, right: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 } },
+        studyTable: { enabled: false, side: 'left', heightMm: 750, widthMm: 1200, depthMm: 600 },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -989,13 +990,14 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     computeCutlist: (dims) => {
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
-        dressing: { enabled: false, side: 'left', widthMm: 400 },
+        dressing: { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 },
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
         fixPatti: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
         khacha: { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 },
         storage: { position: 'none', left: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 }, right: { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 } },
         openBox: { position: 'none', left: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 }, right: { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 } },
+        studyTable: { enabled: false, side: 'left', heightMm: 750, widthMm: 1200, depthMm: 600 },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },

@@ -179,6 +179,9 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       fields: [
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
         { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
+        { key: 'mirror', label: 'Add Mirror', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
+        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8 },
+        { key: 'drawerH', label: 'Total Drawer Height', defaultValue: 600, min: 100, max: 1800 },
       ],
     },
     {
@@ -292,6 +295,24 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800 },
       ],
     },
+    {
+      // Study Table attached to the Wardrobe — only offered when Dressing
+      // is NOT selected (spec §23). Reuses the EXISTING standalone Study
+      // Table product's own measurement/drawing engine (rendered as its
+      // own separate section in SimpleWardrobeDrawing.tsx) — this addon
+      // only tracks whether it's attached, its side, and its H×W×D.
+      id: 'study-table',
+      label: 'Study Table (Attached)',
+      icon: '🪑',
+      description: 'Study Table attached beside the Wardrobe/Dressing — uses the same measurement/drawing system as the standalone Study Table product. Only available when Side Dressing is not added.',
+      placement: 'composite',
+      fields: [
+        { key: 'side', label: 'Study Table Position', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
+        { key: 'H', label: 'Height', defaultValue: 750, min: 600, max: 900 },
+        { key: 'W', label: 'Width', defaultValue: 1200, min: 600, max: 2400 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 800 },
+      ],
+    },
   ],
   'sliding-wardrobe': [
     {
@@ -303,6 +324,9 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       fields: [
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
         { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
+        { key: 'mirror', label: 'Add Mirror', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
+        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8 },
+        { key: 'drawerH', label: 'Total Drawer Height', defaultValue: 600, min: 100, max: 1800 },
       ],
     },
     {
@@ -402,6 +426,19 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'rightH', label: 'Right Open Box Height', defaultValue: 300, min: 100, max: 900 },
         { key: 'rightW', label: 'Right Open Box Width', defaultValue: 600, min: 200, max: 1500 },
         { key: 'rightD', label: 'Right Open Box Depth', defaultValue: 600, min: 200, max: 800 },
+      ],
+    },
+    {
+      id: 'study-table',
+      label: 'Study Table (Attached)',
+      icon: '🪑',
+      description: 'Study Table attached beside the Wardrobe/Dressing — uses the same measurement/drawing system as the standalone Study Table product. Only available when Side Dressing is not added.',
+      placement: 'composite',
+      fields: [
+        { key: 'side', label: 'Study Table Position', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
+        { key: 'H', label: 'Height', defaultValue: 750, min: 600, max: 900 },
+        { key: 'W', label: 'Width', defaultValue: 1200, min: 600, max: 2400 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 800 },
       ],
     },
   ],

@@ -8,7 +8,7 @@ import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSe
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
 import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput } from '../products/wardrobe/simpleWardrobeGeometry';
 import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
@@ -135,6 +135,9 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     enabled: isWardrobe && selectedAddons.has('dressing'),
     side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
     widthMm: (addonDims['dressing']?.W) ?? 400,
+    hasMirror: ((addonDims['dressing']?.mirror) ?? 0) === 1,
+    drawerCount: (addonDims['dressing']?.drawers) ?? 0,
+    totalDrawerHeightMm: (addonDims['dressing']?.drawerH) ?? 600,
   };
   const dressingTotalW = dressing.enabled ? (dressing.side === 'both' ? dressing.widthMm * 2 : dressing.widthMm) : 0;
 
@@ -258,7 +261,19 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     },
   };
 
-  return { dressing, topPanel, loft, fixPatti, khacha, storage, openBox };
+  // Study Table attached to the Wardrobe — only offered when Dressing is
+  // NOT selected (spec §23). Reuses the EXISTING standalone Study Table
+  // product's own measurement/drawing engine (rendered separately in
+  // SimpleWardrobeDrawing.tsx) — this only tracks attachment/side/H×W×D.
+  const studyTable: WardrobeStudyTableInput = {
+    enabled: isWardrobe && !dressing.enabled && selectedAddons.has('study-table'),
+    side: SIDE_OPTS[(addonDims['study-table']?.side) ?? 0] ?? 'left',
+    heightMm: (addonDims['study-table']?.H) ?? 750,
+    widthMm: (addonDims['study-table']?.W) ?? 1200,
+    depthMm: (addonDims['study-table']?.D) ?? 600,
+  };
+
+  return { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable };
 }
 
 function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
@@ -319,10 +334,10 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
     };
   }
   if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
-    const { dressing, topPanel, loft, fixPatti, khacha, storage, openBox } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
-    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, khacha, storage, openBox, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
+    const { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
-      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} />,
+      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
     };
   }
@@ -768,6 +783,12 @@ export const ProductFlow: React.FC = () => {
               .map((f) => [f.key, f.defaultValue]),
           ),
         }));
+        // Study Table is only available when Dressing is NOT selected
+        // (spec §23) — turning Dressing ON while Study Table was already
+        // attached must turn Study Table back off, never leave a stale
+        // "enabled but hidden" state the user can't see or fix through
+        // the addon panel any more.
+        if (addonId === 'dressing') next.delete('study-table');
       }
       return next;
     });
@@ -955,7 +976,7 @@ export const ProductFlow: React.FC = () => {
   // whichever product is currently active on screen.
   const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
-  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
+  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
   // Live-computed defaults for the Wardrobe's own auto-calculated-but-
   // editable fields (Top Panel Width, Loft Height, Loft Door Count) — the
   // generic "Add Extra Items" field renderer below falls back to a plain
@@ -997,7 +1018,7 @@ export const ProductFlow: React.FC = () => {
     // treatment as the Bed: a plain W x H carcass with Depth shown as the
     // "/" diagonal leader, plus optional Side Dressing / Side Panel / Loft.
     if (isWardrobe) {
-      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} topPanel={wardrobeTopPanel} loft={wardrobeLoft} fixPatti={wardrobeFixPatti} khacha={wardrobeKhacha} storage={wardrobeStorage} openBox={wardrobeOpenBox} />;
+      return <SimpleWardrobeDrawing dims={dims} dressing={wardrobeDressing} topPanel={wardrobeTopPanel} loft={wardrobeLoft} fixPatti={wardrobeFixPatti} khacha={wardrobeKhacha} storage={wardrobeStorage} openBox={wardrobeOpenBox} studyTable={wardrobeStudyTable} />;
     }
 
     // Shoe Rack — no base dims; entirely the two optional boxes.
@@ -1030,7 +1051,7 @@ export const ProductFlow: React.FC = () => {
       const cutlist: PdfCutRow[] = selectedId === 'bed'
         ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
-        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
@@ -1226,7 +1247,16 @@ export const ProductFlow: React.FC = () => {
     selectedAddons.has(a.id) && a.placement === 'composite' &&
     !(
       (selectedId === 'bed' && (a.id === 'side-table-left' || a.id === 'side-table-right' || a.id === 'profile-shutter')) ||
-      (isWardrobe && (a.id === 'dressing' || a.id === 'side-panel' || a.id === 'loft')) ||
+      // 'side-panel' was the addon's OLD id, before its explicit rename to
+      // 'top-panel' — kept here (harmlessly, since no addon list uses that
+      // id any more) alongside the real current id so this exclusion list
+      // never silently rots again if an id gets renamed. fix-patti/khacha/
+      // storage/open-box are all drawn inline in the main composite
+      // (simpleWardrobeGeometry.ts) exactly like dressing/top-panel/loft
+      // already were — omitting them here would double-render each as a
+      // crude RectDetail box UNDER the real, already-correct composite
+      // drawing above.
+      (isWardrobe && (a.id === 'dressing' || a.id === 'top-panel' || a.id === 'side-panel' || a.id === 'loft' || a.id === 'fix-patti' || a.id === 'khacha' || a.id === 'storage' || a.id === 'open-box' || a.id === 'study-table')) ||
       (isShoeRack && (a.id === 'two-door-box' || a.id === 'single-door-box'))
     )
   );
@@ -1684,17 +1714,27 @@ export const ProductFlow: React.FC = () => {
                     // everything else, on every other product, unchanged.
                     const effectiveDefault = (key: string, staticDefault: number): number =>
                       wardrobeComputedAddonDefaults[addon.id]?.[key] ?? staticDefault;
+                    // Study Table is only available when Dressing is NOT
+                    // selected (spec §23) — shown but disabled (with a
+                    // clear reason) rather than silently vanishing, so the
+                    // user understands why it's unavailable instead of
+                    // wondering where it went.
+                    const isBlocked = addon.id === 'study-table' && selectedAddons.has('dressing');
                     return (
                       <div key={addon.id} className="rounded-xl overflow-hidden"
-                        style={{ border: `1px solid ${active ? '#7c3aed' : '#1e293b'}`, background: active ? '#13082a' : '#0e1624' }}>
+                        style={{ border: `1px solid ${active ? '#7c3aed' : '#1e293b'}`, background: active ? '#13082a' : '#0e1624', opacity: isBlocked ? 0.45 : 1 }}>
                         {/* Addon header row */}
                         <button
-                          onClick={() => handleAddonToggle(addon.id, addon, wardrobeComputedAddonDefaults[addon.id] ? Object.keys(wardrobeComputedAddonDefaults[addon.id]) : undefined)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left">
+                          onClick={() => !isBlocked && handleAddonToggle(addon.id, addon, wardrobeComputedAddonDefaults[addon.id] ? Object.keys(wardrobeComputedAddonDefaults[addon.id]) : undefined)}
+                          disabled={isBlocked}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                          style={{ cursor: isBlocked ? 'not-allowed' : 'pointer' }}>
                           <span className="text-xl flex-shrink-0">{addon.icon}</span>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold" style={{ color: active ? '#c084fc' : '#64748b' }}>{addon.label}</div>
-                            <div className="text-xs truncate" style={{ color: '#334155' }}>{addon.description}</div>
+                            <div className="text-xs truncate" style={{ color: '#334155' }}>
+                              {isBlocked ? 'Not available while Side Dressing is added — remove Dressing first' : addon.description}
+                            </div>
                           </div>
                           <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
                             style={{ background: active ? '#7c3aed' : '#1e293b', color: active ? '#fff' : '#475569' }}>

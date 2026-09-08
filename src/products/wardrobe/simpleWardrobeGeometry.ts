@@ -36,6 +36,19 @@ export interface WardrobeDressingInput {
   enabled: boolean;
   side: WardrobeSide;
   widthMm: number; // Height is always Wardrobe Height (auto-fetched)
+  // Mirror (spec §22) — a real, separate optional component inside
+  // Dressing, no independent measurement (fills the Dressing's own
+  // upper portion, matching the reference layout).
+  hasMirror: boolean;
+  // Drawers (spec §19-21) — a manual count, dynamically generated in the
+  // drawing (never a fixed number). Drawer Width is ALWAYS Dressing
+  // Width (spec §21 "Do NOT create a separate drawer-width input") — no
+  // separate field for it. drawerCount=0 means no drawer section at all.
+  drawerCount: number;
+  // Total Drawer Height (spec §20) — the total vertical span the drawer
+  // section occupies, auto-divided evenly among drawerCount for the
+  // drawing. A single measurement, never per-drawer heights.
+  totalDrawerHeightMm: number;
 }
 
 // Renamed from WardrobeSidePanelInput → WardrobeTopPanelInput per the
@@ -126,6 +139,23 @@ export interface WardrobeOpenBoxInput {
   right: WardrobeOpenBoxSideInput;
 }
 
+// Study Table attached to the Wardrobe (spec §23-25) — only offered when
+// Dressing is NOT selected. Reuses the EXISTING standalone Study Table
+// product's own measurement/drawing system (studyTableGeometry.ts /
+// StudyTableDrawing.tsx) — per the spec's own explicit "Do NOT create a
+// second Study Table calculation system" rule, this module does NOT
+// duplicate that geometry; it only tracks whether the attachment is
+// active, its side, and passes its own H/W/D straight through to the
+// real Study Table engine, rendered as a separate composite section
+// beside the Wardrobe (see SimpleWardrobeDrawing.tsx / ProductFlow.tsx).
+export interface WardrobeStudyTableInput {
+  enabled: boolean;
+  side: WardrobeSide;
+  heightMm: number;
+  widthMm: number;
+  depthMm: number;
+}
+
 export type LoftMode = 'door' | 'box';
 
 export interface WardrobeLoftInput {
@@ -154,6 +184,7 @@ export interface SimpleWardrobeInputs {
   khacha: WardrobeKhachaInput;
   storage: WardrobeStorageInput;
   openBox: WardrobeOpenBoxInput;
+  studyTable: WardrobeStudyTableInput;
   // Separate, explicitly-entered overall envelope values — per the user's
   // own instruction, these are NOT derived/recomputed from W/H + add-ons;
   // whatever is typed here is exactly what the drawing's outer "Total
@@ -182,6 +213,7 @@ function activeParts(inp: SimpleWardrobeInputs): string[] {
   if (inp.khacha.position !== 'none') parts.push('KHACHA');
   if (inp.storage.position !== 'none') parts.push('STORAGE');
   if (inp.openBox.position !== 'none') parts.push('OPEN BOX');
+  if (inp.studyTable.enabled) parts.push('STUDY TABLE');
   return parts;
 }
 
@@ -200,6 +232,12 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     const sideLabel = inp.dressing.side === 'both' ? 'Left + Right' : inp.dressing.side === 'left' ? 'Left' : 'Right';
     const qty = inp.dressing.side === 'both' ? 2 : 1;
     rows.push({ component: `Side Dressing (${sideLabel})`, width: inp.dressing.widthMm, height: inp.H, qty, remark: `Width entered; Height = Wardrobe Height (auto-fetched, ${Math.round(inp.H)}mm)` });
+    if (inp.dressing.hasMirror) {
+      rows.push({ component: 'Dressing Mirror', width: inp.dressing.widthMm, height: inp.H, qty: 1, remark: 'Width = Dressing Width, Height = Dressing Height (both auto-fetched) — no independent measurement' });
+    }
+    if (inp.dressing.drawerCount > 0) {
+      rows.push({ component: `Dressing Drawer (x${inp.dressing.drawerCount})`, width: inp.dressing.widthMm, height: inp.dressing.totalDrawerHeightMm / inp.dressing.drawerCount, qty: inp.dressing.drawerCount, remark: `Drawer Width = Dressing Width (${Math.round(inp.dressing.widthMm)}mm, auto) | Total Drawer Height = ${Math.round(inp.dressing.totalDrawerHeightMm)}mm ÷ ${inp.dressing.drawerCount} drawers = ${(inp.dressing.totalDrawerHeightMm / inp.dressing.drawerCount).toFixed(1)}mm each` });
+    }
   }
   if (inp.topPanel.enabled) {
     const sideLabel = inp.topPanel.side === 'both' ? 'Left + Right' : inp.topPanel.side === 'left' ? 'Left' : 'Right';
@@ -266,6 +304,15 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     for (const [sideLabel, b] of sides) {
       rows.push({ component: `Open Box (${sideLabel})`, width: b.widthMm, height: b.heightMm, qty: 1, remark: `Width x Height (both entered) | Depth = ${Math.round(b.depthMm)}mm (defaults to Wardrobe Depth, editable) — no door/shutter, a real open box` });
     }
+  }
+  if (inp.studyTable.enabled) {
+    // Only a summary reference row here — the real, full cutlist for the
+    // attached Study Table comes from the EXISTING standalone Study Table
+    // product's own studyTableCutlist() (studyTableGeometry.ts), rendered
+    // as its own separate section (spec §23 "Do NOT create a second Study
+    // Table calculation system").
+    const sideLabel = inp.studyTable.side === 'both' ? 'Left + Right' : inp.studyTable.side === 'left' ? 'Left' : 'Right';
+    rows.push({ component: `Study Table (${sideLabel}, attached)`, width: inp.studyTable.widthMm, height: inp.studyTable.heightMm, qty: 1, remark: `Height x Width x Depth = ${Math.round(inp.studyTable.heightMm)}×${Math.round(inp.studyTable.widthMm)}×${Math.round(inp.studyTable.depthMm)}mm — see the separate Study Table section below for its full cutlist (same engine as the standalone Study Table product)` });
   }
   return rows;
 }
@@ -628,17 +675,52 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // is centered ON the line, so a tight same-tier offset let the label's
   // own rendered width dip back into the "Dressing" caption inside the box.
   const dressLeaderGap = 40;
+  // Mirror (spec §22) + Drawers (spec §19-21) — real optional internals
+  // drawn INSIDE the Dressing box: Mirror fills the upper portion (no
+  // independent measurement, per the spec), Drawers fill the lower
+  // portion, dynamically generated per the entered count and Total
+  // Drawer Height (auto-divided evenly, never asked per-drawer), each
+  // one's Width always equal to Dressing Width (never a separate field).
+  function drawDressingInternals(dressId: string, dx: number, dressW: number) {
+    const hasMirror = dressing.hasMirror;
+    const drawerCount = Math.max(0, Math.round(dressing.drawerCount) || 0);
+    const totalDrawerH = drawerCount > 0 ? Math.min(dressing.totalDrawerHeightMm, bodyH) : 0;
+    if (hasMirror) {
+      const mirrorH = bodyH - totalDrawerH;
+      components.push({
+        id: `${dressId}-mirror`, type: 'MIRROR', label: 'Mirror', x: dx, y: wardrobeY, width: dressW, height: mirrorH, qty: 1, visible: true,
+        source: { formula: 'Dressing Mirror — Width = Dressing Width, Height = Dressing Height minus Drawer section (both auto-fetched), no independent measurement', constants: [] },
+      });
+    }
+    if (drawerCount > 0) {
+      const drawerY = wardrobeY + bodyH - totalDrawerH;
+      const eachH = totalDrawerH / drawerCount;
+      for (let i = 0; i < drawerCount; i++) {
+        components.push({
+          id: `${dressId}-drawer-${i}`, type: 'DRAWER', label: i === 0 ? `Drawer\n${Math.round(eachH)}` : '', x: dx, y: drawerY + i * eachH, width: dressW, height: eachH, qty: 1, visible: true,
+          source: { formula: `Drawer ${i + 1} of ${drawerCount} — Width = Dressing Width (auto) | Height = Total Drawer Height(${Math.round(totalDrawerH)}) ÷ ${drawerCount} = ${eachH.toFixed(1)}mm`, constants: [] },
+        });
+      }
+      // Total Drawer Height gets its own real leader (spec §20 "Show that
+      // measurement in the drawing") — a short arrow on the drawer
+      // section's own inner edge, distinct from the Dressing's own
+      // overall Height leader outside the box.
+      dimReqs.push({ axis: 'v', x1: dx + dressW * 0.5, y1: drawerY, x2: dx + dressW * 0.5, y2: drawerY + totalDrawerH, edge: 'left', componentIds: [`${dressId}-drawer-0`], label: `${Math.round(totalDrawerH)} mm (Total Drawer H)`, source: { formula: 'Total Drawer Height (entered), auto-divided evenly among the entered Drawer Count', constants: [] } });
+    }
+  }
   if (dressL > 0) {
     const dx = wardrobeX - dressL;
     components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing ${Math.round(dressL)}`, x: dx, y: wardrobeY, width: dressL, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = Wardrobe carcass Height (auto-fetched)`, constants: [] } });
     dimReqs.push({ axis: 'v', x1: dx - dressLeaderGap, y1: wardrobeY, x2: dx - dressLeaderGap, y2: wardrobeY + bodyH, edge: 'left', componentIds: ['dress-l'], label: `${Math.round(bodyH)} mm (H)`, source: { formula: 'Dressing Height = Wardrobe carcass Height (auto-fetched)', constants: [] } });
     dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH + 24, x2: dx + dressL, y2: wardrobeY + bodyH + 24, edge: 'bottom', componentIds: ['dress-l'], label: `${Math.round(dressL)} mm (W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
+    drawDressingInternals('dress-l', dx, dressL);
   }
   if (dressR > 0) {
     const dx = wardrobeX + W;
     components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing ${Math.round(dressR)}`, x: dx, y: wardrobeY, width: dressR, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = Wardrobe carcass Height (auto-fetched)`, constants: [] } });
     dimReqs.push({ axis: 'v', x1: dx + dressR + dressLeaderGap, y1: wardrobeY, x2: dx + dressR + dressLeaderGap, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['dress-r'], label: `${Math.round(bodyH)} mm (H)`, source: { formula: 'Dressing Height = Wardrobe carcass Height (auto-fetched)', constants: [] } });
     dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH + 24, x2: dx + dressR, y2: wardrobeY + bodyH + 24, edge: 'bottom', componentIds: ['dress-r'], label: `${Math.round(dressR)} mm (W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
+    drawDressingInternals('dress-r', dx, dressR);
   }
 
   // Skirting — a real, labeled strip along the ACTUAL lower-product
@@ -820,6 +902,9 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       { key: 'D', label: 'Wardrobe Depth', min: 1 },
     ]),
     ...(dressing.enabled ? validateMeasurements({ W: dressing.widthMm }, [{ key: 'W', label: 'Dressing Width', min: 1 }]) : []),
+    ...(dressing.enabled && dressing.drawerCount > 0 ? validateMeasurements({ H: dressing.totalDrawerHeightMm }, [{ key: 'H', label: 'Total Drawer Height', min: 1 }]) : []),
+    ...(dressing.enabled && dressing.drawerCount > 0 && dressing.totalDrawerHeightMm > bodyH ? [{ id: 'val-drawer-height-exceeds', severity: 'WARNING' as const, code: 'DRAWER_HEIGHT_EXCEEDS_DRESSING', message: `⚠ Total Drawer Height (${Math.round(dressing.totalDrawerHeightMm)}mm) exceeds Dressing Height (${Math.round(bodyH)}mm) — clamped to fit.` }] : []),
+    ...(inp.studyTable.enabled ? validateMeasurements({ H: inp.studyTable.heightMm, W: inp.studyTable.widthMm, D: inp.studyTable.depthMm }, [{ key: 'H', label: 'Study Table Height', min: 1 }, { key: 'W', label: 'Study Table Width', min: 1 }, { key: 'D', label: 'Study Table Depth', min: 1 }]) : []),
     ...(topPanel.enabled ? validateMeasurements({ W: topPanel.widthMm, D: topPanel.depthMm }, [{ key: 'W', label: 'Top Panel Width', min: 1 }, { key: 'D', label: 'Top Panel Depth', min: 1 }]) : []),
     ...(loft.enabled ? validateMeasurements({ W: loft.widthMm, H: loft.heightMm }, [{ key: 'W', label: 'Loft Width', min: 1 }, { key: 'H', label: 'Loft Height', min: 1 }]) : []),
     ...(loft.enabled && (fixPatti.position === 'left' || fixPatti.position === 'both') ? validateMeasurements({ H: fixPatti.leftHeightMm, W: fixPatti.leftWidthMm }, [{ key: 'H', label: 'Left Fix Patti Height', min: 1 }, { key: 'W', label: 'Left Fix Patti Width', min: 1 }]) : []),
