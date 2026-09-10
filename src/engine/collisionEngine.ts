@@ -15,11 +15,20 @@ import type { DimensionLine, DimensionEdge } from './types';
 // ─────────────────────────────────────────────────────────────────────────────
 
 function spanOf(line: DimensionLine): [number, number] {
-  return line.axis === 'h' ? [Math.min(line.x1, line.x2), Math.max(line.x1, line.x2)] : [Math.min(line.y1, line.y2), Math.max(line.y1, line.y2)];
+  return line.axis === 'h'
+    ? [Math.min(line.x1, line.x2), Math.max(line.x1, line.x2)]
+    : [Math.min(line.y1, line.y2), Math.max(line.y1, line.y2)];
 }
 
 function overlaps(a: [number, number], b: [number, number]): boolean {
   return a[0] < b[1] && b[0] < a[1];
+}
+
+// A dimension is part of a "chain" (per-door width ticks etc.) if its
+// label is a bare number — those are meant to sit edge-to-edge on one
+// tier and must NOT be pushed apart by label-collision padding.
+function isChainTick(line: DimensionLine): boolean {
+  return /^[\d.]+$/.test(line.label.trim());
 }
 
 export function assignTiers(lines: DimensionLine[]): DimensionLine[] {
@@ -36,14 +45,22 @@ export function assignTiers(lines: DimensionLine[]): DimensionLine[] {
     const sorted = [...group].sort((a, b) => spanOf(a)[0] - spanOf(b)[0]);
     const placedByTier: Array<Array<[number, number]>> = [];
     for (const line of sorted) {
-      const span = spanOf(line);
+      const raw = spanOf(line);
+      // For a real (non-chain) labelled dimension, pad the span by roughly
+      // half its label's rendered footprint on EACH side, so two dims
+      // whose lines don't overlap but whose LABELS would (near-adjacent
+      // small components — the "measurements behind each other" case) get
+      // tiered apart. Chain ticks keep their raw span so a per-door row
+      // stays on one tier.
+      const pad = isChainTick(line) ? 0 : Math.min(line.label.length * 3 + 6, 70);
+      const test: [number, number] = [raw[0] - pad, raw[1] + pad];
       let tier = 0;
       // Find the first tier where this span doesn't overlap anything already placed.
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const placed = placedByTier[tier] ?? [];
-        if (!placed.some((existing) => overlaps(existing, span))) {
-          placed.push(span);
+        if (!placed.some((existing) => overlaps(existing, test))) {
+          placed.push(test);
           placedByTier[tier] = placed;
           break;
         }

@@ -221,7 +221,14 @@ export function TechnicalDrawingSvg({
             .map((d) => d.label.match(/\(([A-Za-z][A-Za-z .-]*)\)\s*$/)?.[1]?.trim().toLowerCase())
             .filter(Boolean) as string[],
         );
+        // Component types whose label is DELIBERATE in-box text (a spec
+        // string like "200(H) * 200(D) * 400(W)", or "W:600 · 2 doors")
+        // that must render centred inside the box regardless of the
+        // number-prefix skip rule below.
+        const alwaysInBoxLabel = (c: ComponentSpec) =>
+          (c.type === 'OPEN_BOX' || c.type === 'STORAGE_DOOR') && !!(c.label || '').trim();
         const nameOf = (c: ComponentSpec) => {
+          if (alwaysInBoxLabel(c)) return c.label.trim();
           const first = (c.label || '').split('\n')[0].trim();
           // Skip labels that are just a measurement (a bare number, or a
           // number followed by a "(W)"/"(H)"/"(D)" unit tag) — those are
@@ -252,8 +259,11 @@ export function TechnicalDrawingSvg({
           // text.
           const isVerticalColumn = !isHorizontalBand && ph > name.length * 4.4 + 6 && ph > pw * 2 && pw > 10;
           // The name fits inside horizontally only if the box is big
-          // enough BOTH ways.
-          const fitsInside = (pw > name.length * 4.4 + 6 && ph > 13) || isHorizontalBand;
+          // enough BOTH ways — but a deliberate in-box spec label is
+          // ALWAYS drawn inside (smaller font if tight), never on a
+          // margin leader.
+          const forceInBox = alwaysInBoxLabel(c);
+          const fitsInside = forceInBox || (pw > name.length * 4.4 + 6 && ph > 13) || isHorizontalBand;
           if (name && !fitsInside && !isVerticalColumn) {
             // Leader to the nearer vertical edge, pointing OUT toward the
             // closer side of the drawing — the label sits just beyond that
@@ -276,9 +286,11 @@ export function TechnicalDrawingSvg({
                 )
               )}
               {name && fitsInside && (
-                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={isHorizontalBand ? 6.5 : 7} fontFamily="'DM Sans',sans-serif" fill={isHorizontalBand ? (style.stroke ?? '#333') : '#333'} fontWeight={700}
-                  {...(isHorizontalBand ? { stroke: 'white', strokeWidth: 2.4, paintOrder: 'stroke' as const } : {})}>
-                  {isHorizontalBand ? name : c.label}
+                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={forceInBox ? Math.max(4.5, Math.min(6.5, pw / (name.length * 0.62))) : (isHorizontalBand ? 6.5 : 7)}
+                  fontFamily="'DM Sans',sans-serif" fill={(isHorizontalBand || forceInBox) ? (style.stroke ?? '#333') : '#333'} fontWeight={700}
+                  {...((isHorizontalBand || forceInBox) ? { stroke: 'white', strokeWidth: 2.2, paintOrder: 'stroke' as const } : {})}>
+                  {(isHorizontalBand || forceInBox) ? name : c.label}
                 </text>
               )}
               {name && !fitsInside && isVerticalColumn && (

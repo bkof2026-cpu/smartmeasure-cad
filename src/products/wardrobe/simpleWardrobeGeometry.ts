@@ -789,17 +789,38 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       }
     }
 
-    // Wall B Height (its floor-to-ceiling extent) — arrow on the inner
-    // vertical edge (facing the Wardrobe), so it stays clear of the
-    // per-door width ticks on the outer edge.
-    const innerEdgeX = al.side === 'left' ? alX + alColW : alX;
-    dimReqs.push({ axis: 'v', x1: innerEdgeX + (al.side === 'left' ? 14 : -14), y1: alY, x2: innerEdgeX + (al.side === 'left' ? 14 : -14), y2: alY + alFullH, edge: al.side === 'left' ? 'right' : 'left', componentIds: ['adjacent-loft'], label: `${Math.round(al.heightMm)} (Wall B H)`, source: { formula: 'Wall B Loft Height (entered, independent of Wall A)', constants: [] } });
-    // Total Wall B Width — a horizontal arrow BELOW the whole stack
-    // (spans the drawn column, labelled with the real total mm).
-    dimReqs.push({ axis: 'h', x1: alX, y1: alY + alFullH, x2: alX + alColW, y2: alY + alFullH, edge: 'bottom', componentIds: ['adjacent-loft'], label: `${Math.round(alTotalW)} (Total Wall B W)`, source: { formula: `Total Wall B Width = usable door span (${Math.round(al.widthMm)}) + Fix Patti (${Math.round(alFPW)}) + Khacha (${Math.round(alKhW)})`, constants: [] } });
-    // Depth "/" leader at the frame's top-outer corner.
-    const alDiag = insideDiagonal(alX, alY, alColW, alFullH, al.side === 'left' ? 'left-down' : 'right-down');
-    lines.push({ x1: al.side === 'left' ? alX : alX + alColW, y1: alY, x2: alDiag.x2, y2: alDiag.y2, color: DIAG, label: `${Math.round(al.depthMm)} (Wall B D)` });
+    // Wall B is a VERTICAL loft — the doors stack top-to-bottom, so
+    // Wall B's own WIDTH (the door-span direction) runs VERTICALLY, and
+    // its DEPTH (the column thickness) runs HORIZONTALLY. Dimension them
+    // to match:
+    //   • Total Wall B Width  → a VERTICAL arrow along the door stack's
+    //     OUTER edge, spanning the whole stack.
+    //   • Wall B Depth        → a HORIZONTAL arrow across the column top.
+    const outerEdgeX = al.side === 'left' ? alX : alX + alColW;
+    const wOff = al.side === 'left' ? -18 : 18;
+    dimReqs.push({
+      axis: 'v', x1: outerEdgeX + wOff, y1: alY, x2: outerEdgeX + wOff, y2: alY + alFullH,
+      edge: al.side === 'left' ? 'left' : 'right', componentIds: ['adjacent-loft'],
+      label: `${Math.round(alTotalW)} (Wall B W)`,
+      source: { formula: `Total Wall B Width = usable door span (${Math.round(al.widthMm)}) + Fix Patti (${Math.round(alFPW)}) + Khacha (${Math.round(alKhW)}) — runs vertically because Wall B's loft is rotated`, constants: [] },
+    });
+    // Wall B Depth — a horizontal arrow across the column thickness,
+    // just above the frame's top edge.
+    dimReqs.push({
+      axis: 'h', x1: alX, y1: alY, x2: alX + alColW, y2: alY,
+      edge: 'top', componentIds: ['adjacent-loft'],
+      label: `${Math.round(al.depthMm)} (Wall B D)`,
+      source: { formula: 'Wall B Loft Depth (entered) — the column thickness', constants: [] },
+    });
+    // Wall B Loft Height (the entered value) — a horizontal arrow BELOW
+    // the whole stack (a real, separate figure from the drawn
+    // floor-to-ceiling extent).
+    dimReqs.push({
+      axis: 'h', x1: alX, y1: alY + alFullH, x2: alX + alColW, y2: alY + alFullH,
+      edge: 'bottom', componentIds: ['adjacent-loft'],
+      label: `${Math.round(al.heightMm)} (Wall B H)`,
+      source: { formula: 'Wall B Loft Height (entered, independent of Wall A)', constants: [] },
+    });
   }
 
   // Wardrobe — a plain W x H carcass at its FULL entered Height (the
@@ -1080,40 +1101,31 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       const boxH = Math.max(1, storageSide.heightMm);
       const boxX = side === 'left' ? innerEdgeX - boxW : innerEdgeX;
       const count = Math.max(1, Math.round(storageSide.doorCount) || 1);
-      // One Storage Door Width = (Storage Width − count×2mm) / count —
-      // from Storage Width ONLY (never Room/Loft/Wardrobe Width). Same
-      // shared engine formula as the Loft.
       const doorW = loftOneDoorWidth(boxW, count);
       let doorCursorX = boxX;
       for (let i = 0; i < count; i++) {
         components.push({
-          id: `storage-${side}-door-${i}`, type: 'STORAGE_DOOR', label: i === 0 ? `Storage` : `${Math.round(doorW)}`,
+          // First door carries the WIDTH text ("W:600, 2 doors") inside
+          // the box; the rest are blank so the door row stays clean.
+          id: `storage-${side}-door-${i}`, type: 'STORAGE_DOOR',
+          label: i === 0 ? `W:${Math.round(boxW)} · ${count} doors` : '',
           x: doorCursorX, y: cursorY, width: doorW, height: boxH, qty: 1, visible: true,
           source: { formula: `Storage Box (${side}) Door ${i + 1} of ${count} — Width = (Storage Width(${Math.round(boxW)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm — from Storage Width only`, constants: [] },
         });
         doorCursorX += doorW + gapMm;
       }
-      // Storage measurements are NOT drawn as a fan of dimension arrows
-      // (that crowded the small pocket badly) — they go into a small
-      // bordered spec box in free space to the OUTER side of the pocket,
-      // with a short leader back to the box. H / W / D / Doors listed as
-      // plain text, per the user's reference.
-      const nbAnchorX = side === 'left' ? boxX : boxX + boxW;
-      const nbX = side === 'left' ? boxX - 170 : boxX + boxW + 30;
-      noteBoxes.push({
-        id: `storage-${side}-note`,
-        x: nbX, y: cursorY,
-        title: 'Storage',
-        lines: [
-          `H : ${Math.round(boxH)}`,
-          `W : ${Math.round(boxW)}`,
-          `D : ${Math.round(storageSide.depthMm)}`,
-          `Doors : ${count}`,
-        ],
-        color: '#b45309',
-        anchor: { x: nbAnchorX, y: cursorY + boxH / 2 },
-      });
-      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 230 : 20));
+      // Storage: Height as ONE vertical arrow on the outer edge, Depth as
+      // ONE diagonal line, Width shown as text inside (above), and the
+      // component NAME on a short leader (like the reference). No fan of
+      // crossing arrows, no note box.
+      const hLeaderX = side === 'left' ? boxX - 14 : boxX + boxW + 14;
+      dimReqs.push({ axis: 'v', x1: hLeaderX, y1: cursorY, x2: hLeaderX, y2: cursorY + boxH, edge: side === 'left' ? 'left' : 'right', componentIds: [`storage-${side}-door-0`], label: `${Math.round(boxH)}(H)`, source: { formula: 'Storage Box Height (entered)', constants: [] } });
+      const sDiag = insideDiagonal(boxX, cursorY, boxW, boxH, side === 'left' ? 'left-down' : 'right-down');
+      lines.push({ x1: boxX + (side === 'left' ? boxW : 0), y1: cursorY, x2: sDiag.x2, y2: sDiag.y2, color: DIAG, label: `${Math.round(storageSide.depthMm)}(D)` });
+      // Name leader — from just above the box out to a "Storage" caption.
+      const nmX = side === 'left' ? boxX - 90 : boxX + boxW + 90;
+      lines.push({ x1: side === 'left' ? boxX : boxX + boxW, y1: cursorY + 8, x2: nmX, y2: cursorY - 6, color: '#b45309', label: 'Storage', labelAtStart: false, arrowAtStart: true });
+      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 120 : 20));
       storagePocketBottomEdge = Math.max(storagePocketBottomEdge, cursorY + boxH);
       cursorY += boxH;
     }
@@ -1123,27 +1135,17 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       const boxH = Math.max(1, openBoxSide.heightMm);
       const boxX = side === 'left' ? innerEdgeX - boxW : innerEdgeX;
       components.push({
-        id: `open-box-${side}`, type: 'OPEN_BOX', label: `Open Box`,
+        // The Open Box shows its full H×W×D as ONE line of text INSIDE the
+        // box (per the user: "200(H)*200(D)*400(W)"), no arrows at all.
+        id: `open-box-${side}`, type: 'OPEN_BOX',
+        label: `${Math.round(boxH)}(H) * ${Math.round(openBoxSide.depthMm)}(D) * ${Math.round(boxW)}(W)`,
         x: boxX, y: cursorY, width: boxW, height: boxH, qty: 1, visible: true,
-        source: { formula: `Open Box (${side}) — Width x Height x Depth (all entered), no door/shutter${hasStorage ? ' — sits directly below the Storage Box' : ' — takes the Storage Box position (no Storage on this side)'}`, constants: [] },
+        source: { formula: `Open Box (${side}) — Height x Depth x Width (all entered), no door/shutter${hasStorage ? ' — sits directly below the Storage Box' : ' — takes the Storage Box position (no Storage on this side)'}`, constants: [] },
       });
-      // Open Box measurements — same tidy spec box as Storage (no arrows).
-      const obAnchorX = side === 'left' ? boxX : boxX + boxW;
-      const obNbX = side === 'left' ? boxX - 170 : boxX + boxW + 30;
-      noteBoxes.push({
-        id: `open-box-${side}-note`,
-        x: obNbX, y: cursorY,
-        title: 'Open Box',
-        lines: [
-          `H : ${Math.round(boxH)}`,
-          `W : ${Math.round(boxW)}`,
-          `D : ${Math.round(openBoxSide.depthMm)}`,
-          `No door / shutter`,
-        ],
-        color: '#ea580c',
-        anchor: { x: obAnchorX, y: cursorY + boxH / 2 },
-      });
-      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 230 : 20));
+      // Name leader only — "Open Box" caption on a short arrow, like Storage.
+      const obNmX = side === 'left' ? boxX - 90 : boxX + boxW + 90;
+      lines.push({ x1: side === 'left' ? boxX : boxX + boxW, y1: cursorY + boxH / 2, x2: obNmX, y2: cursorY + boxH / 2 + 10, color: '#ea580c', label: 'Open Box', arrowAtStart: true });
+      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 120 : 20));
       storagePocketBottomEdge = Math.max(storagePocketBottomEdge, cursorY + boxH);
     }
   }
@@ -1180,6 +1182,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       });
     }
     for (const l of (stPlan.lines ?? [])) {
+      // Per the user: in the ATTACHED Study Table drawing, don't carry
+      // over the standalone's "Top" / "Tray" name leaders — just the
+      // measurements (and Storage, if added). Skip those two leader lines
+      // and the Tray's own decorative bar.
+      if (l.label === 'Top' || l.label === 'Tray') continue;
+      if (!l.label && l.color === '#2563eb' && Math.abs(l.y1 - l.y2) < 0.5) continue; // the unlabelled Tray bar
       lines.push({ ...l, x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy });
     }
     for (const d of stPlan.dimensions) {
