@@ -305,12 +305,13 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     },
   };
 
-  // Study Table attached to the Wardrobe — only offered when Dressing is
-  // NOT selected (spec §23). Uses the SAME measurement set + drawing as
-  // the standalone Study Table product (H/W/D + optional Storage +
-  // optional Side Panel); the extra `Position` dropdown docks it to the
-  // Wardrobe on that side (Left / Right / Both).
-  const studyTableAddonActive = isWardrobe && !dressing.enabled && selectedAddons.has('study-table');
+  // Study Table attached to the Wardrobe — uses the SAME measurement set +
+  // drawing as the standalone Study Table product (H/W/D + optional
+  // Storage + optional Side Panel); the extra `Position` dropdown docks
+  // it to the Wardrobe on that side (Left / Right / Both). Can coexist
+  // with Side Dressing — Dressing sits flush to the wardrobe, the Study
+  // Table docks outside it on its chosen side.
+  const studyTableAddonActive = isWardrobe && selectedAddons.has('study-table');
   const studyTablePosition = studyTableAddonActive
     ? (SIDE_OPTS[(addonDims['study-table']?.side) ?? 0] ?? 'left')
     : 'none';
@@ -872,12 +873,8 @@ export const ProductFlow: React.FC = () => {
               .map((f) => [f.key, f.defaultValue]),
           ),
         }));
-        // Study Table is only available when Dressing is NOT selected
-        // (spec §23) — turning Dressing ON while Study Table was already
-        // attached must turn Study Table back off, never leave a stale
-        // "enabled but hidden" state the user can't see or fix through
-        // the addon panel any more.
-        if (addonId === 'dressing') next.delete('study-table');
+        // (Study Table and Side Dressing may now be added together — no
+        // auto-removal of one when the other is toggled on.)
       }
       return next;
     });
@@ -1798,12 +1795,9 @@ export const ProductFlow: React.FC = () => {
                     // everything else, on every other product, unchanged.
                     const effectiveDefault = (key: string, staticDefault: number): number =>
                       wardrobeComputedAddonDefaults[addon.id]?.[key] ?? staticDefault;
-                    // Study Table is only available when Dressing is NOT
-                    // selected (spec §23) — shown but disabled (with a
-                    // clear reason) rather than silently vanishing, so the
-                    // user understands why it's unavailable instead of
-                    // wondering where it went.
-                    const isBlocked = addon.id === 'study-table' && selectedAddons.has('dressing');
+                    // (No addon is blocked by another any more — Study
+                    // Table can be added alongside Side Dressing.)
+                    const isBlocked = false;
                     // Common Left/Right/Both/None conditional-fields
                     // mechanism (one rule, reused by every addon that
                     // declares sideOf fields — Fix Patti, Khacha, Extra

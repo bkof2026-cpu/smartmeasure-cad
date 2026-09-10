@@ -338,7 +338,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'study-table',
       label: 'Study Table (Attached)',
       icon: '🪑',
-      description: 'Study Table attached beside the Wardrobe — the SAME measurement set as the standalone Study Table product, plus a Position (Left / Right / Both) to dock it. Only available when Side Dressing is not added.',
+      description: 'Study Table attached beside the Wardrobe — the SAME measurement set as the standalone Study Table product, plus a Position (Left / Right / Both) to dock it.',
       placement: 'composite',
       fields: [
         // Position first — which side(s) of the Wardrobe it attaches to.
@@ -507,7 +507,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'study-table',
       label: 'Study Table (Attached)',
       icon: '🪑',
-      description: 'Study Table attached beside the Wardrobe — the SAME measurement set as the standalone Study Table product, plus a Position (Left / Right / Both) to dock it. Only available when Side Dressing is not added.',
+      description: 'Study Table attached beside the Wardrobe — the SAME measurement set as the standalone Study Table product, plus a Position (Left / Right / Both) to dock it.',
       placement: 'composite',
       fields: [
         // Position first — which side(s) of the Wardrobe it attaches to.
