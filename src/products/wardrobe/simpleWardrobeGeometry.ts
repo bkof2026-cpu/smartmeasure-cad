@@ -473,7 +473,18 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // Bumped from 70 — the Side Panel's own Depth leader (below) now reaches
   // 110 units up from wardrobeY, which needs more headroom above it than
   // before to stay on-canvas when no Loft pushes wardrobeY down further.
-  const topPad = 130;
+  // Base headroom above the topmost drawn element. When an explicitly
+  // entered Total Height is TALLER than the wardrobe body itself, the
+  // "Total H" dimension arrow (bottom pinned to the floor line) has to
+  // reach ABOVE the wardrobe top by that overflow for its visual length
+  // to match its label — so reserve that much extra canvas above.
+  // Computed against the no-loft case (loftH not yet resolved here);
+  // a Loft only pushes the wardrobe further down, so this never
+  // under-reserves — at worst it adds harmless whitespace up top.
+  const enteredTotalHTopOverflow = totalHeightMm && totalHeightMm > 0
+    ? Math.max(0, totalHeightMm - H + 20)
+    : 0;
+  const topPad = 130 + enteredTotalHTopOverflow;
   const totalWidth = leftExtra + W + rightExtra;
   // roomWallX — the SINGLE shared left origin every top-level element in
   // this drawing is positioned from: the Loft row (Fix Patti + doors), the
@@ -773,7 +784,13 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   }
 
   dimReqs.push({ axis: 'h', x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: ['wardrobe'], label: `${Math.round(W)} (W)`, source: { formula: 'Wardrobe Width (entered)', constants: [] } });
-  dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: wardrobeY, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(H)} (H)`, source: { formula: 'Wardrobe Height (entered, includes the 70mm skirting)', constants: [] } });
+  // Wardrobe Height arrow — placed on the OUTER right edge of the whole
+  // composite (past any right-side Dressing / Top Panel), never on the
+  // wardrobe/dressing seam where it would collide with the Dressing's own
+  // internals (Mirror / Drawers) and their Total-Drawer-H leader. The
+  // Total-H arrow (also on the right) is then tiered one step further out.
+  const rightDimX = wardrobeX + W + dressR + topPanelR;
+  dimReqs.push({ axis: 'v', x1: rightDimX, y1: wardrobeY, x2: rightDimX, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(H)} (H)`, source: { formula: 'Wardrobe Height (entered, includes the 70mm skirting)', constants: [] } });
 
   // Skirting drawn further below, AFTER Dressing/Side Panel are resolved —
   // it spans the full composite floor line (Dressing + Wardrobe + Side
@@ -804,7 +821,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + totalWidth, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth)} (Total W)`, source: { formula: 'Total Width = Side Panel + Dressing + Wardrobe Width + Dressing + Side Panel', constants: [] } });
   }
   if (loftH > 0 && !(totalHeightMm && totalHeightMm > 0)) {
-    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: topPad, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'right', componentIds: [], label: `${Math.round(loftH + LOFT_WARDROBE_GAP_MM + H)} (Total H)`, source: { formula: 'Total Height = Wardrobe Height (incl. skirting) + 10mm gap + Loft Height', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: rightDimX, y1: topPad, x2: rightDimX, y2: wardrobeY + bodyH, edge: 'right', componentIds: [], label: `${Math.round(loftH + LOFT_WARDROBE_GAP_MM + H)} (Total H)`, source: { formula: 'Total Height = Wardrobe Height (incl. skirting) + 10mm gap + Loft Height', constants: [] } });
   }
 
   // Explicitly-entered "Total Width" / "Total Height" — separate measurement
@@ -832,7 +849,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + Math.max(totalWidthMm, totalWidth), y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} (Total W)`, source: { formula: 'Total Width (entered directly — a separate measurement, NOT Wardrobe Width + Dressing Width + Side Panel Width)', constants: [] } });
   }
   if (totalHeightMm && totalHeightMm > 0) {
-    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: Math.min(topPad, wardrobeY), x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'right', componentIds: [], label: `${Math.round(totalHeightMm)} (Total H)`, source: { formula: 'Total Height (entered directly — a separate measurement, NOT the same as Wardrobe Height)', constants: [] } });
+    // The arrow's VISUAL span must equal its own label — so it runs the
+    // full entered Total Height UP from the floor line, not just the
+    // wardrobe body. Bottom pinned to the floor (`wardrobeY + bodyH`);
+    // top = bottom − totalHeightMm (which reaches above the wardrobe /
+    // loft stack whenever the entered Total exceeds what's drawn — the
+    // `topPad` bump above reserves the canvas room for that). Clamped so
+    // an unusually small entered Total still can't invert the arrow.
+    const totalHBottomY = wardrobeY + bodyH;
+    const totalHTopY = Math.min(totalHBottomY - totalHeightMm, wardrobeY);
+    dimReqs.push({ axis: 'v', x1: rightDimX, y1: totalHTopY, x2: rightDimX, y2: totalHBottomY, edge: 'right', componentIds: [], label: `${Math.round(totalHeightMm)} (Total H)`, source: { formula: 'Total Height (entered directly — a separate measurement, NOT the same as Wardrobe Height)', constants: [] } });
   }
 
   // Side Dressing — flush against the Wardrobe carcass (both sit on the
@@ -841,19 +867,17 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // entered H). Width now gets its own real dimension arrow (below), on
   // top of the existing caption text (which stays, per no-redesign) — it
   // previously only appeared as text, never a measured arrow like every
-  // other value here. Height still gets its own real leader since it's
-  // the auto-fetched, non-obvious value. The Height leader is pushed
-  // clear of the box (not just a few px) and forced to tier 1 — its label
-  // is centered ON the line, so a tight same-tier offset let the label's
-  // own rendered width dip back into the "Dressing" caption inside the box.
-  const dressLeaderGap = 40;
+  // other value here. The Dressing Height is NOT dimensioned separately —
+  // it is always equal to the Wardrobe Height, and the single Wardrobe
+  // "(H)" arrow already states it (per the user's "wardrobe height =
+  // Dressing height, no need to show it differently").
   // Mirror (spec §22) + Drawers (spec §19-21) — real optional internals
   // drawn INSIDE the Dressing box: Mirror fills the upper portion (no
   // independent measurement, per the spec), Drawers fill the lower
   // portion, dynamically generated per the entered count and Total
   // Drawer Height (auto-divided evenly, never asked per-drawer), each
   // one's Width always equal to Dressing Width (never a separate field).
-  function drawDressingInternals(dressId: string, dx: number, dressW: number) {
+  function drawDressingInternals(dressId: string, dx: number, dressW: number, side: 'left' | 'right') {
     const hasMirror = dressing.hasMirror;
     const drawerCount = Math.max(0, Math.round(dressing.drawerCount) || 0);
     const totalDrawerH = drawerCount > 0 ? Math.min(dressing.totalDrawerHeightMm, bodyH) : 0;
@@ -876,26 +900,31 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
           source: { formula: `Drawer ${i + 1} of ${drawerCount} — Width = Dressing Width (auto) | drawn height = Total Drawer Height(${Math.round(totalDrawerH)}) ÷ ${drawerCount}`, constants: [] },
         });
       }
-      // Only the Total Drawer Height is called out (a plain vertical
-      // arrow on the drawer section's own edge) — never per-drawer sizes.
-      dimReqs.push({ axis: 'v', x1: dx + dressW * 0.5, y1: drawerY, x2: dx + dressW * 0.5, y2: drawerY + totalDrawerH, edge: 'left', componentIds: [`${dressId}-drawer-0`], label: `${Math.round(totalDrawerH)} (Total Drawer H)`, source: { formula: 'Total Drawer Height (entered), auto-divided evenly among the entered Drawer Count', constants: [] } });
+      // Only the Total Drawer Height is called out — a plain vertical
+      // arrow on the Dressing's OUTER edge (the side facing away from the
+      // Wardrobe), never per-drawer sizes and never through the middle of
+      // the box where the "Mirror"/"Drawers" captions and the Wardrobe-H /
+      // Total-H arrows already are. Left dressing → left edge; right
+      // dressing → right edge.
+      const drawerLeaderX = side === 'left' ? dx : dx + dressW;
+      dimReqs.push({ axis: 'v', x1: drawerLeaderX, y1: drawerY, x2: drawerLeaderX, y2: drawerY + totalDrawerH, edge: side, componentIds: [`${dressId}-drawer-0`], label: `${Math.round(totalDrawerH)} (Total Drawer H)`, source: { formula: 'Total Drawer Height (entered), auto-divided evenly among the entered Drawer Count', constants: [] } });
     }
   }
   if (dressL > 0) {
     const dx = wardrobeX - dressL;
-    // Dressing's own Width shown right IN its box (label), Height as a
-    // plain vertical arrow on its outer edge. Height = Wardrobe Height
-    // (they are equal — per the user's "Wardrobe height = dressing
-    // height" note), so it's not re-labelled as a separate figure.
+    // Dressing's own Width shown right IN its box (label). Its Height is
+    // ALWAYS equal to the Wardrobe Height (auto-fetched, never entered
+    // separately), so — per the user's "wardrobe height = Dressing
+    // height, no need to show the Dressing height differently" — no
+    // separate Dressing-height dimension arrow is drawn; the single
+    // Wardrobe "(H)" arrow already states it.
     components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing\n${Math.round(dressL)} W`, x: dx, y: wardrobeY, width: dressL, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
-    dimReqs.push({ axis: 'v', x1: dx - dressLeaderGap, y1: wardrobeY, x2: dx - dressLeaderGap, y2: wardrobeY + bodyH, edge: 'left', componentIds: ['dress-l'], label: `${Math.round(bodyH)} (H)`, source: { formula: 'Dressing Height = Wardrobe Height (equal, auto-fetched)', constants: [] } });
-    drawDressingInternals('dress-l', dx, dressL);
+    drawDressingInternals('dress-l', dx, dressL, 'left');
   }
   if (dressR > 0) {
     const dx = wardrobeX + W;
     components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing\n${Math.round(dressR)} W`, x: dx, y: wardrobeY, width: dressR, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
-    dimReqs.push({ axis: 'v', x1: dx + dressR + dressLeaderGap, y1: wardrobeY, x2: dx + dressR + dressLeaderGap, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['dress-r'], label: `${Math.round(bodyH)} (H)`, source: { formula: 'Dressing Height = Wardrobe Height (equal, auto-fetched)', constants: [] } });
-    drawDressingInternals('dress-r', dx, dressR);
+    drawDressingInternals('dress-r', dx, dressR, 'right');
   }
 
   // Skirting — a real, labelled 70mm band at the FLOOR line of the lower
@@ -1052,45 +1081,49 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // LEFT-side Wall B is already covered by the leaderMargin/roomWallX
   // shift above (everything else's own origin already makes room for it).
   const adjacentLoftRightEdge = adjacentLoft.enabled && adjacentLoft.side === 'right' ? loftX + roomWallWidth + 60 + 130 + 20 : 0;
-  const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + roomWallWidth + 20 : 0, adjacentLoftRightEdge, storagePocketRightEdge, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
+  // An explicitly-entered Total Width can exceed the drawn furniture
+  // composite (the "overall opening is wider than the wardrobe unit"
+  // case) — its dimension line runs out to `loftX + max(totalWidthMm,
+  // totalWidth)`, so the canvas must reach past that plus room for the
+  // line's end tick and its label, or the arrow spills off the plot.
+  const enteredTotalWRightEdge = totalWidthMm && totalWidthMm > 0
+    ? loftX + Math.max(totalWidthMm, totalWidth) + 40
+    : 0;
+  const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + roomWallWidth + 20 : 0, adjacentLoftRightEdge, storagePocketRightEdge, enteredTotalWRightEdge, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
   // bodyH now IS the full entered Wardrobe Height (skirting is drawn as
   // a band inside its bottom, not an extra strip below it) — so no
   // "+ skirtH" here any more; the extra 70/20 is just headroom for the
   // bottom dimension line(s).
   const worldHeight = Math.max(wardrobeY + bodyH + (leftExtra + rightExtra > 0 ? 70 : 20), storagePocketBottomEdge + 40, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
-  // The Dressing Height leader sits right beside a narrow box whose own
-  // "Dressing" caption is centered inside it — the standard tier-0 offset
-  // (18px, fixed regardless of drawing scale) is narrower than the label's
-  // own rendered width, so its bordered box would clip into the component
-  // it's labeling. Forcing it out to tier 1 (36px) is scale-independent —
-  // unlike widening dressLeaderGap, which is a world-mm value that shrinks
-  // to almost nothing once scaled down for a large composite drawing.
   const resolvedDims = resolveDimensions(dimReqs);
-  // "total width"/"total height" share the Wardrobe's own width/height
-  // base edge (see above) so the collisionEngine's span-overlap tiering
-  // is what actually separates them on screen — but the engine sorts by
-  // span START, and the total-* span (Side Panel/Dressing to Side Panel/
-  // Dressing) always starts at or before the Wardrobe's own narrower
-  // span, so auto-tiering alone can put it on the INNER tier instead of
-  // the outer one. Real CAD convention: the overall dimension always
-  // reads outside the individual one it encloses — so pin it explicitly,
-  // one tier past whatever the wardrobe's own width/height landed on.
-  const ownWidthTier = resolvedDims.find((d) => d.label.includes('(width)'))?.tier ?? 0;
-  const ownHeightTier = resolvedDims.find((d) => d.label.includes('(height)'))?.tier ?? 0;
-  const computedTotalWidthTier = resolvedDims.find((d) => d.label.includes('total width'))?.tier;
-  const computedTotalHeightTier = resolvedDims.find((d) => d.label.includes('total height'))?.tier;
+  // Real-CAD convention: the individual dimension (Wardrobe W / H) reads on
+  // the INNER tier, closest to the drawing; every enclosing "total" reads
+  // strictly OUTSIDE it. The wardrobe's own W/H arrows are labelled
+  // `"<n> (W)"` / `"<n> (H)"`; both the add-on-derived composite total and
+  // the user-entered overall are `"<n> (Total W)"` / `"(Total H)"` (only
+  // the source/formula differs, and they're mutually exclusive). Match on
+  // those exact suffixes and pin the tiers so the ordering is explicit,
+  // not left to the collision engine's span-sort — which, seeing the
+  // total's span start at/before the wardrobe's own narrower span, can
+  // otherwise drop the total onto the inner tier.
+  const isOwnWidth = (d: (typeof resolvedDims)[number]) => /\(W\)$/.test(d.label) && !/\(Total W\)$/.test(d.label);
+  const isOwnHeight = (d: (typeof resolvedDims)[number]) => /\(H\)$/.test(d.label) && !/\(Total H\)$/.test(d.label);
+  const isTotalWidth = (d: (typeof resolvedDims)[number]) => /\(Total W\)$/.test(d.label);
+  const isTotalHeight = (d: (typeof resolvedDims)[number]) => /\(Total H\)$/.test(d.label);
+  const ownWidthTier = resolvedDims.find(isOwnWidth)?.tier ?? 0;
+  const ownHeightTier = resolvedDims.find(isOwnHeight)?.tier ?? 0;
   const dimensions = resolvedDims.map((d) => {
-    const isDressingHeight = (d.componentIds.includes('dress-l') || d.componentIds.includes('dress-r')) && (d.edge === 'left' || d.edge === 'right');
-    if (isDressingHeight) return { ...d, tier: Math.max(d.tier, 1) };
-    if (d.label.includes('total width')) return { ...d, tier: Math.max(d.tier, ownWidthTier + 1) };
-    if (d.label.includes('total height')) return { ...d, tier: Math.max(d.tier, ownHeightTier + 1) };
-    // The user-entered "Total Width/Height" always reads as the true
-    // outermost dimension — one tier past the add-on-driven computed total
-    // when one is showing, or past the wardrobe's own width/height when
-    // there's no add-on total to sit outside of.
-    if (d.label.includes('Total Width, entered')) return { ...d, tier: Math.max(d.tier, (computedTotalWidthTier ?? ownWidthTier) + 1) };
-    if (d.label.includes('Total Height, entered')) return { ...d, tier: Math.max(d.tier, (computedTotalHeightTier ?? ownHeightTier) + 1) };
+    // Wardrobe's own W/H keeps its (inner) resolved tier; any enclosing
+    // "Total W" / "Total H" is pushed one full tier further out.
+    if (isTotalWidth(d)) return { ...d, tier: Math.max(d.tier, ownWidthTier + 1) };
+    if (isTotalHeight(d)) return { ...d, tier: Math.max(d.tier, ownHeightTier + 1) };
+    // A right-side Dressing's "Total Drawer H" leader shares the outer
+    // right edge with the Wardrobe-H / Total-H arrows and overlaps them in
+    // Y — push it one tier past the Total-H so the three never stack on
+    // the same offset. (Left-side Dressing puts it on the free left edge,
+    // no conflict, so only bump when it landed on the right.)
+    if (/Total Drawer H/.test(d.label) && d.edge === 'right') return { ...d, tier: Math.max(d.tier, ownHeightTier + 2) };
     return d;
   });
   const issues = [
