@@ -238,12 +238,15 @@ export function TechnicalDrawingSvg({
           const handleOnRight = worldCx < worldWidth / 2;
           const showHandle = isPullType(c.type) && pw > 14 && ph > 10 && !c.noHandle;
           const name = nameOf(c);
+          // A horizontal band (much wider than tall — e.g. Skirting)
+          // writes its caption directly ON the band, vertically centered,
+          // regardless of how thin the band scales to. Short caption on a
+          // long band always reads fine even if it slightly overhangs the
+          // thin stroke.
+          const isHorizontalBand = pw > name.length * 4.4 + 6 && pw > ph * 4;
           // The name fits inside only if the box is big enough BOTH ways.
-          const fitsInside = pw > name.length * 4.4 + 6 && ph > 13;
-          // A very wide-but-short band (e.g. Skirting) still reads fine with
-          // its name sitting just above it — not worth a margin callout.
-          const fitsAbove = !fitsInside && pw > name.length * 4.4 + 6 && ph <= 13 && ph > 2;
-          if (name && !fitsInside && !fitsAbove) {
+          const fitsInside = (pw > name.length * 4.4 + 6 && ph > 13) || isHorizontalBand;
+          if (name && !fitsInside) {
             // Leader to the nearer vertical edge, pointing OUT toward the
             // closer side of the drawing — the label sits just beyond that
             // edge, NOT at the canvas margin.
@@ -265,13 +268,10 @@ export function TechnicalDrawingSvg({
                 )
               )}
               {name && fitsInside && (
-                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={7} fontFamily="'DM Sans',sans-serif" fill="#333" fontWeight={700}>
-                  {c.label}
+                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={isHorizontalBand ? 6.5 : 7} fontFamily="'DM Sans',sans-serif" fill={isHorizontalBand ? (style.stroke ?? '#333') : '#333'} fontWeight={700}
+                  {...(isHorizontalBand ? { stroke: 'white', strokeWidth: 2.4, paintOrder: 'stroke' as const } : {})}>
+                  {isHorizontalBand ? name : c.label}
                 </text>
-              )}
-              {name && fitsAbove && (
-                <text x={px + pw / 2} y={py - 3} textAnchor="middle" fontSize={6.5} fontFamily="'DM Sans',sans-serif" fill={style.stroke ?? '#333'} fontWeight={700}
-                  stroke="white" strokeWidth={2.2} paintOrder="stroke">{name}</text>
               )}
             </g>
           );

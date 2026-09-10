@@ -959,21 +959,14 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     const skirtX = wardrobeX - dressL;
     const skirtW = dressL + W + dressR;
     components.push({
-      // No in-box label — a wide 70mm band can't hold text; its name is
-      // shown horizontally in the free space below the drawing (line
-      // below), and the 70mm value on its own bottom-edge dim.
-      id: 'skirting', type: 'SKIRTING', label: ``, x: skirtX, y: skirtY, width: skirtW, height: skirtH, qty: 1, visible: true,
+      // The label is written directly ON the skirting band itself —
+      // "Skirting (70mm)" — no leader arrow and no separate dimension
+      // line (per the user: "do not show the skirting by big arrow,
+      // write this on the skirting line"). The band is wide enough to
+      // hold this short caption centered in it.
+      id: 'skirting', type: 'SKIRTING', label: `Skirting (${skirtH}mm)`, x: skirtX, y: skirtY, width: skirtW, height: skirtH, qty: 1, visible: true,
       source: { formula: `Fixed ${skirtH}mm skirting band at the floor line — spans Dressing + Wardrobe (+ Study Table), part of the entered Wardrobe Height, not subtracted from it`, constants: [] },
     });
-    // "Skirting" name — a plain horizontal caption in the free band below
-    // the drawing, on a short leader up to the skirting's own left end.
-    // Off the RIGHT edge it collided with / hid the Total-H arrow.
-    const skirtNameY = skirtY + skirtH + 30;
-    lines.push({ x1: skirtX + skirtW * 0.12, y1: skirtY + skirtH, x2: skirtX + skirtW * 0.12, y2: skirtNameY, color: '#78716c' });
-    lines.push({ x1: skirtX + skirtW * 0.12, y1: skirtNameY, x2: skirtX + skirtW * 0.12, y2: skirtNameY, color: '#78716c', label: 'Skirting' });
-    // 70mm value — on the skirting's own BOTTOM edge (offsets downward,
-    // free space), never the right edge where the Total-H arrow runs.
-    dimReqs.push({ axis: 'h', x1: skirtX, y1: skirtY + skirtH, x2: skirtX + skirtW, y2: skirtY + skirtH, edge: 'bottom', componentIds: ['skirting'], label: `${skirtH} (Skirting H)`, source: { formula: `Fixed ${skirtH}mm skirting band`, constants: [] } });
   }
 
   // Top Panel (renamed from Side Panel — per the user's own, twice-
