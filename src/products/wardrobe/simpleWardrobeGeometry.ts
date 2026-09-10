@@ -1162,17 +1162,19 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   function drawStudyTable(side: 'left' | 'right') {
     if (!stPlan) return;
     const floorY = wardrobeY + bodyH;
-    // sub-plan local coords: its components span [subLeft, subLeft+stFullW],
-    // top at its own topPad, bottom at topPad + H.
-    const subLeft = Math.min(...stPlan.components.map((c) => c.x));
-    const subTop = Math.min(...stPlan.components.map((c) => c.y));
     const subBottom = Math.max(...stPlan.components.map((c) => c.y + c.height));
-    // Dock: left side → sub-plan's right edge meets the composite left
-    // edge; right side → sub-plan's left edge meets the composite right edge.
-    const dockLeftX = side === 'left'
-      ? wardrobeX - dressL - topPanelL - stFullW
-      : wardrobeX + W + dressR + topPanelR;
-    const dx = dockLeftX - subLeft;
+    // The Study Table sub-drawing (frame + any Storage + Side Panels)
+    // sits FLUSH against the Wardrobe (or the Dressing / Top Panel on
+    // that side) — NO gap. Dock the sub-plan's edge NEAREST the wardrobe
+    // onto the composite edge: left dock → sub-plan's RIGHT edge; right
+    // dock → sub-plan's LEFT edge.
+    const subLeft = Math.min(...stPlan.components.map((c) => c.x));
+    const subRight = Math.max(...stPlan.components.map((c) => c.x + c.width));
+    const compositeLeftEdge = wardrobeX - dressL - topPanelL;
+    const compositeRightEdge = wardrobeX + W + dressR + topPanelR;
+    const dx = side === 'left'
+      ? compositeLeftEdge - subRight
+      : compositeRightEdge - subLeft;
     const dy = floorY - subBottom;
     const pfx = `study-${side}-`;
     for (const c of stPlan.components) {
@@ -1197,7 +1199,6 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
         label: d.label, source: d.source, color: d.color,
       });
     }
-    void subTop;
   }
   if (studyOnLeft) drawStudyTable('left');
   if (studyOnRight) drawStudyTable('right');
