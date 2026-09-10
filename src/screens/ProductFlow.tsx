@@ -276,29 +276,32 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     },
   };
 
-  // Open Box — a real box beside the Wardrobe/Dressing, no door
-  // calculation. Depth defaults to Wardrobe Depth (spec §28). When a
-  // Storage Box is present on the SAME side, the Open Box sits directly
-  // below it in the same pocket column and its Width defaults to the
-  // Storage Box Width (reference: "W = 340, by default same as Storage
-  // Box W"); the user's entered Width still wins if they set one.
+  // Open Box — a small open box in the top pocket (top edge = Loft
+  // bottom), no door calculation, keeping its own entered W/H/D.
+  //   - WITH a Storage Box on the same side: sits directly below the
+  //     Storage Box in the same column; Width defaults to the Storage Box
+  //     Width (reference: "W = 340, by default same as Storage Box W").
+  //   - WITHOUT a Storage Box: takes the Storage Box's own top spot;
+  //     defaults to a small box — W 300 / H 200 / D 200 (reference:
+  //     "Open Box Without Storage box — W=300, H=200, D=200").
+  // The user's entered value always wins over any default.
   const openBoxAddonActive = isWardrobe && selectedAddons.has('open-box');
   const openBoxPosition = openBoxAddonActive ? (SIDE_OR_NONE_OPTS[(addonDims['open-box']?.position) ?? 0] ?? 'none') : 'none';
-  const openBoxLeftWidthDefault = (storage.position === 'left' || storage.position === 'both') && storage.left.enabled ? storage.left.widthMm : 600;
-  const openBoxRightWidthDefault = (storage.position === 'right' || storage.position === 'both') && storage.right.enabled ? storage.right.widthMm : 600;
+  const hasStorageLeft = (storage.position === 'left' || storage.position === 'both') && storage.left.enabled;
+  const hasStorageRight = (storage.position === 'right' || storage.position === 'both') && storage.right.enabled;
   const openBox: WardrobeOpenBoxInput = {
     position: openBoxPosition,
     left: {
       enabled: openBoxPosition === 'left' || openBoxPosition === 'both',
-      heightMm: (addonDims['open-box']?.leftH) ?? 300,
-      widthMm: (addonDims['open-box']?.leftW) ?? openBoxLeftWidthDefault,
-      depthMm: (addonDims['open-box']?.leftD) ?? (n(dims.D ?? 0) || 600),
+      heightMm: (addonDims['open-box']?.leftH) ?? 200,
+      widthMm: (addonDims['open-box']?.leftW) ?? (hasStorageLeft ? storage.left.widthMm : 300),
+      depthMm: (addonDims['open-box']?.leftD) ?? (hasStorageLeft ? (n(dims.D ?? 0) || 450) : 200),
     },
     right: {
       enabled: openBoxPosition === 'right' || openBoxPosition === 'both',
-      heightMm: (addonDims['open-box']?.rightH) ?? 300,
-      widthMm: (addonDims['open-box']?.rightW) ?? openBoxRightWidthDefault,
-      depthMm: (addonDims['open-box']?.rightD) ?? (n(dims.D ?? 0) || 600),
+      heightMm: (addonDims['open-box']?.rightH) ?? 200,
+      widthMm: (addonDims['open-box']?.rightW) ?? (hasStorageRight ? storage.right.widthMm : 300),
+      depthMm: (addonDims['open-box']?.rightD) ?? (hasStorageRight ? (n(dims.D ?? 0) || 450) : 200),
     },
   };
 

@@ -325,8 +325,13 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     const sides: Array<['Left' | 'Right', WardrobeOpenBoxSideInput]> = [];
     if ((inp.openBox.position === 'left' || inp.openBox.position === 'both') && inp.openBox.left.enabled) sides.push(['Left', inp.openBox.left]);
     if ((inp.openBox.position === 'right' || inp.openBox.position === 'both') && inp.openBox.right.enabled) sides.push(['Right', inp.openBox.right]);
+    const obHasStorageSameSide = (sl: 'Left' | 'Right') =>
+      sl === 'Left'
+        ? (inp.storage.position === 'left' || inp.storage.position === 'both') && inp.storage.left.enabled
+        : (inp.storage.position === 'right' || inp.storage.position === 'both') && inp.storage.right.enabled;
     for (const [sideLabel, b] of sides) {
-      rows.push({ component: `Open Box (${sideLabel})`, width: b.widthMm, height: b.heightMm, qty: 1, remark: `Width x Height (both entered) | Depth = ${Math.round(b.depthMm)}mm (defaults to Wardrobe Depth, editable) — no door/shutter, a real open box` });
+      const withStorage = obHasStorageSameSide(sideLabel);
+      rows.push({ component: `Open Box (${sideLabel})`, width: b.widthMm, height: b.heightMm, qty: 1, remark: `${Math.round(b.widthMm)}(W) x ${Math.round(b.heightMm)}(H) x ${Math.round(b.depthMm)}(D) — no door/shutter, a real open box in the top pocket | ${withStorage ? 'sits directly below the Storage Box (Width defaults to the Storage Box Width)' : 'takes the Storage Box top spot (no Storage on this side); default small box 300(W) x 200(H) x 200(D)'}` });
     }
   }
   if (inp.studyTable.enabled) {
