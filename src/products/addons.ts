@@ -338,16 +338,18 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'study-table',
       label: 'Study Table (Attached)',
       icon: '🪑',
-      description: 'Study Table attached beside the Wardrobe/Dressing — Left, Right or Both, each with its own H × W × D. Only available when Side Dressing is not added.',
+      description: 'Study Table attached beside the Wardrobe — the SAME measurement set as the standalone Study Table product, plus a Position (Left / Right / Both) to dock it. Only available when Side Dressing is not added.',
       placement: 'composite',
       fields: [
+        // Position first — which side(s) of the Wardrobe it attaches to.
         { key: 'side', label: 'Study Table Position', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'left' },
-        { key: 'leftW', label: 'Left Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'left' },
-        { key: 'leftD', label: 'Left Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'left' },
-        { key: 'rightH', label: 'Right Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'right' },
-        { key: 'rightW', label: 'Right Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'right' },
-        { key: 'rightD', label: 'Right Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'right' },
+        // Then the standalone Study Table product's own fields, verbatim.
+        { key: 'H', label: 'Height', defaultValue: 750, min: 600, max: 900 },
+        { key: 'W', label: 'Width', defaultValue: 1200, min: 600, max: 2400 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 900 },
+        { key: 'storage', label: 'Add Storage', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'storageW', label: 'Storage Width', defaultValue: 450, min: 250, max: 900, showWhen: { key: 'storage', equals: [1, 2, 3] } },
+        { key: 'sidePanel', label: 'Add Side Panel', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
       ],
     },
     {
@@ -505,16 +507,18 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'study-table',
       label: 'Study Table (Attached)',
       icon: '🪑',
-      description: 'Study Table attached beside the Wardrobe/Dressing — Left, Right or Both, each with its own H × W × D. Only available when Side Dressing is not added.',
+      description: 'Study Table attached beside the Wardrobe — the SAME measurement set as the standalone Study Table product, plus a Position (Left / Right / Both) to dock it. Only available when Side Dressing is not added.',
       placement: 'composite',
       fields: [
+        // Position first — which side(s) of the Wardrobe it attaches to.
         { key: 'side', label: 'Study Table Position', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
-        { key: 'leftH', label: 'Left Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'left' },
-        { key: 'leftW', label: 'Left Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'left' },
-        { key: 'leftD', label: 'Left Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'left' },
-        { key: 'rightH', label: 'Right Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'right' },
-        { key: 'rightW', label: 'Right Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'right' },
-        { key: 'rightD', label: 'Right Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'right' },
+        // Then the standalone Study Table product's own fields, verbatim.
+        { key: 'H', label: 'Height', defaultValue: 750, min: 600, max: 900 },
+        { key: 'W', label: 'Width', defaultValue: 1200, min: 600, max: 2400 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 900 },
+        { key: 'storage', label: 'Add Storage', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
+        { key: 'storageW', label: 'Storage Width', defaultValue: 450, min: 250, max: 900, showWhen: { key: 'storage', equals: [1, 2, 3] } },
+        { key: 'sidePanel', label: 'Add Side Panel', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
       ],
     },
     {

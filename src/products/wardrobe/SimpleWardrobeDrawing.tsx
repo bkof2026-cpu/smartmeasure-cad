@@ -14,8 +14,7 @@ const DEFAULT_STORAGE_SIDE = { enabled: false, heightMm: 450, widthMm: 600, dept
 const DEFAULT_STORAGE: WardrobeStorageInput = { position: 'none', left: DEFAULT_STORAGE_SIDE, right: DEFAULT_STORAGE_SIDE };
 const DEFAULT_OPEN_BOX_SIDE = { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 };
 const DEFAULT_OPEN_BOX: WardrobeOpenBoxInput = { position: 'none', left: DEFAULT_OPEN_BOX_SIDE, right: DEFAULT_OPEN_BOX_SIDE };
-const DEFAULT_STUDY_TABLE_SIDE = { enabled: false, heightMm: 750, widthMm: 1200, depthMm: 600 };
-const DEFAULT_STUDY_TABLE: WardrobeStudyTableInput = { position: 'none', left: DEFAULT_STUDY_TABLE_SIDE, right: DEFAULT_STUDY_TABLE_SIDE };
+const DEFAULT_STUDY_TABLE: WardrobeStudyTableInput = { position: 'none', heightMm: 750, widthMm: 1200, depthMm: 600, storage: 'none', storageWidthMm: 450, sidePanel: 'none' };
 const DEFAULT_ADJACENT_LOFT: WardrobeAdjacentLoftInput = {
   enabled: false, side: 'left', mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2,
   fixPatti: DEFAULT_FIX_PATTI, khacha: DEFAULT_KHACHA,
@@ -51,7 +50,7 @@ const WARDROBE_COMPONENT_COLORS: Record<string, ComponentStyle> = {
   KHACHA:        { fill: '#bbf7d0', stroke: '#15803d', strokeWidth: 1.5 },
   STORAGE_DOOR:  { fill: '#fef3c7', stroke: '#b45309', strokeWidth: 1.1 },
   OPEN_BOX:      { fill: '#fff7ed', stroke: '#ea580c', strokeWidth: 1.2, strokeDasharray: '4 2' },
-  STUDY_TABLE:   { fill: '#ccfbf1', stroke: '#0d9488', strokeWidth: 1.5 },
+  STUDY_TABLE_FRAME: { fill: '#ccfbf1', stroke: '#0d9488', strokeWidth: 1.5 },
   SKIRTING:      { fill: '#c8c0a8', stroke: '#78716c', strokeWidth: 0.9 },
 };
 function componentStyle(c: ComponentSpec): ComponentStyle {

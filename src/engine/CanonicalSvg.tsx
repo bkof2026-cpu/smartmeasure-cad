@@ -212,15 +212,24 @@ export function TechnicalDrawingSvg({
         // that isn't purely a number (pure-number labels are door widths
         // etc. — those stay inside or are shown by their own dim arrow).
         const calloutColor = (c: ComponentSpec) => ((componentStyle ?? defaultStyleFor)(c).stroke ?? '#333');
+        // A component's name is already shown by a dimension arrow when
+        // that arrow's label ends in "(<name>)" — e.g. Skirting's own
+        // "70 (Skirting)" arrow — so it needs no separate name callout.
+        const namedByDim = new Set(
+          dimensions
+            .map((d) => d.label.match(/\(([A-Za-z][A-Za-z .-]*)\)\s*$/)?.[1]?.trim().toLowerCase())
+            .filter(Boolean) as string[],
+        );
         const nameOf = (c: ComponentSpec) => {
           const first = (c.label || '').split('\n')[0].trim();
           // Skip labels that are just a measurement (a bare number, or a
           // number followed by a "(W)"/"(H)"/"(D)" unit tag) — those are
           // door widths etc., already covered by their own dim arrow.
           if (!first || /^[\d.]+$/.test(first) || /^[\d.]+\s*\(/.test(first)) return '';
+          if (namedByDim.has(first.toLowerCase())) return '';
           return first;
         };
-        const smallCallouts: { c: ComponentSpec; name: string; ax: number; ay: number }[] = [];
+        const smallCallouts: { c: ComponentSpec; name: string; ax: number; ay: number; toLeft: boolean }[] = [];
         const boxes = components.filter((c) => c.visible).map((c) => {
           const style = (componentStyle ?? defaultStyleFor)(c);
           const selected = selectedComponentId === c.id;
@@ -229,11 +238,17 @@ export function TechnicalDrawingSvg({
           const handleOnRight = worldCx < worldWidth / 2;
           const showHandle = isPullType(c.type) && pw > 14 && ph > 10 && !c.noHandle;
           const name = nameOf(c);
-          const fitsInside = pw > 30 && ph > 13 && pw > name.length * 4.2;
-          if (name && !fitsInside) {
-            // anchor the leader on the box edge nearest a free margin
-            const ax = worldCx < worldWidth / 2 ? px : px + pw;
-            smallCallouts.push({ c, name, ax, ay: py + ph / 2 });
+          // The name fits inside only if the box is big enough BOTH ways.
+          const fitsInside = pw > name.length * 4.4 + 6 && ph > 13;
+          // A very wide-but-short band (e.g. Skirting) still reads fine with
+          // its name sitting just above it — not worth a margin callout.
+          const fitsAbove = !fitsInside && pw > name.length * 4.4 + 6 && ph <= 13 && ph > 2;
+          if (name && !fitsInside && !fitsAbove) {
+            // Leader to the nearer vertical edge, pointing OUT toward the
+            // closer side of the drawing — the label sits just beyond that
+            // edge, NOT at the canvas margin.
+            const toLeft = worldCx < worldWidth / 2;
+            smallCallouts.push({ c, name, ax: toLeft ? px : px + pw, ay: py + ph / 2, toLeft });
           }
           return (
             <g key={c.id} onClick={() => onSelectComponent?.(c)} style={{ cursor: onSelectComponent ? 'pointer' : undefined }}>
@@ -254,31 +269,37 @@ export function TechnicalDrawingSvg({
                   {c.label}
                 </text>
               )}
+              {name && fitsAbove && (
+                <text x={px + pw / 2} y={py - 3} textAnchor="middle" fontSize={6.5} fontFamily="'DM Sans',sans-serif" fill={style.stroke ?? '#333'} fontWeight={700}
+                  stroke="white" strokeWidth={2.2} paintOrder="stroke">{name}</text>
+              )}
             </g>
           );
         });
-        // Leader callouts for the small components — names stacked down the
-        // left and right free margins, big arrow from the name to the box.
-        const leftCallouts = smallCallouts.filter((s) => (s.c.x + s.c.width / 2) < worldWidth / 2);
-        const rightCallouts = smallCallouts.filter((s) => (s.c.x + s.c.width / 2) >= worldWidth / 2);
-        const stackY = (i: number, n: number) => {
-          const usable = vh - titleRoom - footerRoom - 24;
-          return titleRoom + 12 + (n <= 1 ? usable / 2 : (usable * (i + 0.5)) / n);
-        };
-        const renderStack = (list: typeof smallCallouts, atLeft: boolean) =>
-          list.map((s, i) => {
-            const lx = atLeft ? Math.max(4, ox - dimRoom + 6) : Math.min(vw - 4, ox + worldWidth * scale + dimRoom - 6);
-            const ly = stackY(i, list.length);
-            const col = calloutColor(s.c);
-            return (
-              <g key={`callout-${s.c.id}`} pointerEvents="none">
-                <line x1={lx} y1={ly} x2={s.ax} y2={s.ay} stroke={col} strokeWidth={1} markerEnd="url(#canon-arrow)" opacity={0.9} />
-                <text x={lx} y={ly - 3} textAnchor={atLeft ? 'start' : 'end'} fontSize={7.5} fontFamily="'DM Sans',sans-serif" fill={col} fontWeight={800}
-                  stroke="white" strokeWidth={2.4} paintOrder="stroke">{s.name}</text>
-              </g>
-            );
-          });
-        return (<>{boxes}{renderStack(leftCallouts, true)}{renderStack(rightCallouts, false)}</>);
+        // Short leader callouts for the genuinely-small components — a
+        // stub line (~22px) from the box's near edge to a label just
+        // beyond it. Stacked vertically per side so two small components
+        // on the same side don't print their names on top of each other.
+        const STUB = 24;
+        const bySide = (toLeft: boolean) =>
+          smallCallouts.filter((s) => s.toLeft === toLeft)
+            .sort((a, b) => a.ay - b.ay)
+            .map((s, i, arr) => {
+              // nudge each label a little off the raw anchor Y so a cluster
+              // spreads out; keep it near the component, not at the margin.
+              const spread = arr.length > 1 ? (i - (arr.length - 1) / 2) * 13 : 0;
+              const lx = s.toLeft ? s.ax - STUB : s.ax + STUB;
+              const ly = s.ay + spread;
+              const col = calloutColor(s.c);
+              return (
+                <g key={`callout-${s.c.id}`} pointerEvents="none">
+                  <line x1={s.ax} y1={s.ay} x2={lx} y2={ly} stroke={col} strokeWidth={1} opacity={0.85} />
+                  <text x={s.toLeft ? lx - 2 : lx + 2} y={ly + 2.5} textAnchor={s.toLeft ? 'end' : 'start'} fontSize={7} fontFamily="'DM Sans',sans-serif" fill={col} fontWeight={800}
+                    stroke="white" strokeWidth={2.4} paintOrder="stroke">{s.name}</text>
+                </g>
+              );
+            });
+        return (<>{boxes}{bySide(true)}{bySide(false)}</>);
       })()}
       {shapes.map((s) => (
         // World→screen mapping applied as a single transform on the whole

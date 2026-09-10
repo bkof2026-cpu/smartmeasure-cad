@@ -306,27 +306,22 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   };
 
   // Study Table attached to the Wardrobe — only offered when Dressing is
-  // NOT selected (spec §23). Left / Right / Both, each with its OWN
-  // H × W × D, drawn INSIDE the composite plan beside the Wardrobe on its
-  // side (same per-side shape as Extra Storage / Open Box).
+  // NOT selected (spec §23). Uses the SAME measurement set + drawing as
+  // the standalone Study Table product (H/W/D + optional Storage +
+  // optional Side Panel); the extra `Position` dropdown docks it to the
+  // Wardrobe on that side (Left / Right / Both).
   const studyTableAddonActive = isWardrobe && !dressing.enabled && selectedAddons.has('study-table');
   const studyTablePosition = studyTableAddonActive
     ? (SIDE_OPTS[(addonDims['study-table']?.side) ?? 0] ?? 'left')
     : 'none';
   const studyTable: WardrobeStudyTableInput = {
     position: studyTablePosition,
-    left: {
-      enabled: studyTablePosition === 'left' || studyTablePosition === 'both',
-      heightMm: (addonDims['study-table']?.leftH) ?? 750,
-      widthMm: (addonDims['study-table']?.leftW) ?? 1200,
-      depthMm: (addonDims['study-table']?.leftD) ?? (n(dims.D ?? 0) || 600),
-    },
-    right: {
-      enabled: studyTablePosition === 'right' || studyTablePosition === 'both',
-      heightMm: (addonDims['study-table']?.rightH) ?? 750,
-      widthMm: (addonDims['study-table']?.rightW) ?? 1200,
-      depthMm: (addonDims['study-table']?.rightD) ?? (n(dims.D ?? 0) || 600),
-    },
+    heightMm: (addonDims['study-table']?.H) ?? 750,
+    widthMm: (addonDims['study-table']?.W) ?? 1200,
+    depthMm: (addonDims['study-table']?.D) ?? (n(dims.D ?? 0) || 600),
+    storage: SIDE_OR_NONE_OPTS[(addonDims['study-table']?.storage) ?? 0] ?? 'none',
+    storageWidthMm: (addonDims['study-table']?.storageW) ?? 450,
+    sidePanel: SIDE_OR_NONE_OPTS[(addonDims['study-table']?.sidePanel) ?? 0] ?? 'none',
   };
 
   // L-Shaped Loft — Wall B, a fully independent second Loft standing on

@@ -5,6 +5,7 @@ import {
   loftOneDoorWidth, loftDoorWidthStatus, totalKhachaWidth, LOFT_WARDROBE_GAP_MM,
   type FixPattiInput, type FixPattiPosition, type KhachaInput, type KhachaPosition,
 } from '../../engine/loftDoorEngine';
+import { resolveStudyTablePlan, studyTableCutlist, type StudyTableInputs } from '../studyTable/studyTableGeometry';
 
 // Wardrobe's skirting is a fixed, real board height — same 70mm constant
 // already used elsewhere in this codebase (Side Table's own skirting strip,
@@ -140,19 +141,19 @@ export interface WardrobeOpenBoxInput {
 }
 
 // Study Table attached to the Wardrobe (spec §23-25) — only offered when
-// Dressing is NOT selected. Left / Right / Both, each with its OWN
-// H × W × D (same shape as Extra Storage / Open Box). Drawn INSIDE the
-// composite plan beside the Wardrobe on its side, at the floor line.
-export interface WardrobeStudyTableSideInput {
-  enabled: boolean;
+// Dressing is NOT selected. Uses the EXACT SAME measurement set and
+// drawing as the standalone "Study Table" product (H/W/D + optional
+// Storage + optional Side Panel); the ONLY difference is `position`,
+// which docks it to the Wardrobe on that side (Left / Right / Both). The
+// same table config is drawn on each attached side.
+export interface WardrobeStudyTableInput {
+  position: WardrobeSide | 'none';
   heightMm: number;
   widthMm: number;
   depthMm: number;
-}
-export interface WardrobeStudyTableInput {
-  position: WardrobeSide | 'none';
-  left: WardrobeStudyTableSideInput;
-  right: WardrobeStudyTableSideInput;
+  storage: WardrobeSide | 'none';   // standalone Study Table's own "Add Storage"
+  storageWidthMm: number;
+  sidePanel: WardrobeSide | 'none'; // standalone Study Table's own "Add Side Panel"
 }
 
 export type LoftMode = 'door' | 'box';
@@ -334,11 +335,20 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     }
   }
   if (inp.studyTable.position !== 'none') {
-    const stSides: Array<['Left' | 'Right', WardrobeStudyTableSideInput]> = [];
-    if ((inp.studyTable.position === 'left' || inp.studyTable.position === 'both') && inp.studyTable.left.enabled) stSides.push(['Left', inp.studyTable.left]);
-    if ((inp.studyTable.position === 'right' || inp.studyTable.position === 'both') && inp.studyTable.right.enabled) stSides.push(['Right', inp.studyTable.right]);
-    for (const [sideLabel, s] of stSides) {
-      rows.push({ component: `Study Table (${sideLabel}, attached)`, width: s.widthMm, height: s.heightMm, qty: 1, remark: `${Math.round(s.widthMm)}(W) x ${Math.round(s.heightMm)}(H) x ${Math.round(s.depthMm)}(D) — attached beside the Wardrobe on the ${sideLabel.toLowerCase()} side, standing on the floor` });
+    // Same cutlist as the standalone Study Table product — one copy per
+    // docked side (Left / Right / Both).
+    const stt = inp.studyTable;
+    const stCut = studyTableCutlist({
+      H: Math.max(1, stt.heightMm), W: Math.max(1, stt.widthMm), D: Math.max(1, stt.depthMm),
+      storage: stt.storage === 'none' ? 'none' : stt.storage,
+      storageW: Math.max(1, stt.storageWidthMm || 450),
+      sidePanel: stt.sidePanel === 'none' ? 'none' : stt.sidePanel,
+    });
+    const sides = stt.position === 'both' ? ['Left', 'Right'] : [stt.position === 'left' ? 'Left' : 'Right'];
+    for (const sideLabel of sides) {
+      for (const r of stCut) {
+        rows.push({ component: `Study Table ${sideLabel} — ${r.component}`, width: r.width, height: r.height, qty: r.qty, remark: `Attached to the Wardrobe on the ${sideLabel.toLowerCase()} side. ${r.remark}` });
+      }
     }
   }
   if (inp.adjacentLoft.enabled) {
@@ -460,10 +470,25 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // composite footprint on its side (unlike Storage/Open Box, which sit
   // in the top pocket and don't) — so it's part of leftExtra/rightExtra.
   const st = inp.studyTable;
-  const studyActiveL = (st.position === 'left' || st.position === 'both') && st.left.enabled ? st.left : null;
-  const studyActiveR = (st.position === 'right' || st.position === 'both') && st.right.enabled ? st.right : null;
-  const studyLW = studyActiveL ? Math.max(1, studyActiveL.widthMm) : 0;
-  const studyRW = studyActiveR ? Math.max(1, studyActiveR.widthMm) : 0;
+  const studyOnLeft = st.position === 'left' || st.position === 'both';
+  const studyOnRight = st.position === 'right' || st.position === 'both';
+  // The attached Study Table is drawn via the SAME resolveStudyTablePlan
+  // as the standalone product — build its inputs once here so the drawn
+  // footprint (table + its own optional Storage + Side Panels) is what
+  // widens the composite on the docked side(s).
+  const stInputs: StudyTableInputs | null = st.position !== 'none' ? {
+    H: Math.max(1, st.heightMm), W: Math.max(1, st.widthMm), D: Math.max(1, st.depthMm),
+    storage: st.storage === 'none' ? 'none' : st.storage,
+    storageW: Math.max(1, st.storageWidthMm || 450),
+    sidePanel: st.sidePanel === 'none' ? 'none' : st.sidePanel,
+  } : null;
+  // Its full drawn width (table + storages + side panels) — resolved once.
+  const stPlan = stInputs ? resolveStudyTablePlan(stInputs) : null;
+  const stFullW = stPlan
+    ? Math.max(...stPlan.components.map((c) => c.x + c.width)) - Math.min(...stPlan.components.map((c) => c.x))
+    : 0;
+  const studyLW = studyOnLeft ? stFullW : 0;
+  const studyRW = studyOnRight ? stFullW : 0;
 
   const leftExtra = topPanelL + dressL + studyLW;
   const rightExtra = dressR + topPanelR + studyRW;
@@ -525,27 +550,20 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const hasRightKhacha = kh.position === 'right' || kh.position === 'both';
   const leftKhachaW = hasLeftKhacha ? Math.max(0, kh.leftWidthMm) : 0;
   const rightKhachaW = hasRightKhacha ? Math.max(0, kh.rightWidthMm) : 0;
-  // loft.widthMm IS the real Loft door-span width — per the user's
-  // explicit formula: Loft Width = Total Room Width − Fix Patti − Khacha
-  // (resolved once in deriveWardrobeAddonInputs). The Loft cabinet runs
-  // the full room wall even when the Wardrobe/Dressing below it is
-  // narrower, so this drawn span is deliberately room-relative, NOT
-  // clipped to the furniture composite. Defensive fallback to the
-  // composite door span only if a Loft is somehow enabled with no
-  // resolved width at all.
-  const loftRowLeftX = loftX;
-  const loftFrameWidth = loft.widthMm > 0
-    ? loft.widthMm
-    : Math.max(1, totalWidth - leftKhachaW - leftFPW - rightFPW - rightKhachaW);
+  // The Loft is built flush ON TOP of the Wardrobe composite, so the
+  // whole Loft row spans EXACTLY the composite's own left→right extent
+  // (Study Table / Top Panel / Dressing start  →  Wardrobe / Dressing /
+  // Top Panel end), running parallel to it — never offset to one side and
+  // never stretched to a theoretical wall-to-wall width. Fix Patti /
+  // Khacha, when present, are carved from the OUTER ends of that span;
+  // the doors then fill whatever is left. With NO Fix Patti / Khacha the
+  // doors run edge-to-edge of the composite — exactly the reference
+  // drawing (doors divided from the first end to the last end / Top
+  // Panel end).
+  const loftRowLeftX = wardrobeX - leftExtra;          // == composite left edge
+  const loftRowWidth = totalWidth;                     // == composite full width
+  const loftFrameWidth = Math.max(1, loftRowWidth - leftKhachaW - leftFPW - rightFPW - rightKhachaW);
   const doorsAreaX = loftRowLeftX + leftKhachaW + leftFPW;
-  // The Loft row's own drawn extent: Khacha + Fix Patti + door span +
-  // Fix Patti + Khacha. Since loftFrameWidth is the room-relative Loft
-  // Width (Total Room Width − Fix Patti − Khacha), this row can be wider
-  // than the Wardrobe/Dressing composite below it — the Loft cabinet runs
-  // the full wall. That leftover span is real wall space; it just isn't
-  // annotated any more (the old confusing "Room Wall (…)" dashed label
-  // is gone).
-  const loftRowWidth = leftKhachaW + leftFPW + loftFrameWidth + rightFPW + rightKhachaW;
   // Canvas-sizing width — the widest of: the entered Total Width, the
   // Loft row's own extent, and the furniture composite.
   const roomWallWidth = loft.enabled
@@ -1049,36 +1067,49 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   if (hasStorageL || hasOpenBoxL) drawStoragePocket('left', hasStorageL ? storageActiveL : null, hasOpenBoxL ? openBoxActiveL : null);
   if (hasStorageR || hasOpenBoxR) drawStoragePocket('right', hasStorageR ? storageActiveR : null, hasOpenBoxR ? openBoxActiveR : null);
 
-  // Attached Study Table — a floor-standing box beside the Wardrobe on its
-  // side (outside any Dressing / Top Panel), bottom-aligned to the same
-  // floor line as the Wardrobe, drawn only as tall as its own entered
-  // Height. Its Width is already baked into leftExtra / rightExtra above,
-  // so the composite footprint already reserves its column — here we just
-  // fill that column with the box + its H/W/D callouts.
-  function drawStudyTable(side: 'left' | 'right', s: WardrobeStudyTableSideInput) {
-    const boxW = Math.max(1, s.widthMm);
-    const boxH = Math.max(1, s.heightMm);
+  // Attached Study Table — drawn by EMBEDDING the standalone Study Table
+  // product's own resolved plan (resolveStudyTablePlan), translated so
+  // its floor line meets the Wardrobe's floor and its docked edge meets
+  // the Wardrobe/Dressing/Top-Panel edge on that side. Its full drawn
+  // width is already reserved in leftExtra / rightExtra above. Every
+  // component / line / dimension from that sub-plan is offset into the
+  // Wardrobe's own coordinate space with a unique id prefix.
+  function drawStudyTable(side: 'left' | 'right') {
+    if (!stPlan) return;
     const floorY = wardrobeY + bodyH;
-    const boxY = floorY - boxH;
-    // Left: butts against the Wardrobe/Dressing/Top-Panel left edge,
-    // extending further left. Right: mirror.
-    const boxX = side === 'left'
-      ? wardrobeX - dressL - topPanelL - boxW
+    // sub-plan local coords: its components span [subLeft, subLeft+stFullW],
+    // top at its own topPad, bottom at topPad + H.
+    const subLeft = Math.min(...stPlan.components.map((c) => c.x));
+    const subTop = Math.min(...stPlan.components.map((c) => c.y));
+    const subBottom = Math.max(...stPlan.components.map((c) => c.y + c.height));
+    // Dock: left side → sub-plan's right edge meets the composite left
+    // edge; right side → sub-plan's left edge meets the composite right edge.
+    const dockLeftX = side === 'left'
+      ? wardrobeX - dressL - topPanelL - stFullW
       : wardrobeX + W + dressR + topPanelR;
-    components.push({
-      id: `study-table-${side}`, type: 'STUDY_TABLE', label: 'Study Table',
-      x: boxX, y: boxY, width: boxW, height: boxH, qty: 1, visible: true,
-      source: { formula: `Attached Study Table (${side}) — ${Math.round(boxW)}(W) x ${Math.round(boxH)}(H) x ${Math.round(s.depthMm)}(D), all entered; stands on the floor beside the Wardrobe`, constants: [] },
-    });
-    // Width under the box, Height on the outer edge, Depth on the diagonal.
-    dimReqs.push({ axis: 'h', x1: boxX, y1: floorY, x2: boxX + boxW, y2: floorY, edge: 'bottom', componentIds: [`study-table-${side}`], label: `${Math.round(boxW)} (W)`, source: { formula: 'Study Table Width (entered)', constants: [] } });
-    const hX = side === 'left' ? boxX - 16 : boxX + boxW + 16;
-    dimReqs.push({ axis: 'v', x1: hX, y1: boxY, x2: hX, y2: floorY, edge: side, componentIds: [`study-table-${side}`], label: `${Math.round(boxH)} (H)`, source: { formula: 'Study Table Height (entered)', constants: [] } });
-    const stDiag = insideDiagonal(boxX, floorY, boxW, boxH, side === 'left' ? 'left-up' : 'right-up');
-    lines.push({ x1: boxX + (side === 'left' ? 0 : boxW), y1: floorY, x2: stDiag.x2, y2: stDiag.y2, color: DIAG, label: `${Math.round(s.depthMm)} (D)` });
+    const dx = dockLeftX - subLeft;
+    const dy = floorY - subBottom;
+    const pfx = `study-${side}-`;
+    for (const c of stPlan.components) {
+      components.push({
+        ...c, id: pfx + c.id, x: c.x + dx, y: c.y + dy,
+        label: c.id === 'study-table' ? 'Study Table' : c.label,
+      });
+    }
+    for (const l of (stPlan.lines ?? [])) {
+      lines.push({ ...l, x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy });
+    }
+    for (const d of stPlan.dimensions) {
+      dimReqs.push({
+        axis: d.axis, x1: d.x1 + dx, y1: d.y1 + dy, x2: d.x2 + dx, y2: d.y2 + dy,
+        edge: d.edge, componentIds: d.componentIds.map((cid) => pfx + cid),
+        label: d.label, source: d.source, color: d.color,
+      });
+    }
+    void subTop;
   }
-  if (studyActiveL) drawStudyTable('left', studyActiveL);
-  if (studyActiveR) drawStudyTable('right', studyActiveR);
+  if (studyOnLeft) drawStudyTable('left');
+  if (studyOnRight) drawStudyTable('right');
 
   // +26 covers the skirting dimension line's own +16 offset past the
   // composite's right edge (see above) plus its label's own drawn width.
@@ -1146,8 +1177,8 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     ...(dressing.enabled ? validateMeasurements({ W: dressing.widthMm }, [{ key: 'W', label: 'Dressing Width', min: 1 }]) : []),
     ...(dressing.enabled && dressing.drawerCount > 0 ? validateMeasurements({ H: dressing.totalDrawerHeightMm }, [{ key: 'H', label: 'Total Drawer Height', min: 1 }]) : []),
     ...(dressing.enabled && dressing.drawerCount > 0 && dressing.totalDrawerHeightMm > bodyH ? [{ id: 'val-drawer-height-exceeds', severity: 'WARNING' as const, code: 'DRAWER_HEIGHT_EXCEEDS_DRESSING', message: `⚠ Total Drawer Height (${Math.round(dressing.totalDrawerHeightMm)}mm) exceeds Dressing Height (${Math.round(bodyH)}mm) — clamped to fit.` }] : []),
-    ...(studyActiveL ? validateMeasurements({ H: studyActiveL.heightMm, W: studyActiveL.widthMm, D: studyActiveL.depthMm }, [{ key: 'H', label: 'Left Study Table Height', min: 1 }, { key: 'W', label: 'Left Study Table Width', min: 1 }, { key: 'D', label: 'Left Study Table Depth', min: 1 }]) : []),
-    ...(studyActiveR ? validateMeasurements({ H: studyActiveR.heightMm, W: studyActiveR.widthMm, D: studyActiveR.depthMm }, [{ key: 'H', label: 'Right Study Table Height', min: 1 }, { key: 'W', label: 'Right Study Table Width', min: 1 }, { key: 'D', label: 'Right Study Table Depth', min: 1 }]) : []),
+    ...(inp.studyTable.position !== 'none' ? validateMeasurements({ H: inp.studyTable.heightMm, W: inp.studyTable.widthMm, D: inp.studyTable.depthMm }, [{ key: 'H', label: 'Study Table Height', min: 1 }, { key: 'W', label: 'Study Table Width', min: 1 }, { key: 'D', label: 'Study Table Depth', min: 1 }]) : []),
+    ...(inp.studyTable.position !== 'none' && inp.studyTable.storage !== 'none' ? validateMeasurements({ W: inp.studyTable.storageWidthMm }, [{ key: 'W', label: 'Study Table Storage Width', min: 1 }]) : []),
     ...(adjacentLoft.enabled ? validateMeasurements({ H: adjacentLoft.heightMm, W: adjacentLoft.widthMm }, [{ key: 'H', label: 'L-Shaped Loft (Wall B) Height', min: 1 }, { key: 'W', label: 'L-Shaped Loft (Wall B) Width', min: 1 }]) : []),
     ...(adjacentLoft.enabled && (adjacentLoft.fixPatti.position === 'left' || adjacentLoft.fixPatti.position === 'both') ? validateMeasurements({ H: adjacentLoft.fixPatti.leftHeightMm, W: adjacentLoft.fixPatti.leftWidthMm }, [{ key: 'H', label: 'Wall B Left Fix Patti Height', min: 1 }, { key: 'W', label: 'Wall B Left Fix Patti Width', min: 1 }]) : []),
     ...(adjacentLoft.enabled && (adjacentLoft.fixPatti.position === 'right' || adjacentLoft.fixPatti.position === 'both') ? validateMeasurements({ H: adjacentLoft.fixPatti.rightHeightMm, W: adjacentLoft.fixPatti.rightWidthMm }, [{ key: 'H', label: 'Wall B Right Fix Patti Height', min: 1 }, { key: 'W', label: 'Wall B Right Fix Patti Width', min: 1 }]) : []),
