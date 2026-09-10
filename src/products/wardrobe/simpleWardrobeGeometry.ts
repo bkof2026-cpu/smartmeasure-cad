@@ -519,7 +519,10 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const enteredTotalHTopOverflow = totalHeightMm && totalHeightMm > 0
     ? Math.max(0, totalHeightMm - H + 20)
     : 0;
-  const topPad = 130 + enteredTotalHTopOverflow;
+  // +40 over the old 130 base: the Loft now carries a per-door width
+  // dimension chain along its TOP edge, which offsets upward and needs
+  // its own headroom above the loft.
+  const topPad = 170 + enteredTotalHTopOverflow;
   const totalWidth = leftExtra + W + rightExtra;
   // roomWallX — the SINGLE shared left origin every top-level element in
   // this drawing is positioned from: the Loft row (Fix Patti + doors), the
@@ -643,9 +646,22 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       // exactly on the real per-door boundaries.
       for (let i = 0; i < count; i++) {
         components.push({
-          id: `loft-door-${i}`, type: 'DOOR', label: `${Math.round(doorW)}`,
+          // No in-box label — each door's width is shown by its own
+          // dimension tick along the Loft top edge (below).
+          id: `loft-door-${i}`, type: 'DOOR', label: '',
           x: doorCursorX, y: loftY + 2, width: doorW, height: loftH - 4, qty: 1, visible: true, noHandle: true,
           source: { formula: `Loft Door ${i + 1} of ${count} — Width = (Loft Width(${Math.round(loftFrameWidth)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm`, constants: [] },
+        });
+        // Each door's own width as a real dimension tick along the Loft's
+        // TOP edge — a chain of per-door "(W)" arrows in the free space
+        // above the Loft, so every door's size is visible even when the
+        // door box itself is too narrow to hold the number. All on the
+        // same 'top' edge → the collision engine keeps the chain on one
+        // tier and clear of the Wardrobe/Top-Panel dims below.
+        dimReqs.push({
+          axis: 'h', x1: doorCursorX, y1: loftY, x2: doorCursorX + doorW, y2: loftY,
+          edge: 'top', componentIds: [`loft-door-${i}`], label: `${Math.round(doorW)}`,
+          source: { formula: `Loft Door ${i + 1} of ${count} width = (Loft Width ${Math.round(loftFrameWidth)} − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm`, constants: [] },
         });
         doorCursorX += doorW + gapMm;
       }
@@ -943,10 +959,21 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     const skirtX = wardrobeX - dressL;
     const skirtW = dressL + W + dressR;
     components.push({
-      id: 'skirting', type: 'SKIRTING', label: `Skirting`, x: skirtX, y: skirtY, width: skirtW, height: skirtH, qty: 1, visible: true,
+      // No in-box label — a wide 70mm band can't hold text; its name is
+      // shown horizontally in the free space below the drawing (line
+      // below), and the 70mm value on its own bottom-edge dim.
+      id: 'skirting', type: 'SKIRTING', label: ``, x: skirtX, y: skirtY, width: skirtW, height: skirtH, qty: 1, visible: true,
       source: { formula: `Fixed ${skirtH}mm skirting band at the floor line — spans Dressing + Wardrobe (+ Study Table), part of the entered Wardrobe Height, not subtracted from it`, constants: [] },
     });
-    dimReqs.push({ axis: 'v', x1: skirtX + skirtW + 16, y1: skirtY, x2: skirtX + skirtW + 16, y2: skirtY + skirtH, edge: 'right', componentIds: ['skirting'], label: `${skirtH} (Skirting)`, source: { formula: `Fixed ${skirtH}mm skirting band`, constants: [] } });
+    // "Skirting" name — a plain horizontal caption in the free band below
+    // the drawing, on a short leader up to the skirting's own left end.
+    // Off the RIGHT edge it collided with / hid the Total-H arrow.
+    const skirtNameY = skirtY + skirtH + 30;
+    lines.push({ x1: skirtX + skirtW * 0.12, y1: skirtY + skirtH, x2: skirtX + skirtW * 0.12, y2: skirtNameY, color: '#78716c' });
+    lines.push({ x1: skirtX + skirtW * 0.12, y1: skirtNameY, x2: skirtX + skirtW * 0.12, y2: skirtNameY, color: '#78716c', label: 'Skirting' });
+    // 70mm value — on the skirting's own BOTTOM edge (offsets downward,
+    // free space), never the right edge where the Total-H arrow runs.
+    dimReqs.push({ axis: 'h', x1: skirtX, y1: skirtY + skirtH, x2: skirtX + skirtW, y2: skirtY + skirtH, edge: 'bottom', componentIds: ['skirting'], label: `${skirtH} (Skirting H)`, source: { formula: `Fixed ${skirtH}mm skirting band`, constants: [] } });
   }
 
   // Top Panel (renamed from Side Panel — per the user's own, twice-
@@ -977,13 +1004,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // leader shows its Depth.
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
     lines.push({ x1: px, y1: wardrobeY, x2: px - 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
-    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
+    // Width dim BELOW the panel line (edge:'bottom' → offset downward into
+    // the gap between the Top Panel line and the Wardrobe top), never
+    // 'top' which would push it up INTO the Loft doors.
+    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, edge: 'bottom', componentIds: [], label: `${Math.round(topPanel.widthMm)} (Top Panel W)`, source: { formula: 'Top Panel (Side Panel) Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
   }
   if (topPanelR > 0) {
     const px = wardrobeX + W + dressR;
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
     lines.push({ x1: px + topPanelR, y1: wardrobeY, x2: px + topPanelR + 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
-    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
+    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, edge: 'bottom', componentIds: [], label: `${Math.round(topPanel.widthMm)} (Top Panel W)`, source: { formula: 'Top Panel (Side Panel) Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
   }
 
   // Extra Storage + Open Box — small boxes in the top pocket beside the
