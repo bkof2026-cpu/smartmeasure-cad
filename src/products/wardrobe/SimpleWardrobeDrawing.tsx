@@ -109,6 +109,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
         components={drawing.components}
         dimensions={dimensions}
         lines={drawing.lines}
+        noteBoxes={drawing.noteBoxes}
         componentStyle={componentStyle}
         plainDimLabels
         onSelectComponent={setSelected}

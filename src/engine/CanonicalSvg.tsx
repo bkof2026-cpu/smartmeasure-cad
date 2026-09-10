@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AnnotationLine, ComponentSpec, CustomShape, DimensionLine } from './types';
+import type { AnnotationLine, ComponentSpec, CustomShape, DimensionLine, NoteBox } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared SVG primitives used by every product's technical drawing renderer.
@@ -150,6 +150,7 @@ interface RenderProps {
   dimensions: DimensionLine[];
   lines?: AnnotationLine[];
   shapes?: CustomShape[];
+  noteBoxes?: NoteBox[];
   maxVw?: number;
   maxVh?: number;
   componentStyle?: (c: ComponentSpec) => ComponentStyle;
@@ -164,7 +165,7 @@ interface RenderProps {
 
 /** The one renderer every product's technical drawing view goes through. */
 export function TechnicalDrawingSvg({
-  worldWidth, worldHeight, title, components, dimensions, lines = [], shapes = [],
+  worldWidth, worldHeight, title, components, dimensions, lines = [], shapes = [], noteBoxes = [],
   // Bumped from 640x480 — the densest drawings (e.g. Bed with both side
   // tables + Profile Shutter, all their own dimension labels at a constant,
   // legible font size regardless of scale) were compressing to a scale so
@@ -322,6 +323,36 @@ export function TechnicalDrawingSvg({
           <path d={s.d} fill={s.fill ?? '#f0eee8'} stroke={s.stroke ?? '#3b82f6'} strokeWidth={(s.strokeWidth ?? 1.2) / scale} />
         </g>
       ))}
+      {noteBoxes.map((nb) => {
+        // Fixed on-screen sizing (not world-scaled) so the text stays
+        // legible regardless of drawing scale — same principle as the
+        // dimension labels. The box is placed at nb.(x,y) mapped to
+        // screen; an optional short leader runs from nb.anchor to it.
+        const bx = ox + nb.x * scale, by = oy + nb.y * scale;
+        const col = nb.color ?? '#64748b';
+        const rows = [...(nb.title ? [nb.title] : []), ...nb.lines];
+        const lineH = 9.5;
+        const padX = 5, padY = 4;
+        const boxW = Math.max(...rows.map((r) => r.length)) * 4.2 + padX * 2;
+        const boxH = rows.length * lineH + padY * 2;
+        return (
+          <g key={nb.id} pointerEvents="none">
+            {nb.anchor && (
+              <line x1={ox + nb.anchor.x * scale} y1={oy + nb.anchor.y * scale} x2={bx} y2={by + boxH / 2}
+                stroke={col} strokeWidth={0.8} />
+            )}
+            <rect x={bx} y={by} width={boxW} height={boxH} rx={2} fill="white" stroke={col} strokeWidth={1} />
+            {rows.map((r, ri) => (
+              <text key={ri} x={bx + padX} y={by + padY + lineH * (ri + 0.8)}
+                fontSize={ri === 0 && nb.title ? 7.5 : 7} fontFamily="'DM Sans',sans-serif"
+                fontWeight={ri === 0 && nb.title ? 800 : 600}
+                fill={ri === 0 && nb.title ? col : '#334155'}>
+                {r}
+              </text>
+            ))}
+          </g>
+        );
+      })}
       {lines.map((l, i) => {
         const px1 = ox + l.x1 * scale, py1 = oy + l.y1 * scale;
         const px2 = ox + l.x2 * scale, py2 = oy + l.y2 * scale;

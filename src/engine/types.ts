@@ -132,6 +132,27 @@ export interface CustomShape {
   label?: string;
 }
 
+/**
+ * A small bordered text box drawn in free space near (x, y) — a
+ * multi-line spec callout for a component that would otherwise clutter
+ * the drawing with a fan of dimension arrows (e.g. an Extra Storage box:
+ * H / W / D / Doors listed as plain text instead of four crossing
+ * arrows). `x`/`y` are the box's top-left corner in WORLD mm; an
+ * optional short leader is drawn from `anchor` (also world mm) to the
+ * box. Rendered after components, before dimension lines.
+ */
+export interface NoteBox {
+  id: string;
+  x: number;
+  y: number;
+  title?: string;
+  lines: string[];
+  /** Accent colour for the border + title (defaults to a neutral grey). */
+  color?: string;
+  /** Optional world-mm point the box points at, via a thin leader. */
+  anchor?: { x: number; y: number };
+}
+
 /** Everything needed to draw one view of one resolved design. */
 export interface ResolvedDrawing {
   view: string;
@@ -148,6 +169,10 @@ export interface ResolvedDrawing {
   /** Non-rectangular real geometry (curved outlines, etc.) — rendered
    * alongside components, before dimensions/lines so leaders draw on top. */
   shapes?: CustomShape[];
+  /** Small bordered spec callouts in free space (see NoteBox) — used to
+   * pull a cluttering component's measurements OUT of the drawing into a
+   * tidy text box instead of a fan of dimension arrows. */
+  noteBoxes?: NoteBox[];
 }
 
 /** Numeric measurement inputs, keyed by field key (W, H, D, thk, doorQty, ...). */

@@ -1,4 +1,4 @@
-import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engine/types';
+import type { AnnotationLine, ComponentSpec, NoteBox, ResolvedDrawing } from '../../engine/types';
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
 import {
@@ -419,7 +419,11 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     (storage.position === 'left' || storage.position === 'both') && storage.left.enabled ? storage.left.widthMm : 0,
     (openBox.position === 'left' || openBox.position === 'both') && openBox.left.enabled ? openBox.left.widthMm : 0,
   );
-  const leftStorageMargin = Math.max(0, leftStorageMarginRaw - (topPanel.enabled && topPanel.side !== 'right' ? topPanel.widthMm : 0) + 30);
+  // +190 when there's a left Storage / Open Box: its measurements now go
+  // into a spec note box drawn ~170mm further left again, which must also
+  // stay on canvas.
+  const leftStorageNoteRoom = leftStorageMarginRaw > 0 ? 190 : 0;
+  const leftStorageMargin = Math.max(0, leftStorageMarginRaw - (topPanel.enabled && topPanel.side !== 'right' ? topPanel.widthMm : 0) + 30 + leftStorageNoteRoom);
   const leaderMargin = 150 + leftAdjacentLoftMargin + leftStorageMargin;
 
   // Skirting — a real 70mm board strip drawn at the FLOOR line of the
@@ -497,6 +501,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const components: ComponentSpec[] = [];
   const dimReqs: DimensionRequest[] = [];
   const lines: AnnotationLine[] = [];
+  const noteBoxes: NoteBox[] = [];
 
   // Loft — touches the top of the composite stack directly (no gap; a real
   // loft cabinet is built flush on top of the wardrobe carcass), spanning
@@ -1048,7 +1053,6 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // Open Box goes directly BELOW it (its own Height) when both are
   // present, or takes the Storage Box's own top spot when Storage is
   // absent. Never widens the composite / Total Width.
-  const storageBoxLeaderGap = 16;
   // Track how far the drawn Storage/Open Box pockets reach past the
   // wardrobe composite, so worldWidth/worldHeight below can size the
   // canvas to them (a right-side box extends the canvas right; any box
@@ -1089,14 +1093,27 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
         });
         doorCursorX += doorW + gapMm;
       }
-      // Plain leader callouts — Width under the box, Height on the outer
-      // edge, Depth as the diagonal.
-      dimReqs.push({ axis: 'h', x1: boxX, y1: cursorY + boxH, x2: boxX + boxW, y2: cursorY + boxH, edge: 'bottom', componentIds: [], label: `${Math.round(boxW)} (W)`, source: { formula: 'Storage Box Width (entered)', constants: [] } });
-      const hLeaderX = side === 'left' ? boxX - storageBoxLeaderGap : boxX + boxW + storageBoxLeaderGap;
-      dimReqs.push({ axis: 'v', x1: hLeaderX, y1: cursorY, x2: hLeaderX, y2: cursorY + boxH, edge: side === 'left' ? 'left' : 'right', componentIds: [], label: `${Math.round(boxH)} (H)`, source: { formula: 'Storage Box Height (entered)', constants: [] } });
-      const sDiag = insideDiagonal(boxX, cursorY, boxW, boxH, side === 'left' ? 'left-down' : 'right-down');
-      lines.push({ x1: boxX + (side === 'left' ? boxW : 0), y1: cursorY, x2: sDiag.x2, y2: sDiag.y2, color: DIAG, label: `${Math.round(storageSide.depthMm)} (D)` });
-      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + storageBoxLeaderGap + 20);
+      // Storage measurements are NOT drawn as a fan of dimension arrows
+      // (that crowded the small pocket badly) — they go into a small
+      // bordered spec box in free space to the OUTER side of the pocket,
+      // with a short leader back to the box. H / W / D / Doors listed as
+      // plain text, per the user's reference.
+      const nbAnchorX = side === 'left' ? boxX : boxX + boxW;
+      const nbX = side === 'left' ? boxX - 170 : boxX + boxW + 30;
+      noteBoxes.push({
+        id: `storage-${side}-note`,
+        x: nbX, y: cursorY,
+        title: 'Storage',
+        lines: [
+          `H : ${Math.round(boxH)}`,
+          `W : ${Math.round(boxW)}`,
+          `D : ${Math.round(storageSide.depthMm)}`,
+          `Doors : ${count}`,
+        ],
+        color: '#b45309',
+        anchor: { x: nbAnchorX, y: cursorY + boxH / 2 },
+      });
+      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 230 : 20));
       storagePocketBottomEdge = Math.max(storagePocketBottomEdge, cursorY + boxH);
       cursorY += boxH;
     }
@@ -1110,12 +1127,23 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
         x: boxX, y: cursorY, width: boxW, height: boxH, qty: 1, visible: true,
         source: { formula: `Open Box (${side}) — Width x Height x Depth (all entered), no door/shutter${hasStorage ? ' — sits directly below the Storage Box' : ' — takes the Storage Box position (no Storage on this side)'}`, constants: [] },
       });
-      dimReqs.push({ axis: 'h', x1: boxX, y1: cursorY + boxH, x2: boxX + boxW, y2: cursorY + boxH, edge: 'bottom', componentIds: [`open-box-${side}`], label: `${Math.round(boxW)} (W)`, source: { formula: 'Open Box Width (entered)', constants: [] } });
-      const hLeaderX = side === 'left' ? boxX - storageBoxLeaderGap : boxX + boxW + storageBoxLeaderGap;
-      dimReqs.push({ axis: 'v', x1: hLeaderX, y1: cursorY, x2: hLeaderX, y2: cursorY + boxH, edge: side === 'left' ? 'left' : 'right', componentIds: [`open-box-${side}`], label: `${Math.round(boxH)} (H)`, source: { formula: 'Open Box Height (entered)', constants: [] } });
-      const oDiag = insideDiagonal(boxX, cursorY, boxW, boxH, side === 'left' ? 'left-down' : 'right-down');
-      lines.push({ x1: boxX + (side === 'left' ? boxW : 0), y1: cursorY, x2: oDiag.x2, y2: oDiag.y2, color: DIAG, label: `${Math.round(openBoxSide.depthMm)} (D)` });
-      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + storageBoxLeaderGap + 20);
+      // Open Box measurements — same tidy spec box as Storage (no arrows).
+      const obAnchorX = side === 'left' ? boxX : boxX + boxW;
+      const obNbX = side === 'left' ? boxX - 170 : boxX + boxW + 30;
+      noteBoxes.push({
+        id: `open-box-${side}-note`,
+        x: obNbX, y: cursorY,
+        title: 'Open Box',
+        lines: [
+          `H : ${Math.round(boxH)}`,
+          `W : ${Math.round(boxW)}`,
+          `D : ${Math.round(openBoxSide.depthMm)}`,
+          `No door / shutter`,
+        ],
+        color: '#ea580c',
+        anchor: { x: obAnchorX, y: cursorY + boxH / 2 },
+      });
+      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 230 : 20));
       storagePocketBottomEdge = Math.max(storagePocketBottomEdge, cursorY + boxH);
     }
   }
@@ -1190,7 +1218,14 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const enteredTotalWRightEdge = totalWidthMm && totalWidthMm > 0
     ? loftX + Math.max(totalWidthMm, totalWidth) + 40
     : 0;
-  const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + roomWallWidth + 20 : 0, adjacentLoftRightEdge, storagePocketRightEdge, enteredTotalWRightEdge, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
+  const worldWidth = Math.max(
+    loftX + totalWidth + (skirtH > 0 ? 26 : 0),
+    loft.enabled ? loftX + roomWallWidth + 20 : 0,
+    adjacentLoftRightEdge, storagePocketRightEdge, enteredTotalWRightEdge,
+    ...lines.map((l) => Math.max(l.x1, l.x2) + 10),
+    // reserve room for a right-side spec note box + a bit of its label width
+    ...noteBoxes.map((nb) => nb.x + 170),
+  );
   // bodyH now IS the full entered Wardrobe Height (skirting is drawn as
   // a band inside its bottom, not an extra strip below it) — so no
   // "+ skirtH" here any more; the extra 70/20 is just headroom for the
@@ -1300,6 +1335,6 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
 
   return {
     view: 'plan', productType: 'wardrobe', designId: 'simple', designName: 'Wardrobe',
-    worldWidth, worldHeight, components, dimensions, issues, formulaStatus: 'verified', lines,
+    worldWidth, worldHeight, components, dimensions, issues, formulaStatus: 'verified', lines, noteBoxes,
   };
 }
