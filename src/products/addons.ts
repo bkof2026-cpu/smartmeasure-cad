@@ -37,6 +37,11 @@ export interface AddonField {
    * automatically, so every existing single-group addon (Fix Patti,
    * Khacha, Storage, Open Box) needs no groupKey at all. */
   groupKey?: string;
+  /** True for a plain COUNT field (Number of Drawers, Loft/Storage Door
+   * Count) — a quantity, not a millimetre measurement. The form renderer
+   * suppresses the automatic " (mm)" suffix and the "min–max mm" hint
+   * for these. Omit for every real mm measurement. */
+  isCount?: boolean;
 }
 
 // placement: 'composite' = shown INSIDE the main drawing
@@ -200,7 +205,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
         { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
         { key: 'mirror', label: 'Add Mirror', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
-        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8 },
+        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8, isCount: true },
         { key: 'drawerH', label: 'Total Drawer Height', defaultValue: 600, min: 100, max: 1800 },
       ],
     },
@@ -238,7 +243,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         // Height − 10mm; Door Count = the loftDoorEngine recommendation).
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
-        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 12 },
+        { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
       ],
     },
     {
@@ -289,11 +294,11 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'left' },
         { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'left' },
         { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'left' },
-        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'left' },
+        { key: 'leftDoors', label: 'Left Storage Number of Doors', defaultValue: 2, min: 1, max: 8, sideOf: 'left', isCount: true },
         { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'right' },
         { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'right' },
         { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'right' },
-        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'right' },
+        { key: 'rightDoors', label: 'Right Storage Number of Doors', defaultValue: 2, min: 1, max: 8, sideOf: 'right', isCount: true },
       ],
     },
     {
@@ -356,7 +361,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         // B's own usable width).
         { key: 'H', label: 'Wall B Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500 },
-        { key: 'doors', label: 'Wall B Door Count', defaultValue: 2, min: 1, max: 12 },
+        { key: 'doors', label: 'Wall B Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
         { key: 'fpPosition', label: 'Wall B Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
         { key: 'fpLeftH', label: 'Wall B Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'fpPosition' },
         { key: 'fpLeftW', label: 'Wall B Left Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left', groupKey: 'fpPosition' },
@@ -381,7 +386,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
         { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
         { key: 'mirror', label: 'Add Mirror', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
-        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8 },
+        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8, isCount: true },
         { key: 'drawerH', label: 'Total Drawer Height', defaultValue: 600, min: 100, max: 1800 },
       ],
     },
@@ -407,7 +412,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
-        { key: 'doors', label: 'Door Count', defaultValue: 2, min: 1, max: 12 },
+        { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
       ],
     },
     {
@@ -458,11 +463,11 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'leftH', label: 'Left Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'left' },
         { key: 'leftW', label: 'Left Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'left' },
         { key: 'leftD', label: 'Left Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'left' },
-        { key: 'leftDoors', label: 'Left Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'left' },
+        { key: 'leftDoors', label: 'Left Storage Number of Doors', defaultValue: 2, min: 1, max: 8, sideOf: 'left', isCount: true },
         { key: 'rightH', label: 'Right Storage Height', defaultValue: 450, min: 100, max: 1200, sideOf: 'right' },
         { key: 'rightW', label: 'Right Storage Width', defaultValue: 600, min: 200, max: 1500, sideOf: 'right' },
         { key: 'rightD', label: 'Right Storage Depth', defaultValue: 600, min: 200, max: 800, sideOf: 'right' },
-        { key: 'rightDoors', label: 'Right Storage Door Count', defaultValue: 2, min: 1, max: 8, sideOf: 'right' },
+        { key: 'rightDoors', label: 'Right Storage Number of Doors', defaultValue: 2, min: 1, max: 8, sideOf: 'right', isCount: true },
       ],
     },
     {
@@ -509,7 +514,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'totalW', label: 'Wall B Total Width', defaultValue: 2000, min: 600, max: 6000 },
         { key: 'H', label: 'Wall B Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500 },
-        { key: 'doors', label: 'Wall B Door Count', defaultValue: 2, min: 1, max: 12 },
+        { key: 'doors', label: 'Wall B Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
         { key: 'fpPosition', label: 'Wall B Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
         { key: 'fpLeftH', label: 'Wall B Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'fpPosition' },
         { key: 'fpLeftW', label: 'Wall B Left Fix Patti Width', defaultValue: 100, min: 30, max: 400, sideOf: 'left', groupKey: 'fpPosition' },

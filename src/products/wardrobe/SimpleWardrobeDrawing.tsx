@@ -90,6 +90,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
         dimensions={drawing.dimensions}
         lines={drawing.lines}
         componentStyle={componentStyle}
+        plainDimLabels
         onSelectComponent={setSelected}
         onSelectDimension={setSelected}
         selectedComponentId={selected && 'type' in selected ? selected.id : null}

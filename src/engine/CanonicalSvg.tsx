@@ -88,7 +88,7 @@ function GrainPattern() {
   );
 }
 
-function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; ox: number; oy: number; scale: number; onSelect?: (d: DimensionLine) => void }) {
+function DimensionLineView({ d, ox, oy, scale, onSelect, plainLabels }: { d: DimensionLine; ox: number; oy: number; scale: number; onSelect?: (d: DimensionLine) => void; plainLabels?: boolean }) {
   const p = toPx(d, ox, oy, scale);
   const off = (d.tier + 1) * DIM_TIER_STEP_PX;
   const fs = 8;
@@ -98,6 +98,16 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
   // component-matched colour — every existing product keeps its current
   // look; only dimensions that opt in (via DimensionRequest.color) change.
   const dc = d.color ?? DIM_COLOR;
+  // plainLabels: draw the value as bare text sitting directly on the
+  // dimension line (a thin white halo behind it keeps it readable where
+  // another line crosses) instead of the bordered white box — real CAD
+  // convention, and what the user asked for on the Wardrobe drawing
+  // ("600(D) on the diagonal line, 1600(H) on a vertical arrow ...").
+  const LabelBg = (bx: number, by: number) =>
+    plainLabels ? null : (
+      <rect x={bx - lw / 2} y={by - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
+    );
+  const labelStroke = plainLabels ? { stroke: 'white', strokeWidth: 2.6, paintOrder: 'stroke' as const } : {};
   if (d.axis === 'h') {
     const y = d.edge === 'top' ? Math.min(p.y1, p.y2) - off : Math.max(p.y1, p.y2) + off;
     const mx = (p.x1 + p.x2) / 2;
@@ -106,8 +116,8 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
         <line x1={p.x1} y1={y} x2={p.x2} y2={y} stroke={dc} strokeWidth={0.8} markerStart="url(#canon-arrow)" markerEnd="url(#canon-arrow)" />
         <line x1={p.x1} y1={p.y1} x2={p.x1} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
         <line x1={p.x2} y1={p.y2} x2={p.x2} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
-        <rect x={mx - lw / 2} y={y - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
-        <text x={mx} y={y + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700}>{d.label}</text>
+        {LabelBg(mx, y)}
+        <text x={mx} y={y + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700} {...labelStroke}>{d.label}</text>
       </g>
     );
   }
@@ -125,8 +135,8 @@ function DimensionLineView({ d, ox, oy, scale, onSelect }: { d: DimensionLine; o
       <line x1={p.x1} y1={p.y1} x2={x} y2={p.y1} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
       <line x1={p.x2} y1={p.y2} x2={x} y2={p.y2} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
       <g transform={`rotate(-90 ${x} ${my})`}>
-        <rect x={x - lw / 2} y={my - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
-        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700}>{d.label}</text>
+        {LabelBg(x, my)}
+        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700} {...labelStroke}>{d.label}</text>
       </g>
     </g>
   );
@@ -146,6 +156,10 @@ interface RenderProps {
   selectedComponentId?: string | null;
   onSelectComponent?: (c: ComponentSpec) => void;
   onSelectDimension?: (d: DimensionLine) => void;
+  /** When true, dimension values render as bare text on the line (with a
+   * thin white halo for readability) instead of the bordered white box —
+   * cleaner CAD look. Opt-in per drawing; default keeps the boxed style. */
+  plainDimLabels?: boolean;
 }
 
 /** The one renderer every product's technical drawing view goes through. */
@@ -156,7 +170,7 @@ export function TechnicalDrawingSvg({
   // legible font size regardless of scale) were compressing to a scale so
   // small that even well-separated world-unit label positions ended up only
   // a couple of screen px apart. More canvas area directly buys more scale.
-  maxVw = 760, maxVh = 560, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension,
+  maxVw = 760, maxVh = 560, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension, plainDimLabels,
 }: RenderProps) {
   // Extra pixel headroom per collision tier actually used, so nothing clips.
   // Bounded to a fraction of the requested viewport — at full size (640x480)
@@ -272,17 +286,20 @@ export function TechnicalDrawingSvg({
             />
             {l.label && (
               <g transform={`rotate(${angleDeg} ${mx} ${my})`}>
-                {/* White backing plate behind the label — matches the real
-                    DimensionLineView convention — so it stays fully
-                    readable even where another line crosses behind it,
-                    never partially hidden underneath. */}
-                <rect
-                  x={mx - (l.label.length * 8 * 0.62 + 4) / 2} y={my - 1.5 - 8 * 0.72}
-                  width={l.label.length * 8 * 0.62 + 4} height={8 * 1.15}
-                  fill="white" opacity={0.85}
-                />
+                {/* Backing behind the label so it stays readable where a
+                    line crosses behind it. plainDimLabels: a thin white
+                    text-halo (bare CAD look); otherwise a subtle white
+                    plate. */}
+                {!plainDimLabels && (
+                  <rect
+                    x={mx - (l.label.length * 8 * 0.62 + 4) / 2} y={my - 1.5 - 8 * 0.72}
+                    width={l.label.length * 8 * 0.62 + 4} height={8 * 1.15}
+                    fill="white" opacity={0.85}
+                  />
+                )}
                 <text
                   x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}
+                  {...(plainDimLabels ? { stroke: 'white', strokeWidth: 2.6, paintOrder: 'stroke' as const } : {})}
                 >
                   {l.label}
                 </text>
@@ -292,7 +309,7 @@ export function TechnicalDrawingSvg({
         );
       })}
       {dimensions.map((d) => (
-        <DimensionLineView key={d.id} d={d} ox={ox} oy={oy} scale={scale} onSelect={onSelectDimension} />
+        <DimensionLineView key={d.id} d={d} ox={ox} oy={oy} scale={scale} onSelect={onSelectDimension} plainLabels={plainDimLabels} />
       ))}
       {footerRoom > 8 && (
         <g>

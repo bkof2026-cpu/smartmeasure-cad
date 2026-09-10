@@ -178,12 +178,15 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   const enteredTotalW = n(dims.totalWidth ?? 0);
   const totalWidthForCalc = enteredTotalW > 0 ? enteredTotalW : wardrobeW + dressingTotalW;
 
-  // Top Panel — renamed from Side Panel; SAME existing geometry/position.
-  // Width's live computed default = Total Width − Wardrobe Width −
-  // Dressing Width (spec §4/§38) — only used to seed the DISPLAYED
-  // default before the user has touched the field; once addonDims holds a
-  // real value, that always wins.
-  const topPanelWidthDefault = Math.max(0, totalWidthForCalc - wardrobeW - dressingTotalW);
+  // Top Panel (a.k.a. Side Panel) — Width's live computed default, per the
+  // user's explicit final formula:
+  //   Top Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm (Extra)
+  // e.g. 3000 − 2000 − 550 + 20 = 470. The +20mm is an intentional
+  // overhang (the composite ends up 20mm wider than Total Width). Only
+  // seeds the DISPLAYED default before the user touches the field; once
+  // addonDims holds a real value, that always wins.
+  const TOP_PANEL_EXTRA_MM = 20;
+  const topPanelWidthDefault = Math.max(0, totalWidthForCalc - wardrobeW - dressingTotalW + TOP_PANEL_EXTRA_MM);
   const topPanel: WardrobeTopPanelInput = {
     enabled: isWardrobe && selectedAddons.has('top-panel'),
     side: SIDE_OPTS[(addonDims['top-panel']?.side) ?? 0] ?? 'left',
@@ -1824,7 +1827,7 @@ export const ProductFlow: React.FC = () => {
                           <div className="px-3 pb-3 flex flex-col gap-2 border-t" style={{ borderColor: '#2d1f4a' }}>
                             {visibleFields.map((field) => (
                               <div key={field.key} className="flex flex-col gap-0.5 mt-2">
-                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>{field.label}{!field.options && field.kind !== 'checkbox' && ' (mm)'}</label>
+                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>{field.label}{!field.options && field.kind !== 'checkbox' && !field.isCount && ' (mm)'}</label>
                                 {field.kind === 'checkbox' ? (
                                   <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer"
                                     style={{ background: '#1e293b', border: '1px solid #3b1f6a', color: '#e2e8f0' }}>
@@ -1854,11 +1857,13 @@ export const ProductFlow: React.FC = () => {
                                         className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                                         style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
                                       />
-                                      <span className="flex items-center text-xs px-1.5 rounded"
-                                        style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                      {!field.isCount && (
+                                        <span className="flex items-center text-xs px-1.5 rounded"
+                                          style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                      )}
                                     </div>
                                     <span className="text-xs font-mono" style={{ color: '#334155' }}>
-                                      {field.min}–{field.max}mm
+                                      {field.min}–{field.max}{field.isCount ? '' : 'mm'}
                                     </span>
                                   </>
                                 )}

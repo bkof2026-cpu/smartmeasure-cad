@@ -2,7 +2,7 @@ import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engin
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
 import {
-  loftOneDoorWidth, loftDoorWidthStatus, totalKhachaWidth,
+  loftOneDoorWidth, loftDoorWidthStatus, totalKhachaWidth, LOFT_WARDROBE_GAP_MM,
   type FixPattiInput, type FixPattiPosition, type KhachaInput, type KhachaPosition,
 } from '../../engine/loftDoorEngine';
 
@@ -400,26 +400,27 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const leftAdjacentLoftMargin = adjacentLoft.enabled && adjacentLoft.side === 'left' ? 130 + 60 : 0;
   const leaderMargin = 150 + leftAdjacentLoftMargin;
 
-  // Skirting — a real 70mm board strip at the bottom of the wardrobe
-  // carcass (and Side Dressing, which sits on the same floor line). The
-  // ENTERED Height stays the true overall/floor-to-top figure (matching
-  // what was actually measured on site); the carcass itself is drawn
-  // WARDROBE_SKIRTING_HEIGHT_MM shorter, with the difference filled by a
-  // labeled skirting strip below it — per the user's explicit confirmation
-  // of this exact math. Guarded so a Height smaller than the skirting
-  // itself never goes negative (falls back to the full entered H, no
-  // skirting drawn) rather than producing an invalid/inverted box.
+  // Skirting — a real 70mm board strip drawn at the FLOOR line of the
+  // wardrobe. Per the user's explicit final instruction: the entered
+  // Wardrobe Height ALREADY includes the skirting — do NOT subtract it.
+  // The wardrobe box is drawn at its full entered Height (bodyH === H);
+  // the skirting is just a labelled 70mm band at the bottom OF that same
+  // height (a visual sub-strip, not an extra strip added below), so
+  //   Total Height = Wardrobe Height (incl. skirting) + 10mm gap + Loft Height.
+  // Guarded so a Height smaller than the skirting itself simply draws no
+  // skirting band rather than an inverted strip.
   const skirtH = H > WARDROBE_SKIRTING_HEIGHT_MM ? WARDROBE_SKIRTING_HEIGHT_MM : 0;
-  const bodyH = H - skirtH;
+  const bodyH = H;
 
   const dressL = dressing.enabled && dressing.side !== 'right' ? dressing.widthMm : 0;
   const dressR = dressing.enabled && dressing.side !== 'left' ? dressing.widthMm : 0;
-  // Top Panel (renamed from Side Panel — same component, same geometry) is
-  // drawn rotated — Depth is its horizontal extent, Width its short
-  // vertical extent (a flat horizontal slat, not a tall sliver) — so the
-  // horizontal space it reserves in the composite layout is its Depth.
-  const topPanelL = topPanel.enabled && topPanel.side !== 'right' ? topPanel.depthMm : 0;
-  const topPanelR = topPanel.enabled && topPanel.side !== 'left' ? topPanel.depthMm : 0;
+  // Top Panel (a.k.a. Side Panel) — per the user's explicit composite
+  // formula "Total Width = Wardrobe Width + Dressing Width + Side Panel
+  // Width", the horizontal footprint it reserves in the composite is its
+  // WIDTH (not its Depth). Depth runs front-to-back and is shown only as
+  // the diagonal "(D)" leader.
+  const topPanelL = topPanel.enabled && topPanel.side !== 'right' ? topPanel.widthMm : 0;
+  const topPanelR = topPanel.enabled && topPanel.side !== 'left' ? topPanel.widthMm : 0;
 
   // Extra Storage + Open Box — real boxes beside the Wardrobe/Dressing
   // stack (spec §26-36), reserving their own horizontal space the same
@@ -602,12 +603,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     }
     if (loft.mode === 'box') {
       const loftDiag = insideDiagonal(doorsAreaX, loftY, loftFrameWidth, loftH, 'right-down');
-      lines.push({ x1: doorsAreaX, y1: loftY, x2: loftDiag.x2, y2: loftDiag.y2, color: DIAG, label: `${Math.round(loft.depthMm)} mm (D)` });
+      lines.push({ x1: doorsAreaX, y1: loftY, x2: loftDiag.x2, y2: loftDiag.y2, color: DIAG, label: `${Math.round(loft.depthMm)} (D)` });
     }
     // Loft Height — a real dimension arrow on the loft's own left edge
     // (it previously only appeared as caption/label text, never a real
     // arrow like every other value in this drawing).
-    dimReqs.push({ axis: 'v', x1: loftX, y1: loftY, x2: loftX, y2: loftY + loftH, edge: 'left', componentIds: ['loft'], label: `${Math.round(loftH)} mm (Loft H)`, source: { formula: 'Loft Height = Total Height − Wardrobe Height − 10mm gap (auto-calculated, editable)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: loftX, y1: loftY, x2: loftX, y2: loftY + loftH, edge: 'left', componentIds: ['loft'], label: `${Math.round(loftH)} (Loft H)`, source: { formula: 'Loft Height = Total Height − Wardrobe Height − 10mm gap (auto-calculated, editable)', constants: [] } });
     // The 10mm gap between Wardrobe and Loft — a required, visible
     // annotation per the spec (§22 "Do not hide the 10mm deduction
     // completely"). Drawn as a short leader just below the Loft's own
@@ -615,7 +616,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     if (totalHeightMm && totalHeightMm > 0) {
       const gapY = loftY + loftH;
       const rowFullWidth = loftRowWidth;
-      lines.push({ x1: loftX + rowFullWidth * 0.5, y1: gapY, x2: loftX + rowFullWidth * 0.5 + 40, y2: gapY + 24, color: '#64748b', label: '10 mm GAP' });
+      lines.push({ x1: loftX + rowFullWidth * 0.5, y1: gapY, x2: loftX + rowFullWidth * 0.5 + 40, y2: gapY + 24, color: '#64748b', label: '10 (Gap)' });
     }
 
     // Room Wall boundary — a real, labeled marker for whichever span is
@@ -632,13 +633,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     const loftRowRightEdge = doorsAreaX + loftFrameWidth + rightFPW + rightKhachaW;
     const lowerStructureRightEdge = loftX + totalWidth;
     const wallGap = loftRowRightEdge - lowerStructureRightEdge;
-    if (Math.abs(wallGap) > 1) {
+    // Ignore a gap within ~25mm — that's just the intentional +20mm Side
+    // Panel overhang (plus rounding), not real leftover wall space worth
+    // annotating.
+    if (Math.abs(wallGap) > 25) {
       const wallY = loftY + loftH / 2;
       const gapLeftX = Math.min(loftRowRightEdge, lowerStructureRightEdge);
       const gapRightX = Math.max(loftRowRightEdge, lowerStructureRightEdge);
       lines.push({
         x1: gapLeftX, y1: wallY, x2: gapRightX, y2: wallY,
-        color: '#94a3b8', dashed: true, label: `Room Wall (${Math.round(gapRightX - gapLeftX)}mm)`,
+        color: '#94a3b8', dashed: true, label: `Room Wall (${Math.round(gapRightX - gapLeftX)})`,
       });
     }
   }
@@ -728,17 +732,19 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
 
     // Height/Width/Depth get their own real callouts — same diagonal-D
     // convention as every other component in this drawing.
-    dimReqs.push({ axis: 'v', x1: alX - 20, y1: alY, x2: alX - 20, y2: alY + alH, edge: 'left', componentIds: ['adjacent-loft'], label: `${Math.round(al.heightMm)} mm (Wall B H)`, source: { formula: 'Wall B Loft Height (entered, independent of Wall A)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: alX - 20, y1: alY, x2: alX - 20, y2: alY + alH, edge: 'left', componentIds: ['adjacent-loft'], label: `${Math.round(al.heightMm)} (Wall B H)`, source: { formula: 'Wall B Loft Height (entered, independent of Wall A)', constants: [] } });
     const alDiag = insideDiagonal(alX, alY, alColW, alH, 'right-down');
-    lines.push({ x1: alX, y1: alY, x2: alDiag.x2, y2: alDiag.y2, color: DIAG, label: `${Math.round(al.depthMm)} mm (Wall B D)` });
+    lines.push({ x1: alX, y1: alY, x2: alDiag.x2, y2: alDiag.y2, color: DIAG, label: `${Math.round(al.depthMm)} (Wall B D)` });
   }
 
-  // Wardrobe — a plain W x bodyH carcass (entered H minus the skirting
-  // strip below it), Depth shown as the "/" diagonal leader at its own
-  // top-left corner.
+  // Wardrobe — a plain W x H carcass at its FULL entered Height (the
+  // entered Height already includes the 70mm skirting; it is NOT
+  // subtracted — see skirtH/bodyH note above). Depth shown as the "/"
+  // diagonal leader at its own top-left corner. W and H are shown as
+  // plain callouts inside/beside this box, never a boxed label.
   components.push({
-    id: 'wardrobe', type: 'WARDROBE_BODY', label: `Wardrobe ${Math.round(W)}×${Math.round(bodyH)}`, x: wardrobeX, y: wardrobeY, width: W, height: bodyH, qty: 1, visible: true,
-    source: { formula: skirtH > 0 ? `Width (entered) | Height = ${Math.round(H)}mm entered − ${skirtH}mm skirting = ${Math.round(bodyH)}mm carcass` : 'Width x Height (entered) — single carcass, no internal panels', constants: [] },
+    id: 'wardrobe', type: 'WARDROBE_BODY', label: `Wardrobe ${Math.round(W)}×${Math.round(H)}`, x: wardrobeX, y: wardrobeY, width: W, height: bodyH, qty: 1, visible: true,
+    source: { formula: 'Width x Height (both entered) — single carcass, entered Height already includes the 70mm skirting', constants: [] },
   });
   // Anchored at the Wardrobe's bottom-left corner rather than top-left —
   // the top-left corner is where Dressing/Side Panel/Loft all converge, so
@@ -748,11 +754,11 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // per the user's explicit direction, in the Wardrobe's own colour.
   {
     const wardrobeDiag = insideDiagonal(wardrobeX, wardrobeY + bodyH, W, bodyH, 'right-up');
-    lines.push({ x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeDiag.x2, y2: wardrobeDiag.y2, color: DIAG, label: `${Math.round(D)} mm (D)` });
+    lines.push({ x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeDiag.x2, y2: wardrobeDiag.y2, color: DIAG, label: `${Math.round(D)} (D)` });
   }
 
-  dimReqs.push({ axis: 'h', x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: ['wardrobe'], label: `${Math.round(W)} mm (width)`, source: { formula: 'Wardrobe Width = W', constants: [] } });
-  dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: wardrobeY, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(bodyH)} mm (height)`, source: { formula: skirtH > 0 ? `Carcass Height = entered H(${Math.round(H)}) − skirting(${skirtH})` : 'Wardrobe Height = H', constants: [] } });
+  dimReqs.push({ axis: 'h', x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: ['wardrobe'], label: `${Math.round(W)} (W)`, source: { formula: 'Wardrobe Width (entered)', constants: [] } });
+  dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: wardrobeY, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(H)} (H)`, source: { formula: 'Wardrobe Height (entered, includes the 70mm skirting)', constants: [] } });
 
   // Skirting drawn further below, AFTER Dressing/Side Panel are resolved —
   // it spans the full composite floor line (Dressing + Wardrobe + Side
@@ -772,14 +778,18 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // them apart; forcing totalWidthTier/totalHeightTier one tier further
   // out than the inner dimension makes the real-CAD "overall dimension is
   // the outermost line" convention explicit rather than incidental.
-  if (leftExtra + rightExtra > 0) {
-    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + totalWidth, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth)} mm (total width)`, source: { formula: 'Total Width = Side Panel + Dressing + Wardrobe Width + Dressing + Side Panel', constants: [] } });
+  // Auto-derived composite "total width" / "total height" — only shown
+  // when the user has NOT entered an explicit Total Width / Total Height
+  // below (those entered values are the authoritative overall figures;
+  // showing both the composite AND the entered value just clutters and
+  // reads as "why are there two totals?"). When shown, these are the
+  // "Wardrobe + Dressing + Side Panel" composite / "Wardrobe Height +
+  // 10mm gap + Loft Height" stack.
+  if (leftExtra + rightExtra > 0 && !(totalWidthMm && totalWidthMm > 0)) {
+    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + totalWidth, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidth)} (Total W)`, source: { formula: 'Total Width = Side Panel + Dressing + Wardrobe Width + Dressing + Side Panel', constants: [] } });
   }
-  if (loftH > 0) {
-    // Total height is measured against the TRUE entered H (floor-to-top,
-    // including skirting) — not the shrunk carcass bodyH — since that's
-    // the real overall figure a Loft sits on top of.
-    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: topPad, x2: wardrobeX + W, y2: wardrobeY + bodyH + skirtH, edge: 'right', componentIds: [], label: `${Math.round(loftH + H)} mm (total height)`, source: { formula: 'Total Height = Loft Height + Wardrobe Height (entered, floor-to-top)', constants: [] } });
+  if (loftH > 0 && !(totalHeightMm && totalHeightMm > 0)) {
+    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: topPad, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'right', componentIds: [], label: `${Math.round(loftH + LOFT_WARDROBE_GAP_MM + H)} (Total H)`, source: { formula: 'Total Height = Wardrobe Height (incl. skirting) + 10mm gap + Loft Height', constants: [] } });
   }
 
   // Explicitly-entered "Total Width" / "Total Height" — separate measurement
@@ -804,10 +814,10 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // composite (exactly the Loft-alignment scenario this fix addresses).
     // roomWallWidth is the same true wall-to-wall span the Loft row itself
     // is now measured against.
-    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + Math.max(totalWidthMm, totalWidth), y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} mm (Total Width, entered)`, source: { formula: 'Total Width (entered directly, not derived from Wardrobe Width or add-ons)', constants: [] } });
+    dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + Math.max(totalWidthMm, totalWidth), y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} (Total W)`, source: { formula: 'Total Width (entered directly — a separate measurement, NOT Wardrobe Width + Dressing Width + Side Panel Width)', constants: [] } });
   }
   if (totalHeightMm && totalHeightMm > 0) {
-    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: Math.min(topPad, wardrobeY), x2: wardrobeX + W, y2: wardrobeY + bodyH + skirtH, edge: 'right', componentIds: [], label: `${Math.round(totalHeightMm)} mm (Total Height, entered)`, source: { formula: 'Total Height (entered directly, not derived from Wardrobe Height or add-ons)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: wardrobeX + W, y1: Math.min(topPad, wardrobeY), x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'right', componentIds: [], label: `${Math.round(totalHeightMm)} (Total H)`, source: { formula: 'Total Height (entered directly — a separate measurement, NOT the same as Wardrobe Height)', constants: [] } });
   }
 
   // Side Dressing — flush against the Wardrobe carcass (both sit on the
@@ -844,57 +854,57 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       const eachH = totalDrawerH / drawerCount;
       for (let i = 0; i < drawerCount; i++) {
         components.push({
-          id: `${dressId}-drawer-${i}`, type: 'DRAWER', label: i === 0 ? `Drawer\n${Math.round(eachH)}` : '', x: dx, y: drawerY + i * eachH, width: dressW, height: eachH, qty: 1, visible: true,
-          source: { formula: `Drawer ${i + 1} of ${drawerCount} — Width = Dressing Width (auto) | Height = Total Drawer Height(${Math.round(totalDrawerH)}) ÷ ${drawerCount} = ${eachH.toFixed(1)}mm`, constants: [] },
+          // No per-drawer size label — the user only wants the Total
+          // Drawer Height shown, never each individual drawer's height.
+          // Just the count of drawer bands drawn.
+          id: `${dressId}-drawer-${i}`, type: 'DRAWER', label: i === 0 ? `${drawerCount} Drawers` : '', x: dx, y: drawerY + i * eachH, width: dressW, height: eachH, qty: 1, visible: true,
+          source: { formula: `Drawer ${i + 1} of ${drawerCount} — Width = Dressing Width (auto) | drawn height = Total Drawer Height(${Math.round(totalDrawerH)}) ÷ ${drawerCount}`, constants: [] },
         });
       }
-      // Total Drawer Height gets its own real leader (spec §20 "Show that
-      // measurement in the drawing") — a short arrow on the drawer
-      // section's own inner edge, distinct from the Dressing's own
-      // overall Height leader outside the box.
-      dimReqs.push({ axis: 'v', x1: dx + dressW * 0.5, y1: drawerY, x2: dx + dressW * 0.5, y2: drawerY + totalDrawerH, edge: 'left', componentIds: [`${dressId}-drawer-0`], label: `${Math.round(totalDrawerH)} mm (Total Drawer H)`, source: { formula: 'Total Drawer Height (entered), auto-divided evenly among the entered Drawer Count', constants: [] } });
+      // Only the Total Drawer Height is called out (a plain vertical
+      // arrow on the drawer section's own edge) — never per-drawer sizes.
+      dimReqs.push({ axis: 'v', x1: dx + dressW * 0.5, y1: drawerY, x2: dx + dressW * 0.5, y2: drawerY + totalDrawerH, edge: 'left', componentIds: [`${dressId}-drawer-0`], label: `${Math.round(totalDrawerH)} (Total Drawer H)`, source: { formula: 'Total Drawer Height (entered), auto-divided evenly among the entered Drawer Count', constants: [] } });
     }
   }
   if (dressL > 0) {
     const dx = wardrobeX - dressL;
-    components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing ${Math.round(dressL)}`, x: dx, y: wardrobeY, width: dressL, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = Wardrobe carcass Height (auto-fetched)`, constants: [] } });
-    dimReqs.push({ axis: 'v', x1: dx - dressLeaderGap, y1: wardrobeY, x2: dx - dressLeaderGap, y2: wardrobeY + bodyH, edge: 'left', componentIds: ['dress-l'], label: `${Math.round(bodyH)} mm (H)`, source: { formula: 'Dressing Height = Wardrobe carcass Height (auto-fetched)', constants: [] } });
-    dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH + 24, x2: dx + dressL, y2: wardrobeY + bodyH + 24, edge: 'bottom', componentIds: ['dress-l'], label: `${Math.round(dressL)} mm (W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
+    // Dressing's own Width shown right IN its box (label), Height as a
+    // plain vertical arrow on its outer edge. Height = Wardrobe Height
+    // (they are equal — per the user's "Wardrobe height = dressing
+    // height" note), so it's not re-labelled as a separate figure.
+    components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing\n${Math.round(dressL)} W`, x: dx, y: wardrobeY, width: dressL, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
+    dimReqs.push({ axis: 'v', x1: dx - dressLeaderGap, y1: wardrobeY, x2: dx - dressLeaderGap, y2: wardrobeY + bodyH, edge: 'left', componentIds: ['dress-l'], label: `${Math.round(bodyH)} (H)`, source: { formula: 'Dressing Height = Wardrobe Height (equal, auto-fetched)', constants: [] } });
     drawDressingInternals('dress-l', dx, dressL);
   }
   if (dressR > 0) {
     const dx = wardrobeX + W;
-    components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing ${Math.round(dressR)}`, x: dx, y: wardrobeY, width: dressR, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = Wardrobe carcass Height (auto-fetched)`, constants: [] } });
-    dimReqs.push({ axis: 'v', x1: dx + dressR + dressLeaderGap, y1: wardrobeY, x2: dx + dressR + dressLeaderGap, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['dress-r'], label: `${Math.round(bodyH)} mm (H)`, source: { formula: 'Dressing Height = Wardrobe carcass Height (auto-fetched)', constants: [] } });
-    dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH + 24, x2: dx + dressR, y2: wardrobeY + bodyH + 24, edge: 'bottom', componentIds: ['dress-r'], label: `${Math.round(dressR)} mm (W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
+    components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing\n${Math.round(dressR)} W`, x: dx, y: wardrobeY, width: dressR, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
+    dimReqs.push({ axis: 'v', x1: dx + dressR + dressLeaderGap, y1: wardrobeY, x2: dx + dressR + dressLeaderGap, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['dress-r'], label: `${Math.round(bodyH)} (H)`, source: { formula: 'Dressing Height = Wardrobe Height (equal, auto-fetched)', constants: [] } });
     drawDressingInternals('dress-r', dx, dressR);
   }
 
-  // Skirting — a real, labeled strip along the ACTUAL lower-product
-  // footprint only (Dressing + Wardrobe + Top Panel), matching how a real
-  // skirting/plinth board runs continuously under the whole unit — never
-  // the full Room Total Width, per the user's explicit correction ("Do NOT
-  // automatically make Skirting Width = Room Total Width... clipped to the
-  // actual lower component footprint"). totalWidth here is exactly that
-  // footprint (topPanelL/dressL/W/dressR/topPanelR — the same components
-  // this loop already draws), deliberately NOT roomWallWidth/loftFrameWidth
-  // above. Per the user's own explicit formula — Skirting Width = Wardrobe
-  // Width + Dressing (if given) + Study Table (if given) — Study Table
-  // would extend this same footprint the moment it becomes a real Wardrobe
-  // add-on component (it isn't wired in yet; there's no Study Table input
-  // reaching this module today, so nothing to add to totalWidth until that
-  // add-on exists — this comment is the extension point for when it does).
-  // Drawing-only: no new measurement field, never shown in the
-  // Measurements panel.
+  // Skirting — a real, labelled 70mm band at the FLOOR line of the lower
+  // structure (Dressing + Wardrobe + Top Panel), drawn as the bottom
+  // 70mm OF the wardrobe's own full entered Height (not an extra strip
+  // added below it — the entered Height already includes it, per the
+  // user's explicit instruction). Width is clipped to the actual lower-
+  // product footprint (never the full Room Total Width). Drawing-only:
+  // no measurement field, just a labelled band + a plain "70 (Skirting)"
+  // callout.
   if (skirtH > 0) {
-    const skirtY = wardrobeY + bodyH;
-    const skirtX = wardrobeX - dressL - topPanelL;
-    const skirtW = totalWidth;
+    // Skirting spans ONLY the floor-standing components: Dressing +
+    // Wardrobe (+ Study Table when attached) — NOT the Top/Side Panel,
+    // which sits up at the Loft's bottom edge, not on the floor. Per the
+    // user's explicit "skirting width = wardrobe width + dressing (if
+    // given) + study table (if given)".
+    const skirtY = wardrobeY + bodyH - skirtH;
+    const skirtX = wardrobeX - dressL;
+    const skirtW = dressL + W + dressR;
     components.push({
-      id: 'skirting', type: 'SKIRTING', label: `Skirting — ${skirtH}mm`, x: skirtX, y: skirtY, width: skirtW, height: skirtH, qty: 1, visible: true,
-      source: { formula: `Fixed ${skirtH}mm skirting strip — real board height, not derived from Wardrobe Width/Depth`, constants: [] },
+      id: 'skirting', type: 'SKIRTING', label: `Skirting ${skirtH}`, x: skirtX, y: skirtY, width: skirtW, height: skirtH, qty: 1, visible: true,
+      source: { formula: `Fixed ${skirtH}mm skirting band at the floor line — spans Dressing + Wardrobe (+ Study Table), part of the entered Wardrobe Height, not subtracted from it`, constants: [] },
     });
-    dimReqs.push({ axis: 'v', x1: skirtX + skirtW + 16, y1: skirtY, x2: skirtX + skirtW + 16, y2: skirtY + skirtH, edge: 'right', componentIds: ['skirting'], label: `${skirtH} mm (Skirting)`, source: { formula: `Fixed ${skirtH}mm skirting board`, constants: [] } });
+    dimReqs.push({ axis: 'v', x1: skirtX + skirtW + 16, y1: skirtY, x2: skirtX + skirtW + 16, y2: skirtY + skirtH, edge: 'right', componentIds: ['skirting'], label: `${skirtH} (Skirting)`, source: { formula: `Fixed ${skirtH}mm skirting band`, constants: [] } });
   }
 
   // Top Panel (renamed from Side Panel — per the user's own, twice-
@@ -920,20 +930,18 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const panelLineWidth = loft.enabled ? 2.5 : 0.8;
   if (topPanelL > 0) {
     const px = wardrobeX - dressL - topPanelL;
+    // Horizontal slat spanning the Top Panel's own WIDTH; a horizontal
+    // dim line under it shows that Width, and a short diagonal "(D)"
+    // leader shows its Depth.
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
-    lines.push({ x1: px, y1: wardrobeY, x2: px - 120, y2: wardrobeY - 110, color: DIAG, label: `${Math.round(topPanelL)} mm (D)` });
-    dimReqs.push({ axis: 'v', x1: px, y1: wardrobeY, x2: px, y2: wardrobeY + topPanel.widthMm, edge: 'left', componentIds: [], label: `${Math.round(topPanel.widthMm)} mm (W)`, source: { formula: 'Top Panel Width (auto-calculated from Total Width, editable)', constants: [] } });
+    lines.push({ x1: px, y1: wardrobeY, x2: px - 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
+    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm extra (auto-calculated, editable)', constants: [] } });
   }
   if (topPanelR > 0) {
     const px = wardrobeX + W + dressR;
-    // Anchored at px + topPanelR (the line's own RIGHT/outer end) rather
-    // than px (its left end, which is the shared inner corner with the
-    // Wardrobe/Dressing) — leaning up-left from the inner corner would
-    // have crossed straight back over whatever sits immediately to this
-    // panel's left.
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
-    lines.push({ x1: px + topPanelR, y1: wardrobeY, x2: px + topPanelR + 120, y2: wardrobeY - 110, color: DIAG, label: `${Math.round(topPanelR)} mm (D)` });
-    dimReqs.push({ axis: 'v', x1: px + topPanelR, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY + topPanel.widthMm, edge: 'right', componentIds: [], label: `${Math.round(topPanel.widthMm)} mm (W)`, source: { formula: 'Top Panel Width (auto-calculated from Total Width, editable)', constants: [] } });
+    lines.push({ x1: px + topPanelR, y1: wardrobeY, x2: px + topPanelR + 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
+    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm extra (auto-calculated, editable)', constants: [] } });
   }
 
   // Extra Storage + Open Box — real boxes drawn OUTSIDE Top Panel/Dressing
@@ -972,9 +980,9 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       // the component... use Leader Arrow + Measurement Text") since the
       // column is often narrow.
       const leaderX = side === 'left' ? colX - storageBoxLeaderGap : colX + colW + storageBoxLeaderGap;
-      dimReqs.push({ axis: 'v', x1: leaderX, y1: cursorY, x2: leaderX, y2: cursorY + storageH, edge: side === 'left' ? 'left' : 'right', componentIds: [], label: `${Math.round(storageSide.heightMm)} mm (Storage H)`, source: { formula: 'Storage Height (entered)', constants: [] } });
+      dimReqs.push({ axis: 'v', x1: leaderX, y1: cursorY, x2: leaderX, y2: cursorY + storageH, edge: side === 'left' ? 'left' : 'right', componentIds: [], label: `${Math.round(storageSide.heightMm)} (Storage H)`, source: { formula: 'Storage Height (entered)', constants: [] } });
       const storageDiag = insideDiagonal(colX, cursorY, colW, storageH, side === 'left' ? 'left-down' : 'right-down');
-      lines.push({ x1: colX + (side === 'left' ? colW : 0), y1: cursorY, x2: storageDiag.x2, y2: storageDiag.y2, color: DIAG, label: `${Math.round(storageSide.depthMm)} mm (D)` });
+      lines.push({ x1: colX + (side === 'left' ? colW : 0), y1: cursorY, x2: storageDiag.x2, y2: storageDiag.y2, color: DIAG, label: `${Math.round(storageSide.depthMm)} (D)` });
       cursorY += storageH;
     }
     if (hasOpenBox && openBoxSide) {
@@ -984,9 +992,9 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
         source: { formula: `Open Box (${side}) — Width x Height (both entered), no door/shutter`, constants: [] },
       });
       const leaderX = side === 'left' ? colX - storageBoxLeaderGap : colX + colW + storageBoxLeaderGap;
-      dimReqs.push({ axis: 'v', x1: leaderX, y1: cursorY, x2: leaderX, y2: cursorY + openBoxH, edge: side === 'left' ? 'left' : 'right', componentIds: [`open-box-${side}`], label: `${Math.round(openBoxSide.heightMm)} mm (Open Box H)`, source: { formula: 'Open Box Height (entered)', constants: [] } });
+      dimReqs.push({ axis: 'v', x1: leaderX, y1: cursorY, x2: leaderX, y2: cursorY + openBoxH, edge: side === 'left' ? 'left' : 'right', componentIds: [`open-box-${side}`], label: `${Math.round(openBoxSide.heightMm)} (Open Box H)`, source: { formula: 'Open Box Height (entered)', constants: [] } });
       const openBoxDiag = insideDiagonal(colX, cursorY, colW, openBoxH, side === 'left' ? 'left-down' : 'right-down');
-      lines.push({ x1: colX + (side === 'left' ? colW : 0), y1: cursorY, x2: openBoxDiag.x2, y2: openBoxDiag.y2, color: DIAG, label: `${Math.round(openBoxSide.depthMm)} mm (D)` });
+      lines.push({ x1: colX + (side === 'left' ? colW : 0), y1: cursorY, x2: openBoxDiag.x2, y2: openBoxDiag.y2, color: DIAG, label: `${Math.round(openBoxSide.depthMm)} (D)` });
     }
   }
   if (storageColL > 0) {
@@ -1011,7 +1019,11 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // shift above (everything else's own origin already makes room for it).
   const adjacentLoftRightEdge = adjacentLoft.enabled && adjacentLoft.side === 'right' ? loftX + roomWallWidth + 60 + 130 + 20 : 0;
   const worldWidth = Math.max(loftX + totalWidth + (skirtH > 0 ? 26 : 0), loft.enabled ? loftX + roomWallWidth + 20 : 0, adjacentLoftRightEdge, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
-  const worldHeight = Math.max(wardrobeY + bodyH + skirtH + (leftExtra + rightExtra > 0 ? 70 : 20), ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
+  // bodyH now IS the full entered Wardrobe Height (skirting is drawn as
+  // a band inside its bottom, not an extra strip below it) — so no
+  // "+ skirtH" here any more; the extra 70/20 is just headroom for the
+  // bottom dimension line(s).
+  const worldHeight = Math.max(wardrobeY + bodyH + (leftExtra + rightExtra > 0 ? 70 : 20), ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
   // The Dressing Height leader sits right beside a narrow box whose own
   // "Dressing" caption is centered inside it — the standard tier-0 offset
@@ -1074,15 +1086,13 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       return [];
     })(),
     // Total Width (entered) must be a real, physically consistent room
-    // measurement — it can never be narrower than the furniture actually
-    // placed against it (Wardrobe + Dressing + Top Panel + Storage
-    // column). A smaller entered value isn't a valid alternate layout;
-    // it's a data-entry mistake that would otherwise silently draw the
-    // Loft narrower than the structure it sits above. Real WARNING (not
-    // CRITICAL) since the Loft still draws something coherent — the
-    // Loft's own drawn Width just genuinely reads as too narrow, which
-    // this message explains rather than leaving unexplained.
-    ...(totalWidthMm && totalWidthMm > 0 && totalWidthMm < totalWidth ? [{ id: 'val-total-width-too-small', severity: 'WARNING' as const, code: 'TOTAL_WIDTH_SMALLER_THAN_FURNITURE', message: `⚠ Total Width entered (${Math.round(totalWidthMm)}mm) is smaller than the Wardrobe+Dressing+Top Panel width (${Math.round(totalWidth)}mm) — Total Width should be the full room span and can never be narrower than the furniture placed in it.` }] : []),
+    // measurement — it should not be meaningfully narrower than the
+    // furniture placed against it (Wardrobe + Dressing + Side Panel +
+    // Storage column). A tolerance covers the intentional +20mm Side
+    // Panel overhang (Side Panel Width = Total − Wardrobe − Dressing +
+    // 20, so the composite legitimately runs ~20mm past Total Width) plus
+    // rounding. Real WARNING (not CRITICAL) — the drawing still renders.
+    ...(totalWidthMm && totalWidthMm > 0 && totalWidthMm < totalWidth - 25 ? [{ id: 'val-total-width-too-small', severity: 'WARNING' as const, code: 'TOTAL_WIDTH_SMALLER_THAN_FURNITURE', message: `⚠ Total Width entered (${Math.round(totalWidthMm)}mm) is smaller than the Wardrobe+Dressing+Side Panel width (${Math.round(totalWidth)}mm) — Total Width should be the full room span and can never be narrower than the furniture placed in it.` }] : []),
     ...(topPanel.enabled ? validateMeasurements({ W: topPanel.widthMm, D: topPanel.depthMm }, [{ key: 'W', label: 'Top Panel Width', min: 1 }, { key: 'D', label: 'Top Panel Depth', min: 1 }]) : []),
     ...(loft.enabled ? validateMeasurements({ W: loft.widthMm, H: loft.heightMm }, [{ key: 'W', label: 'Loft Width', min: 1 }, { key: 'H', label: 'Loft Height', min: 1 }]) : []),
     ...(loft.enabled && (fixPatti.position === 'left' || fixPatti.position === 'both') ? validateMeasurements({ H: fixPatti.leftHeightMm, W: fixPatti.leftWidthMm }, [{ key: 'H', label: 'Left Fix Patti Height', min: 1 }, { key: 'W', label: 'Left Fix Patti Width', min: 1 }]) : []),
