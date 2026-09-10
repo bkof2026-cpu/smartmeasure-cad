@@ -946,18 +946,19 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   }
   if (dressL > 0) {
     const dx = wardrobeX - dressL;
-    // Dressing's own Width shown right IN its box (label). Its Height is
-    // ALWAYS equal to the Wardrobe Height (auto-fetched, never entered
-    // separately), so — per the user's "wardrobe height = Dressing
-    // height, no need to show the Dressing height differently" — no
-    // separate Dressing-height dimension arrow is drawn; the single
-    // Wardrobe "(H)" arrow already states it.
+    // Dressing's own Width is shown as a real horizontal "<n>(W)" arrow
+    // INSIDE the Dressing box (a short dim line spanning its own width,
+    // per the user's "show dressing width in dressing box with horizontal
+    // arrow like 400(W)"). Its Height is ALWAYS equal to the Wardrobe
+    // Height (auto-fetched) so no separate height arrow is drawn.
     components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing`, x: dx, y: wardrobeY, width: dressL, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
+    dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH * 0.12, x2: dx + dressL, y2: wardrobeY + bodyH * 0.12, edge: 'top', componentIds: ['dress-l'], label: `${Math.round(dressL)}(W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
     drawDressingInternals('dress-l', dx, dressL, 'left');
   }
   if (dressR > 0) {
     const dx = wardrobeX + W;
     components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing`, x: dx, y: wardrobeY, width: dressR, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
+    dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH * 0.12, x2: dx + dressR, y2: wardrobeY + bodyH * 0.12, edge: 'top', componentIds: ['dress-r'], label: `${Math.round(dressR)}(W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
     drawDressingInternals('dress-r', dx, dressR, 'right');
   }
 

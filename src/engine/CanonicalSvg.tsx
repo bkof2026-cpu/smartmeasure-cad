@@ -244,9 +244,16 @@ export function TechnicalDrawingSvg({
           // long band always reads fine even if it slightly overhangs the
           // thin stroke.
           const isHorizontalBand = pw > name.length * 4.4 + 6 && pw > ph * 4;
-          // The name fits inside only if the box is big enough BOTH ways.
+          // A tall, narrow box (much taller than wide — e.g. a Dressing
+          // column) writes its name ROTATED vertically inside it (reads
+          // bottom-to-top), so the name always stays visible without a
+          // margin leader even when the box is too narrow for horizontal
+          // text.
+          const isVerticalColumn = !isHorizontalBand && ph > name.length * 4.4 + 6 && ph > pw * 2 && pw > 10;
+          // The name fits inside horizontally only if the box is big
+          // enough BOTH ways.
           const fitsInside = (pw > name.length * 4.4 + 6 && ph > 13) || isHorizontalBand;
-          if (name && !fitsInside) {
+          if (name && !fitsInside && !isVerticalColumn) {
             // Leader to the nearer vertical edge, pointing OUT toward the
             // closer side of the drawing — the label sits just beyond that
             // edge, NOT at the canvas margin.
@@ -272,6 +279,11 @@ export function TechnicalDrawingSvg({
                   {...(isHorizontalBand ? { stroke: 'white', strokeWidth: 2.4, paintOrder: 'stroke' as const } : {})}>
                   {isHorizontalBand ? name : c.label}
                 </text>
+              )}
+              {name && !fitsInside && isVerticalColumn && (
+                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" fontSize={6.5} fontFamily="'DM Sans',sans-serif" fill={style.stroke ?? '#333'} fontWeight={700}
+                  transform={`rotate(-90 ${px + pw / 2} ${py + ph / 2})`}
+                  stroke="white" strokeWidth={2.2} paintOrder="stroke">{name}</text>
               )}
             </g>
           );
