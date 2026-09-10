@@ -544,16 +544,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // inside any Khacha on the same side — Khacha sits further out still).
     if (hasLeftFP) {
       components.push({
-        id: 'fix-patti-left', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fp.leftHeightMm)}×${Math.round(fp.leftWidthMm)}`,
+        id: 'fix-patti-left', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fp.leftWidthMm)}(W) x ${Math.round(fp.leftHeightMm)}(H)`,
         x: loftX + leftKhachaW, y: loftY, width: leftFPW, height: loftH, qty: 1, visible: true,
-        source: { formula: `Left Fix Patti — Height x Width (both entered) | subtracted from Total Room Width to get the Loft Width`, constants: [] },
+        source: { formula: `Left Fix Patti — Width x Height (both entered) | its Width is subtracted from Total Room Width to get the Loft Width`, constants: [] },
       });
     }
     if (hasRightFP) {
       components.push({
-        id: 'fix-patti-right', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fp.rightHeightMm)}×${Math.round(fp.rightWidthMm)}`,
+        id: 'fix-patti-right', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fp.rightWidthMm)}(W) x ${Math.round(fp.rightHeightMm)}(H)`,
         x: doorsAreaX + loftFrameWidth, y: loftY, width: rightFPW, height: loftH, qty: 1, visible: true,
-        source: { formula: `Right Fix Patti — Height x Width (both entered) | subtracted from Total Room Width to get the Loft Width`, constants: [] },
+        source: { formula: `Right Fix Patti — Width x Height (both entered) | its Width is subtracted from Total Room Width to get the Loft Width`, constants: [] },
       });
     }
 
@@ -935,13 +935,13 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // leader shows its Depth.
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
     lines.push({ x1: px, y1: wardrobeY, x2: px - 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
-    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm extra (auto-calculated, editable)', constants: [] } });
+    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
   }
   if (topPanelR > 0) {
     const px = wardrobeX + W + dressR;
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
     lines.push({ x1: px + topPanelR, y1: wardrobeY, x2: px + topPanelR + 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
-    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm extra (auto-calculated, editable)', constants: [] } });
+    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, edge: 'top', componentIds: [], label: `${Math.round(topPanel.widthMm)} (W)`, source: { formula: 'Side Panel Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
   }
 
   // Extra Storage + Open Box — real boxes drawn OUTSIDE Top Panel/Dressing

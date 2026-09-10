@@ -9,7 +9,7 @@ import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
 import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
 import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
-import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
+import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, totalFixPattiWidth, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
@@ -178,15 +178,46 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   const enteredTotalW = n(dims.totalWidth ?? 0);
   const totalWidthForCalc = enteredTotalW > 0 ? enteredTotalW : wardrobeW + dressingTotalW;
 
-  // Top Panel (a.k.a. Side Panel) — Width's live computed default, per the
-  // user's explicit final formula:
-  //   Top Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm (Extra)
-  // e.g. 3000 − 2000 − 550 + 20 = 470. The +20mm is an intentional
-  // overhang (the composite ends up 20mm wider than Total Width). Only
-  // seeds the DISPLAYED default before the user touches the field; once
-  // addonDims holds a real value, that always wins.
+  // Loft Height — resolved FIRST (before the Top Panel default below),
+  // because the Top Panel formula is conditional on whether Fix Patti's
+  // height reaches the Loft height. Live computed default = Total Height
+  // − Wardrobe Height − 10mm gap, falling back to a 400mm placeholder
+  // when Total Height isn't entered yet.
+  const enteredTotalH = n(dims.totalHeight ?? 0);
+  const loftHeightDefault = enteredTotalH > 0 ? loftHeightForWardrobe(enteredTotalH, wardrobeH) : 400;
+  const loftMode: 'door' | 'box' = ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door';
+  const loftDepthMm = (addonDims['loft']?.D) ?? 350;
+  const resolvedLoftHeight = (addonDims['loft']?.H) ?? loftHeightDefault;
+
+  // Fix Patti total width (0 when the addon isn't selected —
+  // fixPatti.position is already forced to 'none' in that case), and the
+  // max Fix Patti height across whatever side(s) are active — both feed
+  // the conditional Top Panel formula below.
+  const fixPattiTotalW = totalFixPattiWidth(fixPatti);
+  const fixPattiMaxH = fixPatti.position === 'none' ? 0 : Math.max(
+    fixPatti.position === 'left' || fixPatti.position === 'both' ? fixPatti.leftHeightMm : 0,
+    fixPatti.position === 'right' || fixPatti.position === 'both' ? fixPatti.rightHeightMm : 0,
+  );
+
+  // Top Panel (a.k.a. Side Panel) — Width's live computed default. The
+  // formula is CONDITIONAL on whether Fix Patti reaches the Loft height,
+  // per the user's explicit reference drawing:
+  //   IF Fix Patti height >= Loft height:
+  //     Top Panel Width = Total Room Width − Wardrobe Width − Dressing Width − Fix Patti Width + 20mm
+  //     (e.g. 3000 − 2000 − 550 − 80 + 20 = 390)
+  //   ELSE:
+  //     Top Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm
+  //     (e.g. 3000 − 2000 − 550 + 20 = 470)
+  // The +20mm is an intentional overhang. Only seeds the DISPLAYED
+  // default before the user touches the field; a real stored value wins.
   const TOP_PANEL_EXTRA_MM = 20;
-  const topPanelWidthDefault = Math.max(0, totalWidthForCalc - wardrobeW - dressingTotalW + TOP_PANEL_EXTRA_MM);
+  const topPanelSubtractsFixPatti = fixPattiMaxH > 0 && fixPattiMaxH >= resolvedLoftHeight;
+  const topPanelWidthDefault = Math.max(
+    0,
+    totalWidthForCalc - wardrobeW - dressingTotalW
+      - (topPanelSubtractsFixPatti ? fixPattiTotalW : 0)
+      + TOP_PANEL_EXTRA_MM,
+  );
   const topPanel: WardrobeTopPanelInput = {
     enabled: isWardrobe && selectedAddons.has('top-panel'),
     side: SIDE_OPTS[(addonDims['top-panel']?.side) ?? 0] ?? 'left',
@@ -194,27 +225,11 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     depthMm: (addonDims['top-panel']?.D) ?? 600,
   };
 
-  // Loft Height — live computed default = Total Height − Wardrobe Height
-  // − 10mm gap (spec §17/§21/§37), falling back to the Wardrobe's own
-  // Height when Total Height isn't entered (0), so there's always a real,
-  // sane starting recommendation rather than a fixed 400mm placeholder
-  // once real Height data exists.
-  const enteredTotalH = n(dims.totalHeight ?? 0);
-  const loftHeightDefault = enteredTotalH > 0 ? loftHeightForWardrobe(enteredTotalH, wardrobeH) : 400;
-
-  const loftMode: 'door' | 'box' = ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door';
-  const loftDepthMm = (addonDims['loft']?.D) ?? 350;
-  // Loft Width — per the user's final, explicit correction, now also
-  // covering Khacha:
-  //   Loft Width = Total Room Width − Fix Patti (Left+Right) − Khacha (Left+Right)
-  // Wardrobe Width, Dressing Width and Top Panel Width are NEVER part of
-  // this deduction (they're components below the Loft, not beside it) —
-  // that's the Top Panel Width formula above, a completely separate
-  // calculation. loft.widthMm here is therefore already the final USABLE
-  // Loft Door Width — Door Count / One Door Width / the Loft drawing all
-  // use it directly with no further Fix Patti/Khacha subtraction
-  // downstream. Fix Patti and Khacha stack (both subtracted together),
-  // never replace each other, per the spec's own §17 worked example.
+  // Loft Width = Total Room Width − Fix Patti (Left+Right) − Khacha
+  // (Left+Right). Wardrobe/Dressing/Top Panel Width are NEVER part of
+  // this deduction (they sit below the Loft, not beside it). loft.widthMm
+  // is therefore already the final USABLE Loft Door Width — Door Count /
+  // One Door Width / the drawing all use it directly.
   const usableW = usableLoftDoorWidthWithKhacha(totalWidthForCalc, fixPatti, khacha);
   const doorCountDefault = recommendLoftDoorCount(usableW).doorCount;
 
@@ -222,7 +237,7 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     enabled: isWardrobe && selectedAddons.has('loft'),
     mode: loftMode,
     widthMm: usableW,
-    heightMm: (addonDims['loft']?.H) ?? loftHeightDefault,
+    heightMm: resolvedLoftHeight,
     depthMm: loftDepthMm,
     doorCount: (addonDims['loft']?.doors) ?? doorCountDefault,
   };
