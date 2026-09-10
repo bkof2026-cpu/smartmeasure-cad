@@ -79,6 +79,25 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
     totalHeightMm: n(dims.totalHeight),
   };
   const drawing = resolveSimpleWardrobePlan(inp);
+  // Colour-match each dimension to the component it measures — the arrow
+  // and its label take that component's own box stroke colour, so a
+  // viewer can pair a measurement to its component at a glance (per the
+  // user's "measurement colour and the component box colour should
+  // match"). A dimension that measures nothing specific (overall
+  // Total W / Total H, per-door widths that belong to a row) keeps the
+  // default red.
+  const compTypeById = new Map(drawing.components.map((c) => [c.id, c.type] as const));
+  const dimensions = drawing.dimensions.map((d) => {
+    if (d.color) return d;
+    const firstId = d.componentIds[0];
+    const t = firstId ? compTypeById.get(firstId) : undefined;
+    const stroke = t ? WARDROBE_COMPONENT_COLORS[t]?.stroke : undefined;
+    // Skip the shared "row" dimensions (Loft / Wall B per-door width
+    // ticks) — their own DOOR colour on every tick reads as visual noise;
+    // the overall Total W / Total H should also stay the neutral red.
+    const isRowOrTotal = /\(Total|^\d+$/.test(d.label) || d.componentIds.some((id) => /loft-door-/.test(id));
+    return stroke && !isRowOrTotal ? { ...d, color: stroke } : d;
+  });
   const [selected, setSelected] = useState<ComponentSpec | DimensionLine | null>(null);
 
   return (
@@ -88,7 +107,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
         worldHeight={drawing.worldHeight}
         title={`${simpleWardrobeTitle(inp)} — ${Math.round(inp.W)}×${Math.round(inp.H)} mm (D = ${Math.round(inp.D)}mm)`}
         components={drawing.components}
-        dimensions={drawing.dimensions}
+        dimensions={dimensions}
         lines={drawing.lines}
         componentStyle={componentStyle}
         plainDimLabels

@@ -944,21 +944,32 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       dimReqs.push({ axis: 'v', x1: drawerLeaderX, y1: drawerY, x2: drawerLeaderX, y2: drawerY + totalDrawerH, edge: side, componentIds: [`${dressId}-drawer-0`], label: `${Math.round(totalDrawerH)} (Total Drawer H)`, source: { formula: 'Total Drawer Height (entered), auto-divided evenly among the entered Drawer Count', constants: [] } });
     }
   }
+  // Dressing's own Width — a real horizontal "<n>(W)" arrow drawn as an
+  // AnnotationLine so it sits EXACTLY inside the Dressing box (a
+  // dimReq/edge line always gets offset out of the box, up into the Loft
+  // — exactly what the user said not to do). Placed low in the box
+  // (~65% down), well clear of the vertical "Dressing" name near the
+  // centre. Its Height is always the Wardrobe Height (auto-fetched) so no
+  // separate height arrow is drawn.
+  const drawDressingWidthArrow = (dx: number, w: number) => {
+    const y = wardrobeY + bodyH * 0.65;
+    const inset = Math.min(6, w * 0.06);
+    lines.push({
+      x1: dx + inset, y1: y, x2: dx + w - inset, y2: y,
+      color: '#2563eb', strokeWidth: 0.9, arrowAtStart: true, arrowAtEnd: true,
+      label: `${Math.round(w)}(W)`,
+    });
+  };
   if (dressL > 0) {
     const dx = wardrobeX - dressL;
-    // Dressing's own Width is shown as a real horizontal "<n>(W)" arrow
-    // INSIDE the Dressing box (a short dim line spanning its own width,
-    // per the user's "show dressing width in dressing box with horizontal
-    // arrow like 400(W)"). Its Height is ALWAYS equal to the Wardrobe
-    // Height (auto-fetched) so no separate height arrow is drawn.
     components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing`, x: dx, y: wardrobeY, width: dressL, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
-    dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH * 0.12, x2: dx + dressL, y2: wardrobeY + bodyH * 0.12, edge: 'top', componentIds: ['dress-l'], label: `${Math.round(dressL)}(W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
+    drawDressingWidthArrow(dx, dressL);
     drawDressingInternals('dress-l', dx, dressL, 'left');
   }
   if (dressR > 0) {
     const dx = wardrobeX + W;
     components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing`, x: dx, y: wardrobeY, width: dressR, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
-    dimReqs.push({ axis: 'h', x1: dx, y1: wardrobeY + bodyH * 0.12, x2: dx + dressR, y2: wardrobeY + bodyH * 0.12, edge: 'top', componentIds: ['dress-r'], label: `${Math.round(dressR)}(W)`, source: { formula: 'Dressing Width (entered)', constants: [] } });
+    drawDressingWidthArrow(dx, dressR);
     drawDressingInternals('dress-r', dx, dressR, 'right');
   }
 
