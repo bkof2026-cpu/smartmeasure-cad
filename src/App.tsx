@@ -397,6 +397,20 @@ function Shell() {
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
+      // DEV-ONLY login bypass — under `npm run dev` (Vite, no `/api/*`
+      // serverless functions, no Neon DB) the employee-login endpoint 404s,
+      // so there's no way to reach the product flow. `import.meta.env.DEV`
+      // is statically `false` in every production build (`vite build`), so
+      // this branch is dead-code-eliminated and never ships. Opt out at
+      // runtime with `?nobypass` on the URL to still see the real login.
+      if (import.meta.env.DEV && !new URLSearchParams(window.location.search).has('nobypass')) {
+        if (!cancelled) {
+          loginEmployee('E-DEV', 'Dev User');
+          setAuthView('employee-app');
+        }
+        return;
+      }
+
       const empToken = getEmployeeToken();
       if (empToken) {
         const result = await fetchMe(empToken);
