@@ -408,9 +408,9 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // origin (roomWallX/leaderMargin). Computed up front so every X
   // coordinate below (including roomWallX itself) already accounts for
   // it, rather than letting Wall B's column go to a negative, off-
-  // canvas X. 130 (column width) + 60 (real visual gap) matches the
-  // alColW/alGap constants used where Wall B is actually drawn, below.
-  const leftAdjacentLoftMargin = adjacentLoft.enabled && adjacentLoft.side === 'left' ? 130 + 60 : 0;
+  // canvas X. Must cover alGap (320) + max drawn column depth (260) +
+  // the per-door width dim ticks and label on Wall B's outer edge (~70).
+  const leftAdjacentLoftMargin = adjacentLoft.enabled && adjacentLoft.side === "left" ? 480 + 260 + 80 : 0;
   // A LEFT-side Storage / Open Box extends left of the Dressing by its own
   // Width — reserve room so its own box never lands at a negative,
   // off-canvas X. (Right-side boxes just extend right and are picked up by
@@ -689,92 +689,112 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
 
   const wardrobeY = topPad + loftH;
 
-  // L-Shaped Loft — Wall B, a fully independent second Loft standing on
-  // the adjacent wall (Left or Right of the main structure), drawn as its
-  // own separate, visually disconnected column — never merged with Wall
-  // A's own row above, per the reference sketch (Wall B floats to the
-  // side with a real gap, its own outline, its own door stack). The
-  // divided formula-width becomes each door's real cut width (used
-  // correctly in the cutlist above); in THIS drawing those doors are
-  // stacked vertically (top-to-bottom bands, each spanning the column's
-  // full drawn width) rather than side-by-side, per the user's explicit
-  // confirmation of the reference sketch's own layout — Wall B reads as
-  // a vertical run on the adjacent wall, not a second horizontal row.
-  const alGap = 60; // real visual gap between Wall B and the rest of the drawing — never touching
-  let adjacentLoftWorldLeft = 0; // tracks how far left Wall B's own column reaches, for worldWidth below
+  // L-Shaped Loft — Wall B: a fully independent second Loft on the
+  // adjacent wall, drawn the SAME way as the Loft above the Wardrobe
+  // (a real frame + a row of doors that divide the span by the shared
+  // loft-door formula) but ROTATED 90° — the doors stack top-to-bottom
+  // and Wall B's own Width is the VERTICAL span. Kept well clear of the
+  // Wardrobe in free space (a large fixed gap), with its own Fix Patti /
+  // Khacha at the ends of the door stack, its own per-door width labels,
+  // and its own "Total Wall B Width" dimension. loft-door formula and
+  // door count are identical to Wall A's, just applied to Wall B's own
+  // usable width (already Fix Patti/Khacha-deducted upstream).
+  const alGap = 480; // large real gap so Wall B floats clearly in free space, away from the Wardrobe/main Loft
+  let adjacentLoftWorldLeft = 0; // how far left Wall B reaches, for worldWidth
+  let adjacentLoftRightEdgeX = 0; // how far right Wall B reaches, for worldWidth
   if (inp.adjacentLoft.enabled) {
     const al = inp.adjacentLoft;
-    const alColW = 130; // fixed drawn column width — Wall B's real Width lives in its door-count formula, not this column's screen footprint (same convention as the Wardrobe's own fixed leaderMargin)
-    const alX = al.side === 'left' ? roomWallX - alGap - alColW : loftX + roomWallWidth + alGap;
+    // Drawn column DEPTH (its horizontal thickness on screen) represents
+    // Wall B's Depth to scale, clamped to a sensible on-screen band.
+    const alColW = Math.max(90, Math.min(al.depthMm, 260));
+    const alFullH = wardrobeY + bodyH - topPad; // available vertical run (Loft top → Wardrobe floor)
+    const alX = al.side === 'left'
+      ? roomWallX - alGap - alColW
+      : loftX + roomWallWidth + alGap;
+    // The door stack's own vertical span == Wall B usable Width, scaled
+    // to fill the available run (so it reads as a full floor-to-ceiling
+    // vertical loft like the reference), with Fix Patti / Khacha bands
+    // carved from the ends.
+    const alFp = al.fixPatti;
+    const alHasFP = alFp.position !== 'none';
+    const alFPW = alHasFP ? Math.max(0, alFp.position === 'right' ? alFp.rightWidthMm : alFp.leftWidthMm) : 0;
+    const alKh = al.khacha;
+    const alHasKh = alKh.position !== 'none';
+    const alKhW = alHasKh ? Math.max(0, alKh.position === 'right' ? alKh.rightWidthMm : alKh.leftWidthMm) : 0;
+    // Total Wall B Width = usable door span + its Fix Patti + Khacha.
+    const alTotalW = al.widthMm + alFPW + alKhW;
+    // Vertical layout: top → [Khacha band][Fix Patti band][door 1..n] → bottom.
+    // Scale mm → px so the whole Wall B Total Width fills alFullH.
+    const alScale = alFullH / Math.max(1, alTotalW);
+    const alKhH = alKhW * alScale;
+    const alFPH = alFPW * alScale;
+    const alDoorsSpanH = al.widthMm * alScale;
     const alY = topPad;
-    const alH = wardrobeY + bodyH - alY; // spans the SAME full vertical extent as the rest of the composite (Loft row through Wardrobe floor), matching the reference sketch's floor-to-ceiling column
-    adjacentLoftWorldLeft = al.side === 'left' ? alX : adjacentLoftWorldLeft;
+    adjacentLoftWorldLeft = al.side === 'left' ? alX - 60 : adjacentLoftWorldLeft;
+    adjacentLoftRightEdgeX = al.side === 'right' ? alX + alColW + 60 : 0;
 
+    // Frame (the whole Wall B outline) — same PLATFORM_TOP style as Wall A.
     components.push({
-      id: 'adjacent-loft', type: 'PLATFORM_TOP', label: 'L-Shaped Loft', x: alX, y: alY, width: alColW, height: alH, qty: 1, visible: true,
-      source: { formula: `Wall B (${al.side}) — independent Loft on the adjacent wall, own Height(${Math.round(al.heightMm)}mm)/Width(${Math.round(al.widthMm)}mm)/Depth(${Math.round(al.depthMm)}mm), same door-count formula as Wall A, split into ${al.doorCount} doors`, constants: [] },
+      id: 'adjacent-loft', type: 'PLATFORM_TOP', label: 'L-Shaped Loft', x: alX, y: alY, width: alColW, height: alFullH, qty: 1, visible: true,
+      source: { formula: `Wall B (${al.side}) — independent vertical Loft on the adjacent wall. Total Wall B Width = ${Math.round(alTotalW)}mm (usable door span ${Math.round(al.widthMm)} + Fix Patti ${Math.round(alFPW)} + Khacha ${Math.round(alKhW)}). Same door-count/width formula as the main Loft, applied vertically.`, constants: [] },
     });
 
-    // Wall B's own Fix Patti + Khacha — independent of Wall A's, drawn at
-    // the OUTER (far) edge of this column, per the user's explicit
-    // "iski bhi fix patti aur khacha alag honi chahiye" instruction.
-    const alFp = al.fixPatti;
-    const alHasLeftFP = alFp.position === 'left' || alFp.position === 'both';
-    const alHasRightFP = alFp.position === 'right' || alFp.position === 'both';
-    const alKh = al.khacha;
-    const alHasLeftKhacha = alKh.position === 'left' || alKh.position === 'both';
-    const alHasRightKhacha = alKh.position === 'right' || alKh.position === 'both';
-    // "Outer" edge is whichever edge faces away from the main structure —
-    // for a Left-side Wall B that's its own left edge; for a Right-side
-    // Wall B that's its own right edge.
-    const outerIsLeftEdge = al.side === 'left';
-    const fpBandH = Math.min(60, alH * 0.15);
-    if (alHasLeftFP || alHasRightFP) {
-      const fpY = outerIsLeftEdge ? alY : alY + alH - fpBandH;
-      const fpSide = alHasLeftFP ? alFp.leftHeightMm : alFp.rightHeightMm;
-      const fpSideW = alHasLeftFP ? alFp.leftWidthMm : alFp.rightWidthMm;
-      components.push({
-        id: 'adjacent-fix-patti', type: 'FIX_PATTI', label: `Fix Patti`,
-        x: alX, y: fpY, width: alColW, height: fpBandH, qty: 1, visible: true,
-        source: { formula: `Wall B Fix Patti — Height x Width (both entered) — independent of Wall A's own Fix Patti, subtracted from Wall B's own Width`, constants: [] },
-      });
-    }
-    if (alHasLeftKhacha || alHasRightKhacha) {
-      const khY = outerIsLeftEdge ? alY + fpBandH : alY + alH - fpBandH * 2;
-      const khSide = alHasLeftKhacha ? alKh.leftHeightMm : alKh.rightHeightMm;
-      const khSideW = alHasLeftKhacha ? alKh.leftWidthMm : alKh.rightWidthMm;
+    let alCursorY = alY;
+    // Khacha band (outermost) at the top.
+    if (alHasKh && alKhH > 1) {
       components.push({
         id: 'adjacent-khacha', type: 'KHACHA', label: `Khacha`,
-        x: alX, y: khY, width: alColW, height: fpBandH, qty: 1, visible: true,
-        source: { formula: `Wall B Khacha — Height x Width (both entered) — independent of Wall A's own Khacha, subtracted (together with Fix Patti) from Wall B's own Width`, constants: [] },
+        x: alX, y: alCursorY, width: alColW, height: alKhH, qty: 1, visible: true,
+        source: { formula: `Wall B Khacha — independent of Wall A's; its Width is deducted (with any Fix Patti) from Wall B's usable Loft door span`, constants: [] },
       });
+      alCursorY += alKhH;
     }
-
-    // Doors — Wall B's own formula-resolved doors, stacked vertically
-    // (top-to-bottom bands) rather than side-by-side, per the confirmed
-    // reference layout. al.widthMm is already Wall B's own usable Width
-    // (its own Fix Patti/Khacha already deducted upstream, exactly like
-    // Wall A's loft.widthMm) — no further deduction here.
+    // Fix Patti band next.
+    if (alHasFP && alFPH > 1) {
+      components.push({
+        id: 'adjacent-fix-patti', type: 'FIX_PATTI', label: `Fix Patti`,
+        x: alX, y: alCursorY, width: alColW, height: alFPH, qty: 1, visible: true,
+        source: { formula: `Wall B Fix Patti — independent of Wall A's; its Width is deducted from Wall B's usable Loft door span before the door count`, constants: [] },
+      });
+      alCursorY += alFPH;
+    }
+    // Doors — Wall B's own formula-resolved doors, stacked vertically.
+    // Each door's CUT WIDTH comes from the shared loft-door formula on
+    // Wall B's own usable Width; here that value is drawn as a per-door
+    // dimension tick along the door stack's outer vertical edge.
     {
       const alCount = Math.max(1, Math.round(al.doorCount) || 1);
-      const doorH = alH / alCount;
       const alDoorW = loftOneDoorWidth(al.widthMm, alCount);
-      let doorCursorY = alY;
+      const eachH = alDoorsSpanH / alCount;
+      const doorEdgeX = al.side === 'left' ? alX : alX + alColW; // outer edge of the stack
       for (let i = 0; i < alCount; i++) {
+        const dy = alCursorY + i * eachH;
         components.push({
-          id: `adjacent-loft-door-${i}`, type: 'DOOR', label: `${Math.round(alDoorW)}`,
-          x: alX + 2, y: doorCursorY, width: alColW - 4, height: doorH - 2, qty: 1, visible: true, noHandle: true,
-          source: { formula: `Wall B Door ${i + 1} of ${alCount} — Width = (Wall B Width(${Math.round(al.widthMm)}) − ${alCount}×2) / ${alCount} = ${alDoorW.toFixed(2)}mm (real cut width; drawn as a vertical band on the adjacent wall)`, constants: [] },
+          id: `adjacent-loft-door-${i}`, type: 'DOOR', label: '',
+          x: alX + 2, y: dy + 1, width: alColW - 4, height: eachH - 2, qty: 1, visible: true, noHandle: true,
+          source: { formula: `Wall B Door ${i + 1} of ${alCount} — Width = (Wall B usable Width ${Math.round(al.widthMm)} − ${alCount}×2) / ${alCount} = ${alDoorW.toFixed(2)}mm`, constants: [] },
         });
-        doorCursorY += doorH;
+        // per-door width dim tick along the stack's outer edge (vertical axis)
+        dimReqs.push({
+          axis: 'v', x1: doorEdgeX, y1: dy, x2: doorEdgeX, y2: dy + eachH,
+          edge: al.side === 'left' ? 'left' : 'right', componentIds: [`adjacent-loft-door-${i}`],
+          label: `${Math.round(alDoorW)}`,
+          source: { formula: `Wall B Door ${i + 1} width = (${Math.round(al.widthMm)} − ${alCount}×2) / ${alCount} = ${alDoorW.toFixed(2)}mm`, constants: [] },
+        });
       }
     }
 
-    // Height/Width/Depth get their own real callouts — same diagonal-D
-    // convention as every other component in this drawing.
-    dimReqs.push({ axis: 'v', x1: alX - 20, y1: alY, x2: alX - 20, y2: alY + alH, edge: 'left', componentIds: ['adjacent-loft'], label: `${Math.round(al.heightMm)} (Wall B H)`, source: { formula: 'Wall B Loft Height (entered, independent of Wall A)', constants: [] } });
-    const alDiag = insideDiagonal(alX, alY, alColW, alH, 'right-down');
-    lines.push({ x1: alX, y1: alY, x2: alDiag.x2, y2: alDiag.y2, color: DIAG, label: `${Math.round(al.depthMm)} (Wall B D)` });
+    // Wall B Height (its floor-to-ceiling extent) — arrow on the inner
+    // vertical edge (facing the Wardrobe), so it stays clear of the
+    // per-door width ticks on the outer edge.
+    const innerEdgeX = al.side === 'left' ? alX + alColW : alX;
+    dimReqs.push({ axis: 'v', x1: innerEdgeX + (al.side === 'left' ? 14 : -14), y1: alY, x2: innerEdgeX + (al.side === 'left' ? 14 : -14), y2: alY + alFullH, edge: al.side === 'left' ? 'right' : 'left', componentIds: ['adjacent-loft'], label: `${Math.round(al.heightMm)} (Wall B H)`, source: { formula: 'Wall B Loft Height (entered, independent of Wall A)', constants: [] } });
+    // Total Wall B Width — a horizontal arrow BELOW the whole stack
+    // (spans the drawn column, labelled with the real total mm).
+    dimReqs.push({ axis: 'h', x1: alX, y1: alY + alFullH, x2: alX + alColW, y2: alY + alFullH, edge: 'bottom', componentIds: ['adjacent-loft'], label: `${Math.round(alTotalW)} (Total Wall B W)`, source: { formula: `Total Wall B Width = usable door span (${Math.round(al.widthMm)}) + Fix Patti (${Math.round(alFPW)}) + Khacha (${Math.round(alKhW)})`, constants: [] } });
+    // Depth "/" leader at the frame's top-outer corner.
+    const alDiag = insideDiagonal(alX, alY, alColW, alFullH, al.side === 'left' ? 'left-down' : 'right-down');
+    lines.push({ x1: al.side === 'left' ? alX : alX + alColW, y1: alY, x2: alDiag.x2, y2: alDiag.y2, color: DIAG, label: `${Math.round(al.depthMm)} (Wall B D)` });
   }
 
   // Wardrobe — a plain W x H carcass at its FULL entered Height (the
@@ -1144,8 +1164,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // adjacentLoftRightEdge covers a RIGHT-side Wall B, which can extend
   // the canvas further right than the room-wall span alone would — a
   // LEFT-side Wall B is already covered by the leaderMargin/roomWallX
-  // shift above (everything else's own origin already makes room for it).
-  const adjacentLoftRightEdge = adjacentLoft.enabled && adjacentLoft.side === 'right' ? loftX + roomWallWidth + 60 + 130 + 20 : 0;
+  // shift above. `adjacentLoftRightEdgeX` is the actual drawn right edge
+  // (frame + its outer-edge dim ticks + label) tracked in the Wall B
+  // block; fall back to a conservative estimate if the block set nothing.
+  const adjacentLoftRightEdge = adjacentLoft.enabled && adjacentLoft.side === 'right'
+    ? Math.max(adjacentLoftRightEdgeX + 90, loftX + roomWallWidth + 480 + 260 + 90)
+    : 0;
   // An explicitly-entered Total Width can exceed the drawn furniture
   // composite (the "overall opening is wider than the wardrobe unit"
   // case) — its dimension line runs out to `loftX + max(totalWidthMm,
