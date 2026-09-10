@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { TechnicalDrawingSvg, defaultStyleFor, type ComponentStyle } from '../../engine/CanonicalSvg';
 import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
 import { DrawingInspector } from '../../engine/DrawingInspector';
-import { StudyTableDrawing } from '../studyTable/StudyTableDrawing';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
 const n = (v: number | string | undefined) => Number(v ?? 0);
@@ -15,7 +14,8 @@ const DEFAULT_STORAGE_SIDE = { enabled: false, heightMm: 450, widthMm: 600, dept
 const DEFAULT_STORAGE: WardrobeStorageInput = { position: 'none', left: DEFAULT_STORAGE_SIDE, right: DEFAULT_STORAGE_SIDE };
 const DEFAULT_OPEN_BOX_SIDE = { enabled: false, heightMm: 300, widthMm: 600, depthMm: 600 };
 const DEFAULT_OPEN_BOX: WardrobeOpenBoxInput = { position: 'none', left: DEFAULT_OPEN_BOX_SIDE, right: DEFAULT_OPEN_BOX_SIDE };
-const DEFAULT_STUDY_TABLE: WardrobeStudyTableInput = { enabled: false, side: 'left', heightMm: 750, widthMm: 1200, depthMm: 600 };
+const DEFAULT_STUDY_TABLE_SIDE = { enabled: false, heightMm: 750, widthMm: 1200, depthMm: 600 };
+const DEFAULT_STUDY_TABLE: WardrobeStudyTableInput = { position: 'none', left: DEFAULT_STUDY_TABLE_SIDE, right: DEFAULT_STUDY_TABLE_SIDE };
 const DEFAULT_ADJACENT_LOFT: WardrobeAdjacentLoftInput = {
   enabled: false, side: 'left', mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2,
   fixPatti: DEFAULT_FIX_PATTI, khacha: DEFAULT_KHACHA,
@@ -34,25 +34,28 @@ interface Props {
   adjacentLoft?: WardrobeAdjacentLoftInput;
 }
 
-// Fix Patti and Khacha both use the spec's green colour convention, but in
-// two distinguishable shades — per the spec's own "do not merge their
-// data" rule (§16/§50), they must read as visually separate components,
-// not one indistinguishable green blob. Every other component type falls
-// back to the SAME default styling this drawing always used, via the
-// shared defaultStyleFor(). Without this explicit override, FIX_PATTI/
-// KHACHA would fall into defaultStyleFor's own substring match on "PATTI"
-// (shared with skirting/plinth types) and render in that tan/skirting
-// colour instead.
+// Per-component-type colour code — every distinct component in the
+// Wardrobe composite reads in its OWN colour so a viewer can tell them
+// apart at a glance (per the user's "all components colour code will be
+// different"). Fill is a light tint, stroke the matching saturated hue;
+// the stroke colour is also what CanonicalSvg uses for that component's
+// small-size leader callout, so each callout is colour-paired to its box.
+const WARDROBE_COMPONENT_COLORS: Record<string, ComponentStyle> = {
+  WARDROBE_BODY: { fill: '#eef2ff', stroke: '#1e3a8a', strokeWidth: 1.6 },
+  DRESSING:      { fill: '#eff6ff', stroke: '#2563eb', strokeWidth: 1.4 },
+  MIRROR:        { fill: '#dbe9f5', stroke: '#0369a1', strokeWidth: 1.1 },
+  DRAWER:        { fill: '#e0f2fe', stroke: '#0284c7', strokeWidth: 1 },
+  PLATFORM_TOP:  { fill: '#faf5ff', stroke: '#6d28d9', strokeWidth: 1.6 }, // Loft frame / L-Shaped Loft
+  DOOR:          { fill: '#f5f3ff', stroke: '#7c3aed', strokeWidth: 1.1 }, // Loft doors
+  FIX_PATTI:     { fill: '#dcfce7', stroke: '#16a34a', strokeWidth: 1.5 },
+  KHACHA:        { fill: '#bbf7d0', stroke: '#15803d', strokeWidth: 1.5 },
+  STORAGE_DOOR:  { fill: '#fef3c7', stroke: '#b45309', strokeWidth: 1.1 },
+  OPEN_BOX:      { fill: '#fff7ed', stroke: '#ea580c', strokeWidth: 1.2, strokeDasharray: '4 2' },
+  STUDY_TABLE:   { fill: '#ccfbf1', stroke: '#0d9488', strokeWidth: 1.5 },
+  SKIRTING:      { fill: '#c8c0a8', stroke: '#78716c', strokeWidth: 0.9 },
+};
 function componentStyle(c: ComponentSpec): ComponentStyle {
-  if (c.type === 'FIX_PATTI') return { fill: '#dcfce7', stroke: '#16a34a', strokeWidth: 1.5 };
-  if (c.type === 'KHACHA') return { fill: '#bbf7d0', stroke: '#15803d', strokeWidth: 1.5 };
-  // Storage Box doors reuse the same style as Loft/Loft Box doors (a real
-  // shuttered door), Open Box gets a distinct open-front look (dashed
-  // stroke reads as "no door/shutter" at a glance) so the two never get
-  // confused despite sitting in the same reserved column.
-  if (c.type === 'STORAGE_DOOR') return defaultStyleFor({ ...c, type: 'DOOR' });
-  if (c.type === 'OPEN_BOX') return { fill: '#f8fafc', stroke: '#64748b', strokeWidth: 1.2, strokeDasharray: '4 2' };
-  return defaultStyleFor(c);
+  return WARDROBE_COMPONENT_COLORS[c.type] ?? defaultStyleFor(c);
 }
 
 export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft }) => {
@@ -78,7 +81,6 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
   };
   const drawing = resolveSimpleWardrobePlan(inp);
   const [selected, setSelected] = useState<ComponentSpec | DimensionLine | null>(null);
-  const st = studyTable ?? DEFAULT_STUDY_TABLE;
 
   return (
     <div>
@@ -96,20 +98,9 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
         selectedComponentId={selected && 'type' in selected ? selected.id : null}
       />
       <DrawingInspector selected={selected} issues={drawing.issues} formulaStatus={drawing.formulaStatus} />
-      {/* Study Table attached to the Wardrobe (spec §23-25) — rendered as
-          its OWN separate section using the exact same standalone Study
-          Table product's drawing/measurement engine, per the spec's
-          explicit "Do NOT create a second Study Table calculation
-          system" rule. Never merged into the Wardrobe's own coordinate
-          space above — it's a genuinely separate product-style drawing,
-          placed directly below so it reads as physically attached beside
-          the Wardrobe/Dressing (matching the reference layout) without
-          requiring a second geometry engine. */}
-      {st.enabled && (
-        <div style={{ marginTop: 16 }}>
-          <StudyTableDrawing dims={{ H: st.heightMm, W: st.widthMm, D: st.depthMm, storage: 'None', storageW: 0, sidePanel: 'None' }} />
-        </div>
-      )}
+      {/* Attached Study Table is now drawn INSIDE the composite plan above
+          (per the user's reference), beside the Wardrobe on its side —
+          no longer a separate section here. */}
     </div>
   );
 };

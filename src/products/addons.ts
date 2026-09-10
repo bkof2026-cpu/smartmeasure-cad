@@ -42,6 +42,15 @@ export interface AddonField {
    * suppresses the automatic " (mm)" suffix and the "min–max mm" hint
    * for these. Omit for every real mm measurement. */
   isCount?: boolean;
+  /** Conditional visibility driven by ANOTHER field in the same addon.
+   * The field renders only when the field named by `key` currently holds
+   * one of the values in `equals` (a single value or a list). Use for
+   * mode-dependent fields — e.g. the Loft's "Depth" only applies to the
+   * "Box" Loft Type, so it carries `showWhen: { key: 'mode', equals: 1 }`
+   * (mode index 1 = "Box"; hidden for index 0 = "Only Door"). Independent
+   * of `sideOf` (that gates on a Left/Right/Both position); a field may
+   * use either, both, or neither. */
+  showWhen?: { key: string; equals: number | number[] };
 }
 
 // placement: 'composite' = shown INSIDE the main drawing
@@ -242,7 +251,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         // the displayed default live (Loft Height = Total Height − Wardrobe
         // Height − 10mm; Door Count = the loftDoorEngine recommendation).
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
       ],
     },
@@ -329,13 +338,16 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'study-table',
       label: 'Study Table (Attached)',
       icon: '🪑',
-      description: 'Study Table attached beside the Wardrobe/Dressing — uses the same measurement/drawing system as the standalone Study Table product. Only available when Side Dressing is not added.',
+      description: 'Study Table attached beside the Wardrobe/Dressing — Left, Right or Both, each with its own H × W × D. Only available when Side Dressing is not added.',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Study Table Position', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
-        { key: 'H', label: 'Height', defaultValue: 750, min: 600, max: 900 },
-        { key: 'W', label: 'Width', defaultValue: 1200, min: 600, max: 2400 },
-        { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 800 },
+        { key: 'leftH', label: 'Left Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'left' },
+        { key: 'leftD', label: 'Left Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'right' },
+        { key: 'rightD', label: 'Right Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'right' },
       ],
     },
     {
@@ -360,7 +372,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         // live (Door Count = the loftDoorEngine recommendation from Wall
         // B's own usable width).
         { key: 'H', label: 'Wall B Loft Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Wall B Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
         { key: 'fpPosition', label: 'Wall B Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
         { key: 'fpLeftH', label: 'Wall B Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'fpPosition' },
@@ -411,7 +423,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       fields: [
         { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
       ],
     },
@@ -493,13 +505,16 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'study-table',
       label: 'Study Table (Attached)',
       icon: '🪑',
-      description: 'Study Table attached beside the Wardrobe/Dressing — uses the same measurement/drawing system as the standalone Study Table product. Only available when Side Dressing is not added.',
+      description: 'Study Table attached beside the Wardrobe/Dressing — Left, Right or Both, each with its own H × W × D. Only available when Side Dressing is not added.',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Study Table Position', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
-        { key: 'H', label: 'Height', defaultValue: 750, min: 600, max: 900 },
-        { key: 'W', label: 'Width', defaultValue: 1200, min: 600, max: 2400 },
-        { key: 'D', label: 'Depth', defaultValue: 600, min: 400, max: 800 },
+        { key: 'leftH', label: 'Left Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'left' },
+        { key: 'leftW', label: 'Left Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'left' },
+        { key: 'leftD', label: 'Left Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'left' },
+        { key: 'rightH', label: 'Right Study Table Height', defaultValue: 750, min: 600, max: 900, sideOf: 'right' },
+        { key: 'rightW', label: 'Right Study Table Width', defaultValue: 1200, min: 600, max: 2400, sideOf: 'right' },
+        { key: 'rightD', label: 'Right Study Table Depth', defaultValue: 600, min: 400, max: 800, sideOf: 'right' },
       ],
     },
     {
@@ -513,7 +528,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
         { key: 'totalW', label: 'Wall B Total Width', defaultValue: 2000, min: 600, max: 6000 },
         { key: 'H', label: 'Wall B Loft Height', defaultValue: 400, min: 100, max: 900 },
-        { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500 },
+        { key: 'D', label: 'Wall B Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Wall B Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
         { key: 'fpPosition', label: 'Wall B Fix Patti Position', defaultValue: 0, min: 0, max: 3, options: ['None', 'Left', 'Right', 'Both'] },
         { key: 'fpLeftH', label: 'Wall B Left Fix Patti Height', defaultValue: 400, min: 100, max: 900, sideOf: 'left', groupKey: 'fpPosition' },

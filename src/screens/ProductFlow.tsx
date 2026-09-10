@@ -306,15 +306,27 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   };
 
   // Study Table attached to the Wardrobe — only offered when Dressing is
-  // NOT selected (spec §23). Reuses the EXISTING standalone Study Table
-  // product's own measurement/drawing engine (rendered separately in
-  // SimpleWardrobeDrawing.tsx) — this only tracks attachment/side/H×W×D.
+  // NOT selected (spec §23). Left / Right / Both, each with its OWN
+  // H × W × D, drawn INSIDE the composite plan beside the Wardrobe on its
+  // side (same per-side shape as Extra Storage / Open Box).
+  const studyTableAddonActive = isWardrobe && !dressing.enabled && selectedAddons.has('study-table');
+  const studyTablePosition = studyTableAddonActive
+    ? (SIDE_OPTS[(addonDims['study-table']?.side) ?? 0] ?? 'left')
+    : 'none';
   const studyTable: WardrobeStudyTableInput = {
-    enabled: isWardrobe && !dressing.enabled && selectedAddons.has('study-table'),
-    side: SIDE_OPTS[(addonDims['study-table']?.side) ?? 0] ?? 'left',
-    heightMm: (addonDims['study-table']?.H) ?? 750,
-    widthMm: (addonDims['study-table']?.W) ?? 1200,
-    depthMm: (addonDims['study-table']?.D) ?? 600,
+    position: studyTablePosition,
+    left: {
+      enabled: studyTablePosition === 'left' || studyTablePosition === 'both',
+      heightMm: (addonDims['study-table']?.leftH) ?? 750,
+      widthMm: (addonDims['study-table']?.leftW) ?? 1200,
+      depthMm: (addonDims['study-table']?.leftD) ?? (n(dims.D ?? 0) || 600),
+    },
+    right: {
+      enabled: studyTablePosition === 'right' || studyTablePosition === 'both',
+      heightMm: (addonDims['study-table']?.rightH) ?? 750,
+      widthMm: (addonDims['study-table']?.rightW) ?? 1200,
+      depthMm: (addonDims['study-table']?.rightD) ?? (n(dims.D ?? 0) || 600),
+    },
   };
 
   // L-Shaped Loft — Wall B, a fully independent second Loft standing on
@@ -1819,6 +1831,15 @@ export const ProductFlow: React.FC = () => {
                     }
                     const soleGroupKey = positionFields.length === 1 ? positionFields[0].key : undefined;
                     const visibleFields = addon.fields.filter((f) => {
+                      // showWhen: another field in this addon must currently
+                      // hold one of the given values (e.g. Loft Depth only
+                      // when Loft Type = "Box").
+                      if (f.showWhen) {
+                        const other = addon.fields.find((x) => x.key === f.showWhen!.key);
+                        const cur = Number(adDims[f.showWhen.key] ?? other?.defaultValue ?? 0);
+                        const want = Array.isArray(f.showWhen.equals) ? f.showWhen.equals : [f.showWhen.equals];
+                        if (!want.includes(cur)) return false;
+                      }
                       if (!f.sideOf) return true;
                       const groupKey = f.groupKey ?? soleGroupKey;
                       const activeSides = groupKey ? activeSidesByKey[groupKey] : undefined;

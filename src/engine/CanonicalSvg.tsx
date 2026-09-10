@@ -204,44 +204,82 @@ export function TechnicalDrawingSvg({
     <svg viewBox={`0 0 ${vw} ${vh}`} width="100%" overflow="visible" style={{ background: '#fff', display: 'block' }}>
       <defs><DimensionMarkers /><GrainPattern /></defs>
       <text x={vw / 2} y={titleRoom * 0.65} textAnchor="middle" fontSize={titleFs} fontFamily="'DM Sans',sans-serif" fill="#222" fontWeight={900}>{title}</text>
-      {components.filter((c) => c.visible).map((c) => {
-        const style = (componentStyle ?? defaultStyleFor)(c);
-        const selected = selectedComponentId === c.id;
-        // Clamped defensively — a transient zero/negative input (e.g. the
-        // instant a field is cleared while typing) must never throw an
-        // invalid SVG attribute; validationEngine is what surfaces this as a
-        // real CRITICAL issue to the user, this is just render safety.
-        const px = ox + c.x * scale, py = oy + c.y * scale, pw = Math.max(0, c.width * scale), ph = Math.max(0, c.height * scale);
-        // Handle side: whichever edge faces the drawing's own centerline —
-        // the standard "doors open outward from the middle" convention for
-        // a row of doors/drawers, derived from real position, not guessed.
-        const worldCx = c.x + c.width / 2;
-        const handleOnRight = worldCx < worldWidth / 2;
-        const showHandle = isPullType(c.type) && pw > 14 && ph > 10 && !c.noHandle;
-        return (
-          <g key={c.id} onClick={() => onSelectComponent?.(c)} style={{ cursor: onSelectComponent ? 'pointer' : undefined }}>
-            <rect x={px} y={py} width={pw} height={ph} fill={style.fill} stroke={selected ? '#2563eb' : style.stroke} strokeWidth={selected ? 2.2 : (style.strokeWidth ?? 1)} strokeDasharray={selected ? undefined : style.strokeDasharray} />
-            {showHandle && (
-              ph >= pw ? (
-                // Tall component (door) — vertical pull near the swing edge.
-                <rect
-                  x={(handleOnRight ? px + pw - Math.min(6, pw * 0.12) : px + Math.min(4, pw * 0.08))}
-                  y={py + ph / 2 - Math.min(14, ph * 0.18)} width={2} height={Math.min(28, ph * 0.36)}
-                  rx={1} fill="#555"
-                />
-              ) : (
-                // Wide component (drawer front) — horizontal pull, centered.
-                <rect x={px + pw / 2 - Math.min(14, pw * 0.18)} y={py + Math.min(4, ph * 0.3)} width={Math.min(28, pw * 0.36)} height={1.6} rx={0.8} fill="#555" />
-              )
-            )}
-            {pw > 26 && ph > 12 && (
-              <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={7} fontFamily="'DM Sans',sans-serif" fill="#333" fontWeight={700}>
-                {c.label}
-              </text>
-            )}
-          </g>
-        );
-      })}
+      {(() => {
+        // Components whose own box is too small to hold their name get a
+        // leader callout instead (drawn in the pass below) — the name goes
+        // out into free canvas margin so it never overlaps the box or its
+        // dimension labels. A "name" here is the first line of c.label
+        // that isn't purely a number (pure-number labels are door widths
+        // etc. — those stay inside or are shown by their own dim arrow).
+        const calloutColor = (c: ComponentSpec) => ((componentStyle ?? defaultStyleFor)(c).stroke ?? '#333');
+        const nameOf = (c: ComponentSpec) => {
+          const first = (c.label || '').split('\n')[0].trim();
+          // Skip labels that are just a measurement (a bare number, or a
+          // number followed by a "(W)"/"(H)"/"(D)" unit tag) — those are
+          // door widths etc., already covered by their own dim arrow.
+          if (!first || /^[\d.]+$/.test(first) || /^[\d.]+\s*\(/.test(first)) return '';
+          return first;
+        };
+        const smallCallouts: { c: ComponentSpec; name: string; ax: number; ay: number }[] = [];
+        const boxes = components.filter((c) => c.visible).map((c) => {
+          const style = (componentStyle ?? defaultStyleFor)(c);
+          const selected = selectedComponentId === c.id;
+          const px = ox + c.x * scale, py = oy + c.y * scale, pw = Math.max(0, c.width * scale), ph = Math.max(0, c.height * scale);
+          const worldCx = c.x + c.width / 2;
+          const handleOnRight = worldCx < worldWidth / 2;
+          const showHandle = isPullType(c.type) && pw > 14 && ph > 10 && !c.noHandle;
+          const name = nameOf(c);
+          const fitsInside = pw > 30 && ph > 13 && pw > name.length * 4.2;
+          if (name && !fitsInside) {
+            // anchor the leader on the box edge nearest a free margin
+            const ax = worldCx < worldWidth / 2 ? px : px + pw;
+            smallCallouts.push({ c, name, ax, ay: py + ph / 2 });
+          }
+          return (
+            <g key={c.id} onClick={() => onSelectComponent?.(c)} style={{ cursor: onSelectComponent ? 'pointer' : undefined }}>
+              <rect x={px} y={py} width={pw} height={ph} fill={style.fill} stroke={selected ? '#2563eb' : style.stroke} strokeWidth={selected ? 2.2 : (style.strokeWidth ?? 1)} strokeDasharray={selected ? undefined : style.strokeDasharray} />
+              {showHandle && (
+                ph >= pw ? (
+                  <rect
+                    x={(handleOnRight ? px + pw - Math.min(6, pw * 0.12) : px + Math.min(4, pw * 0.08))}
+                    y={py + ph / 2 - Math.min(14, ph * 0.18)} width={2} height={Math.min(28, ph * 0.36)}
+                    rx={1} fill="#555"
+                  />
+                ) : (
+                  <rect x={px + pw / 2 - Math.min(14, pw * 0.18)} y={py + Math.min(4, ph * 0.3)} width={Math.min(28, pw * 0.36)} height={1.6} rx={0.8} fill="#555" />
+                )
+              )}
+              {name && fitsInside && (
+                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={7} fontFamily="'DM Sans',sans-serif" fill="#333" fontWeight={700}>
+                  {c.label}
+                </text>
+              )}
+            </g>
+          );
+        });
+        // Leader callouts for the small components — names stacked down the
+        // left and right free margins, big arrow from the name to the box.
+        const leftCallouts = smallCallouts.filter((s) => (s.c.x + s.c.width / 2) < worldWidth / 2);
+        const rightCallouts = smallCallouts.filter((s) => (s.c.x + s.c.width / 2) >= worldWidth / 2);
+        const stackY = (i: number, n: number) => {
+          const usable = vh - titleRoom - footerRoom - 24;
+          return titleRoom + 12 + (n <= 1 ? usable / 2 : (usable * (i + 0.5)) / n);
+        };
+        const renderStack = (list: typeof smallCallouts, atLeft: boolean) =>
+          list.map((s, i) => {
+            const lx = atLeft ? Math.max(4, ox - dimRoom + 6) : Math.min(vw - 4, ox + worldWidth * scale + dimRoom - 6);
+            const ly = stackY(i, list.length);
+            const col = calloutColor(s.c);
+            return (
+              <g key={`callout-${s.c.id}`} pointerEvents="none">
+                <line x1={lx} y1={ly} x2={s.ax} y2={s.ay} stroke={col} strokeWidth={1} markerEnd="url(#canon-arrow)" opacity={0.9} />
+                <text x={lx} y={ly - 3} textAnchor={atLeft ? 'start' : 'end'} fontSize={7.5} fontFamily="'DM Sans',sans-serif" fill={col} fontWeight={800}
+                  stroke="white" strokeWidth={2.4} paintOrder="stroke">{s.name}</text>
+              </g>
+            );
+          });
+        return (<>{boxes}{renderStack(leftCallouts, true)}{renderStack(rightCallouts, false)}</>);
+      })()}
       {shapes.map((s) => (
         // World→screen mapping applied as a single transform on the whole
         // path — the `d` string is authored in plain world mm, same
