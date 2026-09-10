@@ -497,53 +497,47 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const roomWallX = leaderMargin;
   const loftX = roomWallX;
   let loftH = 0;
-  // The Loft's own real (doors-only) width — per the user's FINAL, explicit
-  // formula:
-  //   Loft Width = Total Room Width − Left Fix Patti − Right Fix Patti
-  // loft.widthMm already resolves to exactly this (computed once in
-  // deriveWardrobeAddonInputs, ProductFlow.tsx) — Wardrobe Width, Dressing
-  // Width and Top Panel Width are NEVER part of this deduction; those
-  // components sit below the Loft, not beside it. Hoisted above the
-  // `loft.enabled` block so worldWidth (below) can size the canvas to it.
-  // Falls back to the wardrobe's own composite width only when the Loft is
-  // enabled with no real width resolved at all (defensive — the normal
-  // path always provides a real usableW, even 0 when Fix Patti consumes
-  // the whole Total Width).
-  const loftFrameWidth = loft.widthMm > 0 ? loft.widthMm : totalWidth;
-  // Fix Patti reserves real space OUTSIDE the Loft's own door span (never
-  // carved out of it) — matching the reference drawing, where the two
-  // green Fix Patti strips sit at the outer edges of the room and the
-  // purple Loft/door row sits strictly between them. So the Loft row's
-  // total drawn extent is leftFPW + loftFrameWidth + rightFPW; doors
-  // themselves use the full loftFrameWidth with no further deduction.
-  // Hoisted above the `loft.enabled` block (alongside loftFrameWidth) so
-  // worldWidth (below) can size the canvas to the row's true full extent.
+  // Fix Patti — a real, separate component; sits at the OUTER edge(s) of
+  // the Loft row (never carved out of the door span). Its Width feeds the
+  // Loft Door COUNT formula (Total Room Width − Fix Patti − Khacha, done
+  // in deriveWardrobeAddonInputs) but is drawn as its own strip here.
   const fp = inp.fixPatti;
   const hasLeftFP = fp.position === 'left' || fp.position === 'both';
   const hasRightFP = fp.position === 'right' || fp.position === 'both';
   const leftFPW = hasLeftFP ? Math.max(0, fp.leftWidthMm) : 0;
   const rightFPW = hasRightFP ? Math.max(0, fp.rightWidthMm) : 0;
-  // Khacha — a real, separate component from Fix Patti (never merged data,
-  // per the spec's own "Do not merge their data" rule). Drawn even further
-  // outward than Fix Patti (outermost of the two, at the very room-wall
-  // corner), matching the reference sketch. Reserves its own real
-  // horizontal space the same way Fix Patti does — the doors area starts
-  // only after BOTH a side's Khacha and Fix Patti reservations.
+  // Khacha — a real, separate component from Fix Patti (never merged
+  // data). Drawn even further outward than Fix Patti (outermost of the
+  // two, at the very room-wall corner). Reserves its own real horizontal
+  // space the same way Fix Patti does.
   const kh = inp.khacha;
   const hasLeftKhacha = kh.position === 'left' || kh.position === 'both';
   const hasRightKhacha = kh.position === 'right' || kh.position === 'both';
   const leftKhachaW = hasLeftKhacha ? Math.max(0, kh.leftWidthMm) : 0;
   const rightKhachaW = hasRightKhacha ? Math.max(0, kh.rightWidthMm) : 0;
-  const doorsAreaX = loftX + leftKhachaW + leftFPW;
-  // The TRUE room-wall-to-room-wall span (Room Wall A → Room Wall B), per
-  // the user's explicit correction — this is what the Loft row and the
-  // outer "Total Width" dimension both measure against, NOT the lower
-  // Wardrobe/Dressing composite's own (possibly narrower) width. Prefers
-  // the raw entered Total Width (the true wall measurement) whenever it's
-  // set; falls back to the Loft row's own natural extent (Khacha + Fix
-  // Patti + doors) when Total Width isn't entered, and finally to the
-  // lower composite when there's no Loft at all.
+  // loft.widthMm IS the real Loft door-span width — per the user's
+  // explicit formula: Loft Width = Total Room Width − Fix Patti − Khacha
+  // (resolved once in deriveWardrobeAddonInputs). The Loft cabinet runs
+  // the full room wall even when the Wardrobe/Dressing below it is
+  // narrower, so this drawn span is deliberately room-relative, NOT
+  // clipped to the furniture composite. Defensive fallback to the
+  // composite door span only if a Loft is somehow enabled with no
+  // resolved width at all.
+  const loftRowLeftX = loftX;
+  const loftFrameWidth = loft.widthMm > 0
+    ? loft.widthMm
+    : Math.max(1, totalWidth - leftKhachaW - leftFPW - rightFPW - rightKhachaW);
+  const doorsAreaX = loftRowLeftX + leftKhachaW + leftFPW;
+  // The Loft row's own drawn extent: Khacha + Fix Patti + door span +
+  // Fix Patti + Khacha. Since loftFrameWidth is the room-relative Loft
+  // Width (Total Room Width − Fix Patti − Khacha), this row can be wider
+  // than the Wardrobe/Dressing composite below it — the Loft cabinet runs
+  // the full wall. That leftover span is real wall space; it just isn't
+  // annotated any more (the old confusing "Room Wall (…)" dashed label
+  // is gone).
   const loftRowWidth = leftKhachaW + leftFPW + loftFrameWidth + rightFPW + rightKhachaW;
+  // Canvas-sizing width — the widest of: the entered Total Width, the
+  // Loft row's own extent, and the furniture composite.
   const roomWallWidth = loft.enabled
     ? Math.max(totalWidthMm && totalWidthMm > 0 ? totalWidthMm : 0, loftRowWidth, totalWidth)
     : totalWidth;
@@ -571,7 +565,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     if (hasLeftFP) {
       components.push({
         id: 'fix-patti-left', type: 'FIX_PATTI', label: `Fix Patti\n${Math.round(fp.leftWidthMm)}(W) x ${Math.round(fp.leftHeightMm)}(H)`,
-        x: loftX + leftKhachaW, y: loftY, width: leftFPW, height: loftH, qty: 1, visible: true,
+        x: loftRowLeftX + leftKhachaW, y: loftY, width: leftFPW, height: loftH, qty: 1, visible: true,
         source: { formula: `Left Fix Patti — Width x Height (both entered) | its Width is subtracted from Total Room Width to get the Loft Width`, constants: [] },
       });
     }
@@ -591,7 +585,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     if (hasLeftKhacha) {
       components.push({
         id: 'khacha-left', type: 'KHACHA', label: `Khacha\n${Math.round(kh.leftHeightMm)}×${Math.round(kh.leftWidthMm)}`,
-        x: loftX, y: loftY, width: leftKhachaW, height: loftH, qty: 1, visible: true,
+        x: loftRowLeftX, y: loftY, width: leftKhachaW, height: loftH, qty: 1, visible: true,
         source: { formula: `Left Khacha — Height x Width (both entered) | subtracted (together with any Fix Patti) from the usable Loft door area`, constants: [] },
       });
     }
@@ -604,11 +598,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     }
 
     // Doors — packed across the FULL Loft Width (loftFrameWidth already IS
-    // the usable width, Fix Patti already excluded), using the shared
-    // loftDoorEngine's exact deduction formula: Width = (LoftWidth −
-    // doorCount×2) / doorCount. loft.doorCount here is already the FINAL
-    // resolved count (auto-recommended unless the user overrode it) —
-    // this module just draws it.
+    // the usable width: Total Room Width − Fix Patti − Khacha, resolved
+    // upstream), using the shared loftDoorEngine's exact deduction
+    // formula: Width = (LoftWidth − doorCount×2) / doorCount.
+    // loft.doorCount here is already the FINAL resolved count
+    // (auto-recommended unless the user overrode it) — this module just
+    // draws it. Same value the cutlist reports.
     {
       const count = Math.max(1, Math.round(loft.doorCount) || 1);
       const doorW = loftOneDoorWidth(loftFrameWidth, count);
@@ -634,43 +629,23 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // Loft Height — a real dimension arrow on the loft's own left edge
     // (it previously only appeared as caption/label text, never a real
     // arrow like every other value in this drawing).
-    dimReqs.push({ axis: 'v', x1: loftX, y1: loftY, x2: loftX, y2: loftY + loftH, edge: 'left', componentIds: ['loft'], label: `${Math.round(loftH)} (Loft H)`, source: { formula: 'Loft Height = Total Height − Wardrobe Height − 10mm gap (auto-calculated, editable)', constants: [] } });
+    dimReqs.push({ axis: 'v', x1: loftRowLeftX, y1: loftY, x2: loftRowLeftX, y2: loftY + loftH, edge: 'left', componentIds: ['loft'], label: `${Math.round(loftH)} (Loft H)`, source: { formula: 'Loft Height = Total Height − Wardrobe Height − 10mm gap (auto-calculated, editable)', constants: [] } });
     // The 10mm gap between Wardrobe and Loft — a required, visible
     // annotation per the spec (§22 "Do not hide the 10mm deduction
     // completely"). Drawn as a short leader just below the Loft's own
     // bottom edge, pointing into the real gap band above the Wardrobe.
     if (totalHeightMm && totalHeightMm > 0) {
       const gapY = loftY + loftH;
-      const rowFullWidth = loftRowWidth;
-      lines.push({ x1: loftX + rowFullWidth * 0.5, y1: gapY, x2: loftX + rowFullWidth * 0.5 + 40, y2: gapY + 24, color: '#64748b', label: '10 (Gap)' });
+      const gapMidX = loftRowLeftX + loftRowWidth * 0.5;
+      lines.push({ x1: gapMidX, y1: gapY, x2: gapMidX + 40, y2: gapY + 24, color: '#64748b', label: '10 (Gap)' });
     }
 
-    // Room Wall boundary — a real, labeled marker for whichever span is
-    // WIDER: the Loft row (Fix Patti + doors) or the lower Wardrobe/
-    // Dressing/Top Panel composite below it. Per the user's explicit
-    // correction: the Loft must "not extend into unrelated blank space" —
-    // when the two differ (e.g. entered Total Width=3400 but Wardrobe+
-    // Dressing=2800), the leftover span on the wider side is real wall
-    // space, not a drawing bug, so it must read as one: a dashed wall-line
-    // + label, not empty canvas. Both left edges already share roomWallX,
-    // so only the RIGHT edges can differ — compare them directly rather
-    // than the Loft row's own right edge against itself (which is always
-    // trivially equal to roomWallWidth and would never show a gap here).
-    const loftRowRightEdge = doorsAreaX + loftFrameWidth + rightFPW + rightKhachaW;
-    const lowerStructureRightEdge = loftX + totalWidth;
-    const wallGap = loftRowRightEdge - lowerStructureRightEdge;
-    // Ignore a gap within ~25mm — that's just the intentional +20mm Side
-    // Panel overhang (plus rounding), not real leftover wall space worth
-    // annotating.
-    if (Math.abs(wallGap) > 25) {
-      const wallY = loftY + loftH / 2;
-      const gapLeftX = Math.min(loftRowRightEdge, lowerStructureRightEdge);
-      const gapRightX = Math.max(loftRowRightEdge, lowerStructureRightEdge);
-      lines.push({
-        x1: gapLeftX, y1: wallY, x2: gapRightX, y2: wallY,
-        color: '#94a3b8', dashed: true, label: `Room Wall (${Math.round(gapRightX - gapLeftX)})`,
-      });
-    }
+    // (No "Room Wall (…)" gap annotation any more — the Loft row is now
+    // always drawn exactly as wide as the Wardrobe/Dressing/Top-Panel
+    // composite it sits on, so the two right edges always coincide and
+    // there is no leftover span to mark. The entered Total Width, when it
+    // exceeds the drawn furniture, is still shown honestly by its own
+    // "Total W" dimension line — that stays.)
   }
 
   const wardrobeY = topPad + loftH;
