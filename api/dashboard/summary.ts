@@ -1,6 +1,13 @@
 // GET /api/dashboard/summary?from=&to=  (manager/ceo only)
 // KPI cards: total drawings, active employees, most active employee, most-
 // measured product — all scoped to the requested date range.
+//
+// Every aggregate here is scoped to REAL field employees only — id LIKE
+// 'BK-E%' (the id format issued to actual employees, see
+// scripts/add-employee.ts) — so a test/seed account like "TEST-E1" never
+// inflates a manager-facing KPI. This filter is applied consistently
+// across every /api/dashboard/* endpoint (see by-product.ts,
+// by-employee-product.ts, timeline.ts), never left to the frontend.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
 import { requireAdmin } from '../_lib/requireAdmin.js';
@@ -16,24 +23,26 @@ export default withErrorHandling(async (req: VercelRequest, res: VercelResponse)
   const db = sql();
 
   const totalRows = await db`
-    SELECT count(*)::int AS total FROM drawings WHERE created_at >= ${from} AND created_at <= ${to}
+    SELECT count(*)::int AS total
+    FROM drawings d JOIN users u ON u.id = d.employee_id
+    WHERE d.created_at >= ${from} AND d.created_at <= ${to} AND u.id LIKE 'BK-E%'
   `;
   const activeEmployeesRows = await db`
-    SELECT count(*)::int AS n FROM users WHERE role = 'employee' AND is_active = true
+    SELECT count(*)::int AS n FROM users WHERE role = 'employee' AND is_active = true AND id LIKE 'BK-E%'
   `;
   const topEmployeeRows = await db`
     SELECT u.id, u.name, count(*)::int AS count
     FROM drawings d JOIN users u ON u.id = d.employee_id
-    WHERE d.created_at >= ${from} AND d.created_at <= ${to}
+    WHERE d.created_at >= ${from} AND d.created_at <= ${to} AND u.id LIKE 'BK-E%'
     GROUP BY u.id, u.name
     ORDER BY count DESC
     LIMIT 1
   `;
   const topProductRows = await db`
-    SELECT product_name, count(*)::int AS count
-    FROM drawings
-    WHERE created_at >= ${from} AND created_at <= ${to}
-    GROUP BY product_name
+    SELECT d.product_name, count(*)::int AS count
+    FROM drawings d JOIN users u ON u.id = d.employee_id
+    WHERE d.created_at >= ${from} AND d.created_at <= ${to} AND u.id LIKE 'BK-E%'
+    GROUP BY d.product_name
     ORDER BY count DESC
     LIMIT 1
   `;

@@ -1,5 +1,7 @@
 // GET /api/dashboard/timeline?from=&to=&granularity=day|week  (manager/ceo only)
 // Drawings generated over time — trend line/area chart.
+//
+// Scoped to real field employees only (id LIKE 'BK-E%') — see summary.ts.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
 import { requireAdmin } from '../_lib/requireAdmin.js';
@@ -21,16 +23,18 @@ export default withErrorHandling(async (req: VercelRequest, res: VercelResponse)
   // above (never raw user input), so this stays injection-safe.
   const rows = granularity === 'week'
     ? await db`
-        SELECT date_trunc('week', created_at) AS bucket, count(*)::int AS count
-        FROM drawings
-        WHERE created_at >= ${from} AND created_at <= ${to}
+        SELECT date_trunc('week', d.created_at) AS bucket, count(*)::int AS count
+        FROM drawings d
+        JOIN users u ON u.id = d.employee_id
+        WHERE d.created_at >= ${from} AND d.created_at <= ${to} AND u.id LIKE 'BK-E%'
         GROUP BY bucket
         ORDER BY bucket
       `
     : await db`
-        SELECT date_trunc('day', created_at) AS bucket, count(*)::int AS count
-        FROM drawings
-        WHERE created_at >= ${from} AND created_at <= ${to}
+        SELECT date_trunc('day', d.created_at) AS bucket, count(*)::int AS count
+        FROM drawings d
+        JOIN users u ON u.id = d.employee_id
+        WHERE d.created_at >= ${from} AND d.created_at <= ${to} AND u.id LIKE 'BK-E%'
         GROUP BY bucket
         ORDER BY bucket
       `;

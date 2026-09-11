@@ -1,5 +1,7 @@
 // GET /api/dashboard/by-product?from=&to=  (manager/ceo only)
 // Total drawings per product across all employees — company-wide bar chart.
+//
+// Scoped to real field employees only (id LIKE 'BK-E%') — see summary.ts.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
 import { requireAdmin } from '../_lib/requireAdmin.js';
@@ -15,10 +17,11 @@ export default withErrorHandling(async (req: VercelRequest, res: VercelResponse)
   const db = sql();
 
   const rows = await db`
-    SELECT product_name, count(*)::int AS count
-    FROM drawings
-    WHERE created_at >= ${from} AND created_at <= ${to}
-    GROUP BY product_name
+    SELECT d.product_name, count(*)::int AS count
+    FROM drawings d
+    JOIN users u ON u.id = d.employee_id
+    WHERE d.created_at >= ${from} AND d.created_at <= ${to} AND u.id LIKE 'BK-E%'
+    GROUP BY d.product_name
     ORDER BY count DESC
   `;
 
