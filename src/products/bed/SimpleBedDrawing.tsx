@@ -5,7 +5,7 @@ import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
 const n = (v: number | string | undefined) => Number(v ?? 0);
-const DEFAULT_ST: SimpleSideTableInput = { enabled: false, depthMm: 460, widthMm: 560 };
+const DEFAULT_ST: SimpleSideTableInput = { enabled: false, depthMm: 460, widthMm: 560, drawerCount: 0 };
 const DEFAULT_PS: ProfileShutterInput = { enabled: false, side: 'left', heightMm: 150, light: false };
 
 // Each box's own outline uses the same colour as its dimension lines (see

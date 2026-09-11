@@ -95,10 +95,12 @@ function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>,
   const lst: SimpleSideTableInput = {
     enabled: productId === 'bed' && selectedAddons.has('side-table-left'),
     depthMm: (addonDims['side-table-left']?.D) ?? 460, widthMm: (addonDims['side-table-left']?.W) ?? 560,
+    drawerCount: (addonDims['side-table-left']?.drawers) ?? 0,
   };
   const rst: SimpleSideTableInput = {
     enabled: productId === 'bed' && selectedAddons.has('side-table-right'),
     depthMm: (addonDims['side-table-right']?.D) ?? 460, widthMm: (addonDims['side-table-right']?.W) ?? 560,
+    drawerCount: (addonDims['side-table-right']?.drawers) ?? 0,
   };
   const PS_SIDE_OPTS: ProfileShutterSide[] = ['left', 'right'];
   const profileShutter: ProfileShutterInput = {

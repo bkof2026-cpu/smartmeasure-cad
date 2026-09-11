@@ -21,6 +21,11 @@ export interface SimpleSideTableInput {
   enabled: boolean;
   depthMm: number;
   widthMm: number;
+  // Purely visual — real drawer fronts drawn inside the table's own,
+  // already-resolved box (see resolveSimpleBedPlan below). Never changes
+  // the table's own position/width/depth/height or any other component's
+  // layout; 0 (the default) draws the table exactly as before.
+  drawerCount: number;
 }
 
 export type ProfileShutterSide = 'left' | 'right';
@@ -112,10 +117,12 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
     rows.push({ component: 'Headboard', width: inp.W, height: inp.headboardH, qty: 1, remark: 'Width = Bed Width (auto) | Height = standard 900mm, editable' });
   }
   if (inp.lst.enabled) {
-    rows.push({ component: 'Left Side Table (LST)', width: inp.lst.widthMm, height: inp.lst.depthMm, qty: 1, remark: `Depth × Width entered; Height = Bed Height (auto-fetched, ${Math.round(inp.H)}mm)` });
+    const lstDrawers = Math.max(0, Math.round(inp.lst.drawerCount) || 0);
+    rows.push({ component: 'Left Side Table (LST)', width: inp.lst.widthMm, height: inp.lst.depthMm, qty: 1, remark: `Depth × Width entered; Height = Bed Height (auto-fetched, ${Math.round(inp.H)}mm)${lstDrawers > 0 ? ` | ${lstDrawers} drawer front(s)` : ''}` });
   }
   if (inp.rst.enabled) {
-    rows.push({ component: 'Right Side Table (RST)', width: inp.rst.widthMm, height: inp.rst.depthMm, qty: 1, remark: `Depth × Width entered; Height = Bed Height (auto-fetched, ${Math.round(inp.H)}mm)` });
+    const rstDrawers = Math.max(0, Math.round(inp.rst.drawerCount) || 0);
+    rows.push({ component: 'Right Side Table (RST)', width: inp.rst.widthMm, height: inp.rst.depthMm, qty: 1, remark: `Depth × Width entered; Height = Bed Height (auto-fetched, ${Math.round(inp.H)}mm)${rstDrawers > 0 ? ` | ${rstDrawers} drawer front(s)` : ''}` });
   }
   if (profileShutterActive(inp)) {
     const onLeftRow = inp.profileShutter.side === 'left';
@@ -136,12 +143,24 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
 const HEADBOARD_GAP = 300; // real visual gap between the Headboard box and the Bed — big enough for a clearly visible height leader through it
 const PROFILE_SHUTTER_BAND = 1200; // default headboardH(900) + HEADBOARD_GAP(300) — the Profile Shutter's own visual prominence must never depend on whether a Headboard happens to be present
 
+// Extra side clearance reserved around a side table once it's drawing its
+// own real drawer fronts — the divider lines + per-drawer numbering need
+// more breathing room than a plain empty LST/RST box did, so the table
+// doesn't read as cramped against the Bed's own Height leader / Dressing
+// box beside it. Only applied when drawers are actually present (0, the
+// default, keeps the drawing pixel-identical to before this feature).
+const SIDE_TABLE_DRAWER_MARGIN = 90;
+
 export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
   const { W, L, H, headboardEnabled, headboardH, lst, rst } = inp;
   const leaderMargin = 110; // small top/left margin for the drawing itself
+  const leftDrawers = lst.enabled ? Math.max(0, Math.round(lst.drawerCount) || 0) : 0;
+  const rightDrawers = rst.enabled ? Math.max(0, Math.round(rst.drawerCount) || 0) : 0;
+  const leftExtraMargin = leftDrawers > 0 ? SIDE_TABLE_DRAWER_MARGIN : 0;
+  const rightExtraMargin = rightDrawers > 0 ? SIDE_TABLE_DRAWER_MARGIN : 0;
   const leftW = lst.enabled ? lst.widthMm : 0;
   const rightW = rst.enabled ? rst.widthMm : 0;
-  const bedX = leftW + leaderMargin; // shift everything right so nothing is negative
+  const bedX = leftW + leaderMargin + leftExtraMargin; // shift everything right so nothing is negative
   // Headboard is optional — when it's off there's no reason to reserve the
   // gap band above the Bed at all, so the Bed simply starts near the top —
   // UNLESS a Profile Shutter is mounted, which needs the same fixed-height
@@ -197,6 +216,23 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       id: 'lst', type: 'SIDE_TABLE', label: 'LST', x: lx, y: bedY, width: lw, height: ld, qty: 1, visible: true,
       source: { formula: `Depth = ${Math.round(ld)}mm (entered) | Width = ${Math.round(lw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
+    // Drawers — purely visual real drawer fronts drawn INSIDE the table's
+    // own already-resolved box (never changes lx/ld/lw or any other
+    // component's position). Stacked HORIZONTALLY — drawerCount equal
+    // bands top-to-bottom (a real chest-of-drawers front), each split by
+    // a horizontal divider line. The "N Drawers" caption sits ABOVE the
+    // table's own box, in the extra side clearance reserved for it
+    // (SIDE_TABLE_DRAWER_MARGIN/leftExtraMargin above), so it never
+    // collides with the table's own "LST" name (centred inside the box)
+    // or the Depth diagonal (anchored at the box's bottom corner). 0 (the
+    // default) draws nothing extra, identical to before this field.
+    if (leftDrawers > 0) {
+      const eachH = ld / leftDrawers;
+      for (let i = 1; i < leftDrawers; i++) {
+        lines.push({ x1: lx, y1: bedY + i * eachH, x2: lx + lw, y2: bedY + i * eachH, color: BED_COMPONENT_COLORS.lst, strokeWidth: 0.8 });
+      }
+      lines.push({ x1: lx + lw / 2, y1: bedY - 14, x2: lx + lw / 2, y2: bedY - 14, color: BED_COMPONENT_COLORS.lst, label: `${leftDrawers} Drawers` });
+    }
     // Width — real straight dimension along the table's own BOTTOM edge
     // (per the user's own reference sketch), well clear of the crowded top
     // corner where the Bed's own Height leader and the Profile Shutter live.
@@ -218,6 +254,16 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       id: 'rst', type: 'SIDE_TABLE', label: 'RST', x: rx, y: bedY, width: rw, height: rd, qty: 1, visible: true,
       source: { formula: `Depth = ${Math.round(rd)}mm (entered) | Width = ${Math.round(rw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
     });
+    // Drawers — same treatment as LST above (horizontal bands, stacked
+    // top-to-bottom), purely visual, drawn inside RST's own already-
+    // resolved box.
+    if (rightDrawers > 0) {
+      const eachH = rd / rightDrawers;
+      for (let i = 1; i < rightDrawers; i++) {
+        lines.push({ x1: rx, y1: bedY + i * eachH, x2: rx + rw, y2: bedY + i * eachH, color: BED_COMPONENT_COLORS.rst, strokeWidth: 0.8 });
+      }
+      lines.push({ x1: rx + rw / 2, y1: bedY - 14, x2: rx + rw / 2, y2: bedY - 14, color: BED_COMPONENT_COLORS.rst, label: `${rightDrawers} Drawers` });
+    }
     // Width along the bottom edge, same as LST.
     dimReqs.push({ axis: 'h', x1: rx, y1: bedY + rd + 8, x2: rx + rw, y2: bedY + rd + 8, edge: 'bottom', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] }, color: BED_COMPONENT_COLORS.rst });
     dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + H, edge: 'right', componentIds: ['rst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'RST Height = Bed Height (auto-fetched)', constants: [] }, color: BED_COMPONENT_COLORS.rst });
@@ -300,8 +346,10 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
 
   // Include every leader-line endpoint so nothing (e.g. the LST/RST Height
   // callouts, which extend slightly past their table's own bounds) risks
-  // being clipped at the edge of the drawing.
-  const worldWidth = Math.max(bedX + W + rightW, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
+  // being clipped at the edge of the drawing. rightExtraMargin reserves the
+  // same drawer breathing room on the right that leftExtraMargin already
+  // built into bedX on the left.
+  const worldWidth = Math.max(bedX + W + rightW + rightExtraMargin, ...lines.map((l) => Math.max(l.x1, l.x2) + 10));
   const worldHeight = Math.max(bedY + L, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
   const dimensions = resolveDimensions(dimReqs);

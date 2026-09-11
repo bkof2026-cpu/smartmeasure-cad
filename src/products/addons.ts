@@ -164,6 +164,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       fields: [
         { key: 'D', label: 'Depth', defaultValue: 460, min: 280, max: 650 },
         { key: 'W', label: 'Width', defaultValue: 560, min: 280, max: 700 },
+        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 6, isCount: true },
       ],
     },
     {
@@ -175,6 +176,7 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       fields: [
         { key: 'D', label: 'Depth', defaultValue: 460, min: 280, max: 650 },
         { key: 'W', label: 'Width', defaultValue: 560, min: 280, max: 700 },
+        { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 6, isCount: true },
       ],
     },
     {
