@@ -1482,14 +1482,6 @@ export const ProductFlow: React.FC = () => {
             </span>
           </div>
 
-          <button
-            onClick={handleDownloadPDF}
-            disabled={pdfBusy}
-            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold flex-shrink-0 disabled:opacity-60"
-            style={{ background: '#1d4ed8', color: '#fff' }}>
-            {pdfBusy ? '⏳ Generating…' : '⬇ Download PDF'}
-          </button>
-
           <div className="relative">
             <button
               ref={historyBtnRef}
