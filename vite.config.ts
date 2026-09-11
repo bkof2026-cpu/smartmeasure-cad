@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      figmaApiDevStub(),
       // PWA — installable on Android/iOS home screen. Precaches the static
       // app shell only; every /api/* call always goes to the network
       // (NetworkFirst with a short cache fallback for offline resilience),
@@ -391,6 +392,43 @@ function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin
         } catch (err) {
           next(err as Error)
         }
+      })
+    },
+  }
+}
+
+/**
+ * Dev-only: `npm run dev` serves the static frontend ONLY (see AGENTS.md —
+ * the real backend is separate Vercel serverless functions under `api/`,
+ * with no local dev proxy configured). Without this plugin, a genuine
+ * frontend `fetch('/api/profile/my-stats?from=...&to=...')` call 404s as
+ * expected, but Vite's own static/module-resolution middleware then tries
+ * to resolve that URL against the literal file `api/profile/my-stats.ts`
+ * (project-root-relative, query string and all) and feeds it through the
+ * oxc transform pipeline — which fails, since that file imports
+ * `@vercel/node` (a server-only module never meant to enter the browser
+ * bundle). The resulting HMR error overlay covers the whole page and
+ * blocks all interaction, even though nothing is actually broken — it's
+ * an artifact of Vite mistaking a live API request for a source file
+ * import. Intercepting every `/api/*` request here, before Vite's own
+ * middleware chain sees it, returns a clean 404 JSON response instead —
+ * changes nothing about the real behaviour (the frontend already handles
+ * a 404 from these endpoints gracefully), just stops the dev server from
+ * misinterpreting the URL. `apply: 'serve'` keeps this out of `vite build`
+ * entirely, so it can never affect what ships to production.
+ */
+function figmaApiDevStub(): Plugin {
+  return {
+    name: 'figma-api-dev-stub',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = (req.url || '').split('?')[0]
+        if (!pathname.startsWith('/api/')) return next()
+
+        res.statusCode = 404
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ error: 'API routes are not served by the Vite dev server — see AGENTS.md.' }))
       })
     },
   }
