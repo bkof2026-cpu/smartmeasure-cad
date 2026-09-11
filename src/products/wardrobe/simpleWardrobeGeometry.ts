@@ -1190,13 +1190,26 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       // and the Tray's own decorative bar.
       if (l.label === 'Top' || l.label === 'Tray') continue;
       if (!l.label && l.color === '#2563eb' && Math.abs(l.y1 - l.y2) < 0.5) continue; // the unlabelled Tray bar
-      lines.push({ ...l, x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy });
+      // Normalise "600 mm (D)" → "600 (D)" to match the Wardrobe drawing.
+      const nl = l.label ? l.label.replace(/\s*mm\s*/i, ' ').trim() : l.label;
+      lines.push({ ...l, label: nl, x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy });
     }
     for (const d of stPlan.dimensions) {
+      // Drop the standalone's own "total width" line — the Wardrobe
+      // drawing has its own Total-W. Normalise the label style to match
+      // the Wardrobe drawing ("350 mm (W)" → "350 (Study Table W)").
+      if (/total width/i.test(d.label)) continue;
+      const norm = d.label
+        .replace(/\s*mm\s*/i, ' ')
+        .replace(/\(W\)$/, '(Study Table W)')
+        .replace(/\(H\)$/, '(Study Table H)')
+        .replace(/\(D\)$/, '(Study Table D)')
+        .replace(/\(Storage W\)$/, '(ST Storage W)')
+        .trim();
       dimReqs.push({
         axis: d.axis, x1: d.x1 + dx, y1: d.y1 + dy, x2: d.x2 + dx, y2: d.y2 + dy,
         edge: d.edge, componentIds: d.componentIds.map((cid) => pfx + cid),
-        label: d.label, source: d.source, color: d.color,
+        label: norm, source: d.source, color: d.color,
       });
     }
   }
@@ -1252,23 +1265,26 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // not left to the collision engine's span-sort — which, seeing the
   // total's span start at/before the wardrobe's own narrower span, can
   // otherwise drop the total onto the inner tier.
-  const isOwnWidth = (d: (typeof resolvedDims)[number]) => /\(W\)$/.test(d.label) && !/\(Total W\)$/.test(d.label);
-  const isOwnHeight = (d: (typeof resolvedDims)[number]) => /\(H\)$/.test(d.label) && !/\(Total H\)$/.test(d.label);
   const isTotalWidth = (d: (typeof resolvedDims)[number]) => /\(Total W\)$/.test(d.label);
   const isTotalHeight = (d: (typeof resolvedDims)[number]) => /\(Total H\)$/.test(d.label);
-  const ownWidthTier = resolvedDims.find(isOwnWidth)?.tier ?? 0;
-  const ownHeightTier = resolvedDims.find(isOwnHeight)?.tier ?? 0;
+  // Read the WARDROBE'S OWN W / H dim tiers specifically (by componentId),
+  // not just any "(W)"/"(H)"-suffixed label — several add-ons (Storage,
+  // embedded Study Table, …) also emit "<n>(H)"/"<n> mm (W)" dims, and
+  // `find` on a loose regex would grab one of those instead, leaving the
+  // Total arrow pinned to the wrong (usually inner) tier.
+  const wardrobeWidthTier = resolvedDims.find((d) => d.componentIds.includes('wardrobe') && d.axis === 'h')?.tier ?? 0;
+  const wardrobeHeightTier = resolvedDims.find((d) => d.componentIds.includes('wardrobe') && d.axis === 'v')?.tier ?? 0;
   const dimensions = resolvedDims.map((d) => {
     // Wardrobe's own W/H keeps its (inner) resolved tier; any enclosing
     // "Total W" / "Total H" is pushed one full tier further out.
-    if (isTotalWidth(d)) return { ...d, tier: Math.max(d.tier, ownWidthTier + 1) };
-    if (isTotalHeight(d)) return { ...d, tier: Math.max(d.tier, ownHeightTier + 1) };
+    if (isTotalWidth(d)) return { ...d, tier: Math.max(d.tier, wardrobeWidthTier + 1) };
+    if (isTotalHeight(d)) return { ...d, tier: Math.max(d.tier, wardrobeHeightTier + 1) };
     // A right-side Dressing's "Total Drawer H" leader shares the outer
     // right edge with the Wardrobe-H / Total-H arrows and overlaps them in
     // Y — push it one tier past the Total-H so the three never stack on
     // the same offset. (Left-side Dressing puts it on the free left edge,
     // no conflict, so only bump when it landed on the right.)
-    if (/Total Drawer H/.test(d.label) && d.edge === 'right') return { ...d, tier: Math.max(d.tier, ownHeightTier + 2) };
+    if (/Total Drawer H/.test(d.label) && d.edge === 'right') return { ...d, tier: Math.max(d.tier, wardrobeHeightTier + 2) };
     return d;
   });
   const issues = [
