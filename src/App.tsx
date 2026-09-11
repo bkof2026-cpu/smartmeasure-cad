@@ -131,20 +131,34 @@ function BottomNav() {
   );
 }
 
-function AppHeader() {
+function AppHeader({ onLogout }: { onLogout: () => void }) {
   const { model, screen } = useApp();
   // Shrunk from 50px/text-sm — on a phone this bar plus the product bar
   // and tab row were together eating too much vertical space, leaving too
   // little room for the actual drawing underneath.
+  //
+  // Logout lives here (not just DesktopHeader/Sidebar, both lg:hidden on
+  // mobile) — without it, a phone/Android user had no way to log out at
+  // all. A compact icon-only button keeps this cramped 36px bar from
+  // growing, unlike the desktop header's full "Logout" text button.
   return (
     <header className="flex items-center gap-3 px-3 border-b lg:hidden"
       style={{ background: '#0d1117', borderColor: '#243045', height: 36, flexShrink: 0 }}>
       <span className="text-xs font-black tracking-tight" style={{ color: '#e2e8f0' }}>
         SmartMeasure <span style={{ color: '#3b82f6' }}>CAD</span>
       </span>
-      <span className="text-[10px] ml-auto truncate" style={{ color: '#4a5f7a', maxWidth: 140 }}>
+      <span className="text-[10px] ml-auto truncate" style={{ color: '#4a5f7a', maxWidth: 100 }}>
         {model.project.clientName || 'New Project'}
       </span>
+      <button
+        onClick={onLogout}
+        title="Logout"
+        aria-label="Logout"
+        className="flex-shrink-0 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-wide"
+        style={{ background: '#1e2535', color: '#94a3b8', border: '1px solid #243045' }}
+      >
+        Logout
+      </button>
     </header>
   );
 }
@@ -490,7 +504,7 @@ function Shell() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: '#0d1117' }}>
-      {!isFinal && <AppHeader />}
+      {!isFinal && <AppHeader onLogout={handleEmployeeLogout} />}
       {!isFinal && <DesktopHeader onLogout={handleEmployeeLogout} />}
 
       <div className="flex flex-1 overflow-hidden">
