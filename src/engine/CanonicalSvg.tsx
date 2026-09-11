@@ -335,36 +335,60 @@ export function TechnicalDrawingSvg({
           <path d={s.d} fill={s.fill ?? '#f0eee8'} stroke={s.stroke ?? '#3b82f6'} strokeWidth={(s.strokeWidth ?? 1.2) / scale} />
         </g>
       ))}
-      {noteBoxes.map((nb) => {
-        // Fixed on-screen sizing (not world-scaled) so the text stays
-        // legible regardless of drawing scale — same principle as the
-        // dimension labels. The box is placed at nb.(x,y) mapped to
-        // screen; an optional short leader runs from nb.anchor to it.
-        const bx = ox + nb.x * scale, by = oy + nb.y * scale;
-        const col = nb.color ?? '#64748b';
-        const rows = [...(nb.title ? [nb.title] : []), ...nb.lines];
-        const lineH = 9.5;
-        const padX = 5, padY = 4;
-        const boxW = Math.max(...rows.map((r) => r.length)) * 4.2 + padX * 2;
-        const boxH = rows.length * lineH + padY * 2;
-        return (
-          <g key={nb.id} pointerEvents="none">
-            {nb.anchor && (
-              <line x1={ox + nb.anchor.x * scale} y1={oy + nb.anchor.y * scale} x2={bx} y2={by + boxH / 2}
-                stroke={col} strokeWidth={0.8} />
-            )}
-            <rect x={bx} y={by} width={boxW} height={boxH} rx={2} fill="white" stroke={col} strokeWidth={1} />
-            {rows.map((r, ri) => (
-              <text key={ri} x={bx + padX} y={by + padY + lineH * (ri + 0.8)}
-                fontSize={ri === 0 && nb.title ? 7.5 : 7} fontFamily="'DM Sans',sans-serif"
-                fontWeight={ri === 0 && nb.title ? 800 : 600}
-                fill={ri === 0 && nb.title ? col : '#334155'}>
-                {r}
-              </text>
-            ))}
-          </g>
-        );
-      })}
+      {(() => {
+        // NoteBoxes render at a FIXED on-screen size (not world-scaled),
+        // same principle as dimension labels — legible at any drawing
+        // scale. But a product author only places them in WORLD mm, and
+        // once the drawing's own world extent grows (more add-ons, wider
+        // composite), `scale` shrinks and a world-mm gap between two
+        // stacked boxes can collapse to just a few screen px, even though
+        // the boxes themselves stay a fixed, larger screen size — so two
+        // notes meant to sit one above the other visually overlap. Fix
+        // that here, in screen space, the same way dimension tiers avoid
+        // collision with a fixed px step: lay out each box's preferred
+        // screen position first, then push any box down past whichever
+        // already-placed box it would otherwise overlap.
+        const lineH = 9.5, padX = 5, padY = 4, gapPx = 4;
+        type Laid = { nb: NoteBox; bx: number; by: number; boxW: number; boxH: number; rows: string[] };
+        const laid: Laid[] = [];
+        for (const nb of noteBoxes) {
+          const rows = [...(nb.title ? [nb.title] : []), ...nb.lines];
+          const boxW = Math.max(...rows.map((r) => r.length)) * 4.2 + padX * 2;
+          const boxH = rows.length * lineH + padY * 2;
+          let bx = ox + nb.x * scale;
+          let by = oy + nb.y * scale;
+          // Only push straight down against OTHER boxes with real
+          // horizontal overlap — independent columns (e.g. a left-side
+          // stack and a right-side stack) must never affect each other.
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const blocker = laid.find((p) => bx < p.bx + p.boxW && p.bx < bx + boxW && by < p.by + p.boxH + gapPx && p.by < by + boxH + gapPx);
+            if (!blocker) break;
+            by = blocker.by + blocker.boxH + gapPx;
+          }
+          laid.push({ nb, bx, by, boxW, boxH, rows });
+        }
+        return laid.map(({ nb, bx, by, boxW, boxH, rows }) => {
+          const col = nb.color ?? '#64748b';
+          return (
+            <g key={nb.id} pointerEvents="none">
+              {nb.anchor && (
+                <line x1={ox + nb.anchor.x * scale} y1={oy + nb.anchor.y * scale} x2={bx} y2={by + boxH / 2}
+                  stroke={col} strokeWidth={0.8} />
+              )}
+              <rect x={bx} y={by} width={boxW} height={boxH} rx={2} fill="white" stroke={col} strokeWidth={1} />
+              {rows.map((r, ri) => (
+                <text key={ri} x={bx + padX} y={by + padY + lineH * (ri + 0.8)}
+                  fontSize={ri === 0 && nb.title ? 7.5 : 7} fontFamily="'DM Sans',sans-serif"
+                  fontWeight={ri === 0 && nb.title ? 800 : 600}
+                  fill={ri === 0 && nb.title ? col : '#334155'}>
+                  {r}
+                </text>
+              ))}
+            </g>
+          );
+        });
+      })()}
       {lines.map((l, i) => {
         const px1 = ox + l.x1 * scale, py1 = oy + l.y1 * scale;
         const px2 = ox + l.x2 * scale, py2 = oy + l.y2 * scale;

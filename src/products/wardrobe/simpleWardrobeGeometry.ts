@@ -1,4 +1,5 @@
-import type { AnnotationLine, ComponentSpec, NoteBox, ResolvedDrawing } from '../../engine/types';
+import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engine/types';
+import { placeNoteBoxes, type CalloutRequest } from '../../engine/noteBoxPlacement';
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
 import {
@@ -402,6 +403,17 @@ function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, 
 
 export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDrawing {
   const { W, H, D, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, adjacentLoft, totalWidthMm, totalHeightMm } = inp;
+  const dressL = dressing.enabled && dressing.side !== 'right' ? dressing.widthMm : 0;
+  const dressR = dressing.enabled && dressing.side !== 'left' ? dressing.widthMm : 0;
+  // Top Panel (a.k.a. Side Panel) — per the user's explicit composite
+  // formula "Total Width = Wardrobe Width + Dressing Width + Side Panel
+  // Width", the horizontal footprint it reserves in the composite is its
+  // WIDTH (not its Depth). Depth runs front-to-back and is shown only as
+  // the diagonal "(D)" leader. Hoisted above leaderMargin (below) because
+  // the left Storage/Open Box note box's own reserved margin depends on it.
+  const topPanelL = topPanel.enabled && topPanel.side !== 'right' ? topPanel.widthMm : 0;
+  const topPanelR = topPanel.enabled && topPanel.side !== 'left' ? topPanel.widthMm : 0;
+
   // room for the Wardrobe's own Depth "/" leader — extended when a
   // LEFT-side L-Shaped Loft (Wall B) is active, since that column is
   // drawn even further left, outside every other component's own
@@ -411,19 +423,17 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // canvas X. Must cover alGap (320) + max drawn column depth (260) +
   // the per-door width dim ticks and label on Wall B's outer edge (~70).
   const leftAdjacentLoftMargin = adjacentLoft.enabled && adjacentLoft.side === "left" ? 480 + 260 + 80 : 0;
-  // A LEFT-side Storage / Open Box extends left of the Dressing by its own
-  // Width — reserve room so its own box never lands at a negative,
-  // off-canvas X. (Right-side boxes just extend right and are picked up by
-  // worldWidth.)
-  const leftStorageMarginRaw = Math.max(
-    (storage.position === 'left' || storage.position === 'both') && storage.left.enabled ? storage.left.widthMm : 0,
-    (openBox.position === 'left' || openBox.position === 'both') && openBox.left.enabled ? openBox.left.widthMm : 0,
-  );
-  // +190 when there's a left Storage / Open Box: its measurements now go
-  // into a spec note box drawn ~170mm further left again, which must also
-  // stay on canvas.
-  const leftStorageNoteRoom = leftStorageMarginRaw > 0 ? 190 : 0;
-  const leftStorageMargin = Math.max(0, leftStorageMarginRaw - (topPanel.enabled && topPanel.side !== 'right' ? topPanel.widthMm : 0) + 30 + leftStorageNoteRoom);
+  // A LEFT-side Storage / Open Box's measurements go into a spec note box
+  // anchored at (wardrobeX - dressL - topPanelL) - 190 — i.e. 190mm to
+  // the LEFT of the Top Panel's own far edge (never the pocket's own,
+  // possibly-narrower, edge — the Top Panel's line/diagonal/width-dim all
+  // sit at that same x-span and must never be crossed). Reserve exactly
+  // that much room so the note box never lands at a negative, off-canvas
+  // X. (Right-side boxes extend right and are picked up by worldWidth.)
+  const hasLeftStorageOrOpenBox =
+    ((storage.position === 'left' || storage.position === 'both') && storage.left.enabled) ||
+    ((openBox.position === 'left' || openBox.position === 'both') && openBox.left.enabled);
+  const leftStorageMargin = hasLeftStorageOrOpenBox ? (topPanelL + 190) : 0;
   const leaderMargin = 150 + leftAdjacentLoftMargin + leftStorageMargin;
 
   // Skirting — a real 70mm board strip drawn at the FLOOR line of the
@@ -437,16 +447,6 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // skirting band rather than an inverted strip.
   const skirtH = H > WARDROBE_SKIRTING_HEIGHT_MM ? WARDROBE_SKIRTING_HEIGHT_MM : 0;
   const bodyH = H;
-
-  const dressL = dressing.enabled && dressing.side !== 'right' ? dressing.widthMm : 0;
-  const dressR = dressing.enabled && dressing.side !== 'left' ? dressing.widthMm : 0;
-  // Top Panel (a.k.a. Side Panel) — per the user's explicit composite
-  // formula "Total Width = Wardrobe Width + Dressing Width + Side Panel
-  // Width", the horizontal footprint it reserves in the composite is its
-  // WIDTH (not its Depth). Depth runs front-to-back and is shown only as
-  // the diagonal "(D)" leader.
-  const topPanelL = topPanel.enabled && topPanel.side !== 'right' ? topPanel.widthMm : 0;
-  const topPanelR = topPanel.enabled && topPanel.side !== 'left' ? topPanel.widthMm : 0;
 
   // Extra Storage + Open Box — small boxes tucked in the top-left / top-
   // right POCKET (the empty band between the Loft's bottom edge and the
@@ -501,7 +501,12 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const components: ComponentSpec[] = [];
   const dimReqs: DimensionRequest[] = [];
   const lines: AnnotationLine[] = [];
-  const noteBoxes: NoteBox[] = [];
+  // Callout requests (Name + H/W/D for a crowded small component) are
+  // queued here as they're found, then resolved into real, collision-
+  // checked NoteBox positions ONCE at the very end of this function — see
+  // noteBoxPlacement.ts. Never placed at a hand-picked fixed offset,
+  // which breaks the moment the composite around it changes shape.
+  const calloutRequests: CalloutRequest[] = [];
 
   // Loft — touches the top of the composite stack directly (no gap; a real
   // loft cabinet is built flush on top of the wardrobe carcass), spanning
@@ -1048,23 +1053,33 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // separate components at two completely separate drawing positions.
   const panelLineColor = loft.enabled ? '#7c3aed' : '#222';
   const panelLineWidth = loft.enabled ? 2.5 : 0.8;
+  // Top Panel is a thin line, not a box, so its own W/D used to be shown
+  // via a dimension arrow + diagonal leader right next to the panel —
+  // exactly the kind of crowded, small-component annotation the callout
+  // system replaces elsewhere (Storage/Open Box). Same treatment here:
+  // a Name+W+D callout box placed by the real collision-free placement
+  // engine, with a leader arrow to the panel line, instead of in-place
+  // arrows that collided with neighbouring Storage/Open Box callouts.
+  const TOP_PANEL_CALLOUT_H = 40; // nominal thickness for the callout's own anchor bounds — the panel itself is a zero-height line
   if (topPanelL > 0) {
     const px = wardrobeX - dressL - topPanelL;
-    // Horizontal slat spanning the Top Panel's own WIDTH; a horizontal
-    // dim line under it shows that Width, and a short diagonal "(D)"
-    // leader shows its Depth.
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
-    lines.push({ x1: px, y1: wardrobeY, x2: px - 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
-    // Width dim BELOW the panel line (edge:'bottom' → offset downward into
-    // the gap between the Top Panel line and the Wardrobe top), never
-    // 'top' which would push it up INTO the Loft doors.
-    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, edge: 'bottom', componentIds: [], label: `${Math.round(topPanel.widthMm)} (Top Panel W)`, source: { formula: 'Top Panel (Side Panel) Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
+    calloutRequests.push({
+      id: 'top-panel-left-note',
+      componentBounds: { x: px, y: wardrobeY - TOP_PANEL_CALLOUT_H, w: topPanelL, h: TOP_PANEL_CALLOUT_H },
+      title: 'Top Panel', color: panelLineColor,
+      lines: [`W : ${Math.round(topPanel.widthMm)}`, `D : ${Math.round(topPanel.depthMm)}`],
+    });
   }
   if (topPanelR > 0) {
     const px = wardrobeX + W + dressR;
     lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
-    lines.push({ x1: px + topPanelR, y1: wardrobeY, x2: px + topPanelR + 90, y2: wardrobeY - 90, color: DIAG, label: `${Math.round(topPanel.depthMm)} (D)` });
-    dimReqs.push({ axis: 'h', x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, edge: 'bottom', componentIds: [], label: `${Math.round(topPanel.widthMm)} (Top Panel W)`, source: { formula: 'Top Panel (Side Panel) Width = Total Room Width − Wardrobe Width − Dressing Width (− Fix Patti Width, if its Height ≥ Loft Height) + 20mm extra (auto-calculated, editable)', constants: [] } });
+    calloutRequests.push({
+      id: 'top-panel-right-note',
+      componentBounds: { x: px, y: wardrobeY - TOP_PANEL_CALLOUT_H, w: topPanelR, h: TOP_PANEL_CALLOUT_H },
+      title: 'Top Panel', color: panelLineColor,
+      lines: [`W : ${Math.round(topPanel.widthMm)}`, `D : ${Math.round(topPanel.depthMm)}`],
+    });
   }
 
   // Extra Storage + Open Box — small boxes in the top pocket beside the
@@ -1096,6 +1111,25 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     const gapMm = 2;
     let cursorY = wardrobeY;
 
+    // Per the user: instead of packing H/W/D text and multiple leader
+    // arrows onto/into the small component itself (which crowds badly
+    // once several add-ons are active), each small component gets ONE
+    // short leader arrow out to a small bordered "callout" text box —
+    // Name + H/W/D — placed by REAL collision detection against every
+    // other component / dimension / line / callout already on the
+    // drawing (see noteBoxPlacement.ts), never a hand-picked fixed
+    // offset. Requests are queued here and resolved into real, collision-
+    // checked NoteBox positions once, at the very end of this function,
+    // after every other piece of geometry/dimension/line is finalised.
+    const placeNoteBox = (name: string, color: string, boxX: number, boxW: number, boxY: number, boxH: number, rows: string[]) => {
+      calloutRequests.push({
+        id: `${name.toLowerCase().replace(/\s+/g, '-')}-${side}-note`,
+        componentBounds: { x: boxX, y: boxY, w: boxW, h: boxH },
+        title: name, lines: rows, color,
+      });
+      storagePocketBottomEdge = Math.max(storagePocketBottomEdge, boxY + boxH);
+    };
+
     if (hasStorage && storageSide) {
       const boxW = Math.max(1, storageSide.widthMm);
       const boxH = Math.max(1, storageSide.heightMm);
@@ -1105,27 +1139,21 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       let doorCursorX = boxX;
       for (let i = 0; i < count; i++) {
         components.push({
-          // First door carries the WIDTH text ("W:600, 2 doors") inside
-          // the box; the rest are blank so the door row stays clean.
-          id: `storage-${side}-door-${i}`, type: 'STORAGE_DOOR',
-          label: i === 0 ? `W:${Math.round(boxW)} · ${count} doors` : '',
+          // No in-box text any more — the door row stays visually clean;
+          // all measurements move to the note box.
+          id: `storage-${side}-door-${i}`, type: 'STORAGE_DOOR', label: '',
           x: doorCursorX, y: cursorY, width: doorW, height: boxH, qty: 1, visible: true,
           source: { formula: `Storage Box (${side}) Door ${i + 1} of ${count} — Width = (Storage Width(${Math.round(boxW)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm — from Storage Width only`, constants: [] },
         });
         doorCursorX += doorW + gapMm;
       }
-      // Storage: Height as ONE vertical arrow on the outer edge, Depth as
-      // ONE diagonal line, Width shown as text inside (above), and the
-      // component NAME on a short leader (like the reference). No fan of
-      // crossing arrows, no note box.
-      const hLeaderX = side === 'left' ? boxX - 14 : boxX + boxW + 14;
-      dimReqs.push({ axis: 'v', x1: hLeaderX, y1: cursorY, x2: hLeaderX, y2: cursorY + boxH, edge: side === 'left' ? 'left' : 'right', componentIds: [`storage-${side}-door-0`], label: `${Math.round(boxH)}(H)`, source: { formula: 'Storage Box Height (entered)', constants: [] } });
-      const sDiag = insideDiagonal(boxX, cursorY, boxW, boxH, side === 'left' ? 'left-down' : 'right-down');
-      lines.push({ x1: boxX + (side === 'left' ? boxW : 0), y1: cursorY, x2: sDiag.x2, y2: sDiag.y2, color: DIAG, label: `${Math.round(storageSide.depthMm)}(D)` });
-      // Name leader — from just above the box out to a "Storage" caption.
-      const nmX = side === 'left' ? boxX - 90 : boxX + boxW + 90;
-      lines.push({ x1: side === 'left' ? boxX : boxX + boxW, y1: cursorY + 8, x2: nmX, y2: cursorY - 6, color: '#b45309', label: 'Storage', labelAtStart: false, arrowAtStart: true });
-      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 120 : 20));
+      placeNoteBox('Storage', '#b45309', boxX, boxW, cursorY, boxH, [
+        `H : ${Math.round(boxH)}`,
+        `W : ${Math.round(boxW)}`,
+        `D : ${Math.round(storageSide.depthMm)}`,
+        `Doors : ${count} (${Math.round(doorW)} ea.)`,
+      ]);
+      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 20 : 0));
       storagePocketBottomEdge = Math.max(storagePocketBottomEdge, cursorY + boxH);
       cursorY += boxH;
     }
@@ -1135,17 +1163,18 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       const boxH = Math.max(1, openBoxSide.heightMm);
       const boxX = side === 'left' ? innerEdgeX - boxW : innerEdgeX;
       components.push({
-        // The Open Box shows its full H×W×D as ONE line of text INSIDE the
-        // box (per the user: "200(H)*200(D)*400(W)"), no arrows at all.
-        id: `open-box-${side}`, type: 'OPEN_BOX',
-        label: `${Math.round(boxH)}(H) * ${Math.round(openBoxSide.depthMm)}(D) * ${Math.round(boxW)}(W)`,
+        // Plain box, no in-box text — its H/W/D go in the note box.
+        id: `open-box-${side}`, type: 'OPEN_BOX', label: '',
         x: boxX, y: cursorY, width: boxW, height: boxH, qty: 1, visible: true,
         source: { formula: `Open Box (${side}) — Height x Depth x Width (all entered), no door/shutter${hasStorage ? ' — sits directly below the Storage Box' : ' — takes the Storage Box position (no Storage on this side)'}`, constants: [] },
       });
-      // Name leader only — "Open Box" caption on a short arrow, like Storage.
-      const obNmX = side === 'left' ? boxX - 90 : boxX + boxW + 90;
-      lines.push({ x1: side === 'left' ? boxX : boxX + boxW, y1: cursorY + boxH / 2, x2: obNmX, y2: cursorY + boxH / 2 + 10, color: '#ea580c', label: 'Open Box', arrowAtStart: true });
-      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 120 : 20));
+      placeNoteBox('Open Box', '#ea580c', boxX, boxW, cursorY, boxH, [
+        `H : ${Math.round(boxH)}`,
+        `W : ${Math.round(boxW)}`,
+        `D : ${Math.round(openBoxSide.depthMm)}`,
+        `No door / shutter`,
+      ]);
+      storagePocketRightEdge = Math.max(storagePocketRightEdge, boxX + boxW + (side === 'right' ? 20 : 0));
       storagePocketBottomEdge = Math.max(storagePocketBottomEdge, cursorY + boxH);
     }
   }
@@ -1164,14 +1193,17 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     const floorY = wardrobeY + bodyH;
     const subBottom = Math.max(...stPlan.components.map((c) => c.y + c.height));
     // The Study Table sub-drawing (frame + any Storage + Side Panels)
-    // sits FLUSH against the Wardrobe (or the Dressing / Top Panel on
-    // that side) — NO gap. Dock the sub-plan's edge NEAREST the wardrobe
-    // onto the composite edge: left dock → sub-plan's RIGHT edge; right
-    // dock → sub-plan's LEFT edge.
+    // sits FLUSH against the Wardrobe or Dressing — NO gap. Dock the
+    // sub-plan's edge NEAREST the wardrobe onto that composite edge: left
+    // dock → sub-plan's RIGHT edge; right dock → sub-plan's LEFT edge.
+    // Deliberately does NOT include topPanelL/topPanelR — the Top Panel
+    // is drawn as a thin horizontal LINE at the very top only (no full-
+    // height box), so docking against its far edge would leave a real
+    // visible gap below it where nothing fills the reserved width.
     const subLeft = Math.min(...stPlan.components.map((c) => c.x));
     const subRight = Math.max(...stPlan.components.map((c) => c.x + c.width));
-    const compositeLeftEdge = wardrobeX - dressL - topPanelL;
-    const compositeRightEdge = wardrobeX + W + dressR + topPanelR;
+    const compositeLeftEdge = wardrobeX - dressL;
+    const compositeRightEdge = wardrobeX + W + dressR;
     const dx = side === 'left'
       ? compositeLeftEdge - subRight
       : compositeRightEdge - subLeft;
@@ -1187,29 +1219,66 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       // Per the user: in the ATTACHED Study Table drawing, don't carry
       // over the standalone's "Top" / "Tray" name leaders — just the
       // measurements (and Storage, if added). Skip those two leader lines
-      // and the Tray's own decorative bar.
-      if (l.label === 'Top' || l.label === 'Tray') continue;
+      // and the Tray's own decorative bar. Same treatment for "Side Panel
+      // (Left/Right)" and the storage sub-assembly's own floating
+      // "Storage" heading — none of them carry a real measurement (the
+      // standalone's own remark says so), they're name-only leaders like
+      // Top/Tray, and their positions (authored for the standalone's own
+      // free space) collide with the Wardrobe composite's own component
+      // labels once docked. The panel's own bold structural line, and the
+      // storage sub-assembly's Fesia/Shutter/Skirting bands, are kept —
+      // only the floating name labels are dropped (Storage's own Name +
+      // H/W/D go into a proper note box below instead).
+      if (l.label === 'Top' || l.label === 'Tray' || l.label === 'Storage' || (l.label && l.label.startsWith('Side Panel'))) continue;
       if (!l.label && l.color === '#2563eb' && Math.abs(l.y1 - l.y2) < 0.5) continue; // the unlabelled Tray bar
       // Normalise "600 mm (D)" → "600 (D)" to match the Wardrobe drawing.
       const nl = l.label ? l.label.replace(/\s*mm\s*/i, ' ').trim() : l.label;
       lines.push({ ...l, label: nl, x1: l.x1 + dx, y1: l.y1 + dy, x2: l.x2 + dx, y2: l.y2 + dy });
     }
     for (const d of stPlan.dimensions) {
-      // Drop the standalone's own "total width" line — the Wardrobe
-      // drawing has its own Total-W. Normalise the label style to match
-      // the Wardrobe drawing ("350 mm (W)" → "350 (Study Table W)").
-      if (/total width/i.test(d.label)) continue;
+      // Drop the standalone's own "total width" AND "Storage W" lines —
+      // the Wardrobe drawing has its own Total-W, and the Storage
+      // sub-assembly's Width goes into its own note box below instead of
+      // a dimension arrow (consistent with the main Storage/Open Box
+      // treatment elsewhere in this composite).
+      if (/total width/i.test(d.label) || /Storage W\)$/.test(d.label)) continue;
       const norm = d.label
         .replace(/\s*mm\s*/i, ' ')
         .replace(/\(W\)$/, '(Study Table W)')
         .replace(/\(H\)$/, '(Study Table H)')
         .replace(/\(D\)$/, '(Study Table D)')
-        .replace(/\(Storage W\)$/, '(ST Storage W)')
         .trim();
       dimReqs.push({
         axis: d.axis, x1: d.x1 + dx, y1: d.y1 + dy, x2: d.x2 + dx, y2: d.y2 + dy,
         edge: d.edge, componentIds: d.componentIds.map((cid) => pfx + cid),
         label: norm, source: d.source, color: d.color,
+      });
+    }
+    // The Study Table's own internal Storage sub-assembly (Fesia/Shutter/
+    // Skirting bands) — if present — gets one note box with its Name +
+    // H/W/D, matching the main Storage/Open Box treatment above, instead
+    // of the standalone's own floating "Storage" heading + separate width
+    // dimension arrow (both dropped above). This box may sit on EITHER
+    // side of the table frame within the standalone sub-plan (the user's
+    // own "Add Storage: Left/Right/Both" choice), but the note itself
+    // must always point OUT into the free margin AWAY from the Wardrobe
+    // composite — never toward it, where the crowded "Study Table" name
+    // and the rest of the composite live. Its real position is now found
+    // by the same collision-checked callout placement as the main
+    // Storage/Open Box pocket (see noteBoxPlacement.ts) — queued here,
+    // resolved once at the very end of this function.
+    for (const c of stPlan.components) {
+      if (c.type !== 'STORAGE_FRAME') continue;
+      const boxX = c.x + dx, boxY = c.y + dy;
+      calloutRequests.push({
+        id: `study-${side}-${c.id}-note`,
+        componentBounds: { x: boxX, y: boxY, w: c.width, h: c.height },
+        title: 'Storage', color: '#0891b2',
+        lines: [
+          `H : ${Math.round(c.height)}`,
+          `W : ${Math.round(c.width)}`,
+          `D : ${Math.round(inp.studyTable.depthMm)}`,
+        ],
       });
     }
   }
@@ -1240,19 +1309,22 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const enteredTotalWRightEdge = totalWidthMm && totalWidthMm > 0
     ? loftX + Math.max(totalWidthMm, totalWidth) + 40
     : 0;
-  const worldWidth = Math.max(
+  // A preliminary world size — used only as the callout-placement search's
+  // OWN preferred region (it may legitimately place a callout outside
+  // this, per its own "search a larger surrounding area" fallback). The
+  // REAL, final worldWidth/worldHeight (below, after placeNoteBoxes runs)
+  // additionally covers wherever the callouts actually landed.
+  const preWorldWidth = Math.max(
     loftX + totalWidth + (skirtH > 0 ? 26 : 0),
     loft.enabled ? loftX + roomWallWidth + 20 : 0,
     adjacentLoftRightEdge, storagePocketRightEdge, enteredTotalWRightEdge,
     ...lines.map((l) => Math.max(l.x1, l.x2) + 10),
-    // reserve room for a right-side spec note box + a bit of its label width
-    ...noteBoxes.map((nb) => nb.x + 170),
   );
   // bodyH now IS the full entered Wardrobe Height (skirting is drawn as
   // a band inside its bottom, not an extra strip below it) — so no
   // "+ skirtH" here any more; the extra 70/20 is just headroom for the
   // bottom dimension line(s).
-  const worldHeight = Math.max(wardrobeY + bodyH + (leftExtra + rightExtra > 0 ? 70 : 20), storagePocketBottomEdge + 40, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
+  const preWorldHeight = Math.max(wardrobeY + bodyH + (leftExtra + rightExtra > 0 ? 70 : 20), storagePocketBottomEdge + 40, ...lines.map((l) => Math.max(l.y1, l.y2) + 10));
 
   const resolvedDims = resolveDimensions(dimReqs);
   // Real-CAD convention: the individual dimension (Wardrobe W / H) reads on
@@ -1354,9 +1426,53 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // 168mm each, shown as the correct answer), so NO 310–400 warning is
     // applied to Storage Box doors — only the shared (Width − count×2) /
     // count formula is used for the cut width.
-    ...validateComponentBounds(components, worldWidth, worldHeight),
+    ...validateComponentBounds(components, preWorldWidth, preWorldHeight),
     ...validateDimensionIntegrity(dimensions),
   ];
+
+  // Resolve every queued callout (Storage / Open Box / embedded Study
+  // Table's own internal Storage, ...) into a real, collision-checked
+  // NoteBox position — ONLY now, once components/dimensions/lines are
+  // fully final, so the placement search sees every real obstacle on the
+  // finished drawing (never an earlier, incomplete snapshot of it).
+  //
+  // placeNoteBoxes converts every fixed-screen-px metric (label size, the
+  // 18px dimension tier step, clearance, ...) into world-mm via the
+  // drawing's own REAL render scale — computeRenderScale(worldWidth,
+  // worldHeight, maxTier), reproducing CanonicalSvg's own fitScale exactly.
+  // But the final worldWidth/worldHeight aren't known until AFTER the
+  // callouts are placed (they must grow to fit wherever the callouts
+  // land) — a genuine chicken-and-egg. Placing once against the
+  // preliminary (pre-callout) size uses an optimistically LARGER scale
+  // than what actually renders once the canvas grows to fit the callouts,
+  // which under-reserves every fixed-px footprint (tier gaps included) and
+  // lets a callout land on top of a dimension that looked clear under the
+  // wrong scale. Fixed by placing twice: once to learn the real final
+  // size, then again — from scratch, against the SAME original obstacles
+  // — using that real size, so the unit conversion converges to what will
+  // actually render.
+  const firstPass = placeNoteBoxes(calloutRequests, { components, dimensions, lines, worldWidth: preWorldWidth, worldHeight: preWorldHeight });
+  const settledWidth = Math.max(preWorldWidth, ...firstPass.map((nb) => nb.x + 190));
+  const settledHeight = Math.max(preWorldHeight, ...firstPass.map((nb) => nb.y + 80));
+  let noteBoxes = placeNoteBoxes(calloutRequests, { components, dimensions, lines, worldWidth: settledWidth, worldHeight: settledHeight });
+  // A left-side callout's own free-space search can legitimately need
+  // more room than the fixed leaderMargin reserved (an especially dense
+  // pocket, several stacked callouts, ...) and land at a negative world
+  // X. Rather than trying to predict that margin ahead of time, shift the
+  // WHOLE drawing right by however much overflow actually occurred —
+  // guaranteed correct regardless of how far the search had to go.
+  const leftOverflow = Math.max(0, -Math.min(0, ...noteBoxes.map((nb) => nb.x)));
+  if (leftOverflow > 0) {
+    for (const c of components) c.x += leftOverflow;
+    for (const d of dimensions) { d.x1 += leftOverflow; d.x2 += leftOverflow; }
+    for (const l of lines) { l.x1 += leftOverflow; l.x2 += leftOverflow; }
+    noteBoxes = noteBoxes.map((nb) => ({ ...nb, x: nb.x + leftOverflow, anchor: nb.anchor ? { x: nb.anchor.x + leftOverflow, y: nb.anchor.y } : undefined }));
+  }
+  // The REAL, final canvas size — the preliminary size PLUS wherever the
+  // callouts actually ended up (a callout may legitimately extend past
+  // the preliminary bounds via its own "search a larger area" fallback).
+  const worldWidth = Math.max(preWorldWidth + leftOverflow, ...noteBoxes.map((nb) => nb.x + 190));
+  const worldHeight = Math.max(preWorldHeight, ...noteBoxes.map((nb) => nb.y + 80));
 
   return {
     view: 'plan', productType: 'wardrobe', designId: 'simple', designName: 'Wardrobe',

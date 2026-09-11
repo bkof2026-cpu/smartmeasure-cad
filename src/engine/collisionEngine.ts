@@ -46,7 +46,36 @@ function isChainTick(line: DimensionLine): boolean {
 // independently from tier 0.
 const CLUSTER_GAP_MM = 140;
 
+// Dimension labels render at a FIXED screen-px size (CanonicalSvg's
+// DimensionLineView uses a constant fontSize regardless of drawing
+// scale) — but this engine only ever sees WORLD-mm coordinates, before
+// the eventual render scale (worldWidth/worldHeight fitted into a
+// ~700x520px viewport) is known. A fixed world-mm label pad is only
+// enough separation once the drawing is small; once more add-ons widen
+// the composite (worldWidth grows), the same world-mm gap shrinks to a
+// handful of screen px and two adjacent labels visually collide even
+// though their tiers/spans were kept apart by the intended margin.
+// Approximate the eventual scale from the overall extent of everything
+// being tiered here, and size the per-character pad in world-mm so it
+// keeps corresponding to a roughly constant SCREEN-px footprint.
+const ASSUMED_VIEWPORT_PX = 700;
+const CHAR_PX = 5.2; // ~ the rendered width of one monospace dimension-label character
+const MIN_CHAR_PAD_MM = 3; // floor: never less generous than the original fixed padding
+
+function estimateWorldExtent(lines: DimensionLine[]): number {
+  let maxCoord = 0;
+  for (const l of lines) maxCoord = Math.max(maxCoord, l.x1, l.x2, l.y1, l.y2);
+  return Math.max(1, maxCoord);
+}
+
 export function assignTiers(lines: DimensionLine[]): DimensionLine[] {
+  // One pad-per-character in world-mm, derived from the WHOLE drawing's
+  // extent so it stays valid at whatever scale this drawing eventually
+  // renders at — never smaller than the original fixed-padding floor.
+  const worldExtent = estimateWorldExtent(lines);
+  const approxScale = ASSUMED_VIEWPORT_PX / worldExtent;
+  const charPadMm = Math.max(MIN_CHAR_PAD_MM, CHAR_PX / approxScale);
+
   const byEdge = new Map<DimensionEdge, DimensionLine[]>();
   for (const line of lines) {
     const list = byEdge.get(line.edge) ?? [];
@@ -80,7 +109,10 @@ export function assignTiers(lines: DimensionLine[]): DimensionLine[] {
         // (near-adjacent small components — the "measurements behind each
         // other" case) get tiered apart. Chain ticks keep their raw span
         // so a per-door row stays on one tier.
-        const pad = isChainTick(line) ? 0 : Math.min(line.label.length * 3 + 6, 70);
+        // Capped at 1/6 of the whole drawing's extent — plenty for real
+        // separation, but stops a pathologically long label on a tiny
+        // drawing from ballooning the pad into most of the canvas.
+        const pad = isChainTick(line) ? 0 : Math.min(line.label.length * charPadMm + charPadMm * 2, worldExtent / 6);
         const test: [number, number] = [raw[0] - pad, raw[1] + pad];
         let tier = 0;
         // First tier where this span doesn't overlap anything placed.
