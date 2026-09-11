@@ -59,7 +59,11 @@ const PAD_Y_PX = 4;
 const CHAR_W_PX = 4.2;
 const DIM_TIER_STEP_PX = 18;
 const DIM_PAD_PX = 60;
-const DEFAULT_VIEWPORT_PX = { w: 760, h: 560 };
+// Must stay in sync with CanonicalSvg's own TechnicalDrawingSvg default
+// maxVw/maxVh — this module reproduces that renderer's scale formula
+// exactly (see computeRenderScale below) so callout sizing/placement never
+// drifts out of step with what actually gets drawn.
+const DEFAULT_VIEWPORT_PX = { w: 1280, h: 960 };
 
 /** CanonicalSvg's own world-mm → screen-px scale, computed the exact same
  * way TechnicalDrawingSvg does (fitScale + its dimRoom/titleRoom
@@ -88,6 +92,25 @@ function rectsOverlap(a: Rect, b: Rect, margin = 0): boolean {
     a.y < b.y + b.h + margin &&
     b.y < a.y + a.h + margin
   );
+}
+
+/** Does the segment (x1,y1)-(x2,y2) pass through rect r (expanded by
+ * margin)? Used so a callout's own anchor→box leader LINE is never routed
+ * straight across an already-placed box — rectsOverlap alone only checks
+ * the box's own footprint, not the ink connecting it back to its
+ * component, which a later callout could otherwise land clear of while
+ * still crossing right through it. Coarse but sufficient here: samples
+ * along the segment rather than a full line-clip, since these are short
+ * leaders in a bounded drawing, not arbitrary geometry. */
+function segmentHitsRect(x1: number, y1: number, x2: number, y2: number, r: Rect, margin = 0): boolean {
+  const rx0 = r.x - margin, ry0 = r.y - margin, rx1 = r.x + r.w + margin, ry1 = r.y + r.h + margin;
+  const steps = 24;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+    if (x >= rx0 && x <= rx1 && y >= ry0 && y <= ry1) return true;
+  }
+  return false;
 }
 
 /** A dimension line's own on-screen footprint: its span PLUS its label's
@@ -265,6 +288,17 @@ export function placeNoteBoxes(requests: CalloutRequest[], ctx: PlacementContext
           dir.edge === 'left' ? { x: cb.x, y: Math.min(Math.max(by + boxH / 2, cb.y), cb.y + cb.h) } :
           dir.edge === 'bottom' ? { x: Math.min(Math.max(bx + boxW / 2, cb.x), cb.x + cb.w), y: cb.y + cb.h } :
           { x: Math.min(Math.max(bx + boxW / 2, cb.x), cb.x + cb.w), y: cb.y };
+
+        // The leader line itself (anchor -> this box's own centre, same
+        // point CanonicalSvg draws to) must not cut across any OTHER
+        // already-placed callout box, or an earlier box's own leader would
+        // read as pointing into/through this one. Box-vs-box rect checks
+        // above don't catch this — a box can be placed clear of every
+        // obstacle while the thin line connecting it to its component
+        // still crosses right over a neighbour.
+        const leaderHitsPlaced = placedCallouts.some((o) => segmentHitsRect(anchor.x, anchor.y, bx + boxW / 2, by + boxH / 2, o, clearance));
+        if (leaderHitsPlaced) continue;
+
         placed = { x: bx, y: by, anchor };
         break outer;
       }
@@ -284,6 +318,19 @@ export function placeNoteBoxes(requests: CalloutRequest[], ctx: PlacementContext
     }
 
     placedCallouts.push({ x: placed.x - clearance, y: placed.y - clearance, w: boxW + clearance * 2, h: boxH + clearance * 2 });
+    // The leader line CanonicalSvg draws from the anchor point to this
+    // box's own edge midpoint is real ink too — without reserving its own
+    // thin corridor as an obstacle, a LATER callout in this same pass can
+    // still be placed directly on top of an EARLIER callout's leader line
+    // (both boxes individually collision-free, but the connecting line
+    // between one of them and its component cuts straight through the
+    // other). Reserve a thin rect around that segment, in the same units
+    // as every other obstacle here, so later placements steer clear of it.
+    const leaderMidX = placed.x + boxW / 2, leaderMidY = placed.y + boxH / 2;
+    const lx0 = Math.min(placed.anchor.x, leaderMidX), lx1 = Math.max(placed.anchor.x, leaderMidX);
+    const ly0 = Math.min(placed.anchor.y, leaderMidY), ly1 = Math.max(placed.anchor.y, leaderMidY);
+    const leaderPad = clearance;
+    placedCallouts.push({ x: lx0 - leaderPad, y: ly0 - leaderPad, w: (lx1 - lx0) + leaderPad * 2, h: (ly1 - ly0) + leaderPad * 2 });
     results.push({
       id: req.id, x: placed.x, y: placed.y, title: req.title, lines: req.lines, color: req.color,
       anchor: placed.anchor,

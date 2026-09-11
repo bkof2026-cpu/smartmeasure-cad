@@ -585,17 +585,28 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   if (loft.enabled) {
     loftH = loft.heightMm;
     const loftY = topPad;
-    // Blank frame label — every individual door component (below) carries
-    // its own real computed-width label instead, same as Loft Box's own
-    // "onlyShutter ? '' : 'Loft Box'" convention; showing both would
-    // collide visually. Per the user's explicit correction, "Box" mode
-    // renders identically to "Only Door" mode — the SAME real per-door
-    // Loft Box formula/boxes in both cases; "Box" only additionally shows
-    // a Depth "/" leader, since a door-only loft has no real depth to call
-    // out the same way.
+    // Blank frame label — the frame box is entirely covered edge-to-edge
+    // by the individual door components drawn on top of it (below), so an
+    // in-box/leader name on the frame itself would never find a visible
+    // spot to render. The mode name instead goes into its own small
+    // callout — "Loft - Only Door" or "Loft - Box", so the drawing itself
+    // shows which was picked, not just a generic "Loft" — placed by the
+    // same real collision-free placement engine as Top Panel/Storage/Open
+    // Box, with a leader arrow to the frame. Per the user's explicit
+    // correction, "Box" mode renders identically to "Only Door" mode — the
+    // SAME real per-door Loft Box formula/boxes in both cases; "Box" only
+    // additionally shows a Depth "/" leader, since a door-only loft has no
+    // real depth to call out the same way.
+    const loftModeLabel = loft.mode === 'box' ? 'Loft - Box' : 'Loft - Only Door';
     components.push({
-      id: 'loft', type: 'PLATFORM_TOP', label: 'Loft', x: doorsAreaX, y: loftY, width: loftFrameWidth, height: loftH, qty: 1, visible: true,
+      id: 'loft', type: 'PLATFORM_TOP', label: '', x: doorsAreaX, y: loftY, width: loftFrameWidth, height: loftH, qty: 1, visible: true,
       source: { formula: `Width = Total Room Width − Fix Patti (Left+Right) − Khacha (Left+Right) | Height = Total Height − Wardrobe Height − 10mm gap | split into ${loft.doorCount} doors`, constants: [] },
+    });
+    calloutRequests.push({
+      id: 'loft-mode-note',
+      componentBounds: { x: doorsAreaX, y: loftY, w: loftFrameWidth, h: loftH },
+      title: loftModeLabel, color: '#7c3aed',
+      lines: [],
     });
 
     // Fix Patti — a real, separate component from Top Panel, drawn at the
@@ -744,9 +755,21 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     adjacentLoftRightEdgeX = al.side === 'right' ? alX + alColW + 60 : 0;
 
     // Frame (the whole Wall B outline) — same PLATFORM_TOP style as Wall A.
+    // Blank label: same reason as the main Loft — the frame is covered
+    // edge-to-edge by its own door stack (below), so an in-box name would
+    // never find a visible spot. The mode name ("L-Shaped Loft - Only
+    // Door" / "L-Shaped Loft - Box") instead goes into its own callout,
+    // placed by the collision-free placement engine, same as the main Loft.
+    const alModeLabel = al.mode === 'box' ? 'L-Shaped Loft - Box' : 'L-Shaped Loft - Only Door';
     components.push({
-      id: 'adjacent-loft', type: 'PLATFORM_TOP', label: 'L-Shaped Loft', x: alX, y: alY, width: alColW, height: alFullH, qty: 1, visible: true,
+      id: 'adjacent-loft', type: 'PLATFORM_TOP', label: '', x: alX, y: alY, width: alColW, height: alFullH, qty: 1, visible: true,
       source: { formula: `Wall B (${al.side}) — independent vertical Loft on the adjacent wall. Total Wall B Width = ${Math.round(alTotalW)}mm (usable door span ${Math.round(al.widthMm)} + Fix Patti ${Math.round(alFPW)} + Khacha ${Math.round(alKhW)}). Same door-count/width formula as the main Loft, applied vertically.`, constants: [] },
+    });
+    calloutRequests.push({
+      id: `adjacent-loft-mode-note-${al.side}`,
+      componentBounds: { x: alX, y: alY, w: alColW, h: alFullH },
+      title: alModeLabel, color: '#7c3aed',
+      lines: [],
     });
 
     let alCursorY = alY;
@@ -1063,7 +1086,18 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const TOP_PANEL_CALLOUT_H = 40; // nominal thickness for the callout's own anchor bounds — the panel itself is a zero-height line
   if (topPanelL > 0) {
     const px = wardrobeX - dressL - topPanelL;
-    lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
+    // The drawn line itself extends all the way to the composite's true
+    // outer-left edge (loftRowLeftX, below) — matching whatever the Loft
+    // row's own left boundary is, even when a Study Table sits further
+    // left still (studyLW, already folded into leftExtra). Per the user:
+    // the panel should read as continuous from the Dressing edge out to
+    // the outside of the Loft box above it, not stop short at its own
+    // un-extended Width and leave a visible gap under the Loft. The
+    // callout's own componentBounds (and its W/D VALUES) stay anchored to
+    // the panel's real entered Width nearest the Dressing — only the
+    // visible line is extended, never the measured quantity.
+    const outerX = wardrobeX - leftExtra;
+    lines.push({ x1: outerX, y1: wardrobeY, x2: px + topPanelL, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
     calloutRequests.push({
       id: 'top-panel-left-note',
       componentBounds: { x: px, y: wardrobeY - TOP_PANEL_CALLOUT_H, w: topPanelL, h: TOP_PANEL_CALLOUT_H },
@@ -1073,7 +1107,10 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   }
   if (topPanelR > 0) {
     const px = wardrobeX + W + dressR;
-    lines.push({ x1: px, y1: wardrobeY, x2: px + topPanelR, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
+    // Same outward extension on the right, to the composite's true
+    // outer-right edge (wardrobeX + rightExtra).
+    const outerX = wardrobeX + rightExtra;
+    lines.push({ x1: px, y1: wardrobeY, x2: outerX, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
     calloutRequests.push({
       id: 'top-panel-right-note',
       componentBounds: { x: px, y: wardrobeY - TOP_PANEL_CALLOUT_H, w: topPanelR, h: TOP_PANEL_CALLOUT_H },

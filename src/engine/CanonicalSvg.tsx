@@ -166,12 +166,17 @@ interface RenderProps {
 /** The one renderer every product's technical drawing view goes through. */
 export function TechnicalDrawingSvg({
   worldWidth, worldHeight, title, components, dimensions, lines = [], shapes = [], noteBoxes = [],
-  // Bumped from 640x480 — the densest drawings (e.g. Bed with both side
-  // tables + Profile Shutter, all their own dimension labels at a constant,
-  // legible font size regardless of scale) were compressing to a scale so
-  // small that even well-separated world-unit label positions ended up only
-  // a couple of screen px apart. More canvas area directly buys more scale.
-  maxVw = 760, maxVh = 560, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension, plainDimLabels,
+  // Bumped from 640x480, then 760x560, then 960x720 — the densest drawings
+  // (e.g. Bed with both side tables + Profile Shutter, or a Wardrobe with
+  // an attached Study Table + its own Storage sub-assembly, all their own
+  // dimension labels at a constant, legible font size regardless of scale)
+  // were compressing to a scale so small that even well-separated
+  // world-unit label positions ended up only a couple of screen px apart,
+  // AND the real component rectangles themselves (Storage/Open Box/panels)
+  // drew too small to read comfortably. More canvas area directly buys
+  // more scale, which grows every drawn box's real on-screen size (fixed-
+  // px labels/fonts stay constant, so this is pure legibility headroom).
+  maxVw = 1280, maxVh = 960, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension, plainDimLabels,
 }: RenderProps) {
   // Extra pixel headroom per collision tier actually used, so nothing clips.
   // Bounded to a fraction of the requested viewport — at full size (640x480)

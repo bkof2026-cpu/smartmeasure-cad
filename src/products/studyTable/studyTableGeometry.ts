@@ -149,12 +149,12 @@ export function resolveStudyTablePlan(inp: StudyTableInputs): ResolvedDrawing {
     const fesiaH = H * 0.15;
     const skirtH = H * 0.15;
     const shutterH = H - fesiaH - skirtH;
-    // Names now sit centered INSIDE each of their own bands (the standard
-    // component-label convention used everywhere else in this engine),
-    // not on an external leader line pointing out into the margin.
-    components.push({ id: `${id}-fascia`, type: 'FESIA', label: 'Fesia', x: sx + 2, y: tableY + 2, width: inp.storageW - 4, height: fesiaH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
-    components.push({ id: `${id}-shutter`, type: 'SHUTTER', label: 'Shutter', x: sx + 2, y: tableY + fesiaH, width: inp.storageW - 4, height: shutterH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
-    components.push({ id: `${id}-skirting`, type: 'SKIRT', label: 'Skirting', x: sx + 2, y: tableY + fesiaH + shutterH, width: inp.storageW - 4, height: skirtH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
+    // Bands are drawn but left UNLABELLED — per the user, the Fascia/
+    // Shutter/Skirting names clutter the drawing and aren't independently
+    // measured anyway, so the bands speak for themselves visually.
+    components.push({ id: `${id}-fascia`, type: 'FESIA', label: '', x: sx + 2, y: tableY + 2, width: inp.storageW - 4, height: fesiaH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
+    components.push({ id: `${id}-shutter`, type: 'SHUTTER', label: '', x: sx + 2, y: tableY + fesiaH, width: inp.storageW - 4, height: shutterH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
+    components.push({ id: `${id}-skirting`, type: 'SKIRT', label: '', x: sx + 2, y: tableY + fesiaH + shutterH, width: inp.storageW - 4, height: skirtH - 4, qty: 1, visible: true, source: { formula: 'Structural — not independently measured', constants: [] } });
     // "Storage" — a clean horizontal heading centered directly above the
     // whole assembly (matching the readable, non-rotated style used for
     // the drawing's own title), replacing the earlier cramped diagonal
