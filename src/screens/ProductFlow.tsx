@@ -203,22 +203,23 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
 
   // Top Panel (a.k.a. Side Panel) — Width's live computed default. The
   // formula is CONDITIONAL on whether Fix Patti reaches the Loft height,
-  // per the user's explicit reference drawing:
+  // per the user's explicit correction (Dressing Width is NOT part of this
+  // deduction — Dressing already sits between the Wardrobe and the Top
+  // Panel, so the Top Panel just fills whatever remains of the wall beyond
+  // the Wardrobe):
   //   IF Fix Patti height >= Loft height:
-  //     Top Panel Width = Total Room Width − Wardrobe Width − Dressing Width − Fix Patti Width + 20mm
-  //     (e.g. 3000 − 2000 − 550 − 80 + 20 = 390)
+  //     Top Panel Width = Total Room Width − Wardrobe Width − Fix Patti Width
+  //     (e.g. 3000 − 2000 − 80 = 920)
   //   ELSE:
-  //     Top Panel Width = Total Room Width − Wardrobe Width − Dressing Width + 20mm
-  //     (e.g. 3000 − 2000 − 550 + 20 = 470)
-  // The +20mm is an intentional overhang. Only seeds the DISPLAYED
-  // default before the user touches the field; a real stored value wins.
-  const TOP_PANEL_EXTRA_MM = 20;
+  //     Top Panel Width = Total Room Width − Wardrobe Width
+  //     (e.g. 3000 − 2000 = 1000)
+  // Only seeds the DISPLAYED default before the user touches the field; a
+  // real stored value wins.
   const topPanelSubtractsFixPatti = fixPattiMaxH > 0 && fixPattiMaxH >= resolvedLoftHeight;
   const topPanelWidthDefault = Math.max(
     0,
-    totalWidthForCalc - wardrobeW - dressingTotalW
-      - (topPanelSubtractsFixPatti ? fixPattiTotalW : 0)
-      + TOP_PANEL_EXTRA_MM,
+    totalWidthForCalc - wardrobeW
+      - (topPanelSubtractsFixPatti ? fixPattiTotalW : 0),
   );
   const topPanel: WardrobeTopPanelInput = {
     enabled: isWardrobe && selectedAddons.has('top-panel'),
