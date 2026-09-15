@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../store/AppContext';
-import type { Opening, CabinetModule } from '../store/types';
+import type { Opening, CabinetModule, WallSideKadappaOption, KitchenProjectModel } from '../store/types';
 
 const TOTAL_STEPS = 7;
 
@@ -91,19 +91,31 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
 
 // ─── Step 1: Kitchen Type ──────────────────────────────────────────────────────
 
+// Kitchen Shape — per the SmartMeasure CAD Kitchen Model spec (Phase 1):
+// I-Shape Kitchen is being fully rebuilt from scratch (new Kadappa/Pani
+// Patti measurement + drawing system, replacing the old "Straight" type's
+// drawing entirely). L-Shape/U-Shape/Parallel stay visible in the
+// dropdown for future phases per the spec's own "other shapes should
+// remain available... for future implementation" instruction — the old
+// L-Shape implementation is retired along with Straight's, not carried
+// forward, since this is a from-scratch rebuild of the whole Kitchen
+// drawing system, not an addition alongside the old one.
 function Step1({ onNext }: { onNext: () => void }) {
   const { model, setKitchenType } = useApp();
   const types = [
-    { id: 'straight', label: 'Straight', active: true },
-    { id: 'l-shape', label: 'L Shape', active: true },
-    { id: 'u-shape', label: 'U Shape', active: false },
-    { id: 'parallel', label: 'Parallel', active: false },
-    { id: 'island', label: 'Island', active: false },
-    { id: 'custom', label: 'Custom', active: false },
+    { id: 'straight', label: 'I-Shape Kitchen', active: true },
+    { id: 'l-shape', label: 'L-Shape Kitchen', active: false },
+    { id: 'u-shape', label: 'U-Shape Kitchen', active: false },
+    { id: 'parallel', label: 'Parallel Kitchen', active: false },
   ] as const;
+  // A project saved before this rebuild (old L-Shape system) may still
+  // have model.kitchen.type set to a now-inactive/retired shape — never
+  // show that as "selected" (it would read as a live, pickable option
+  // despite being disabled). Only I-Shape can be the real selection now.
+  const effectiveType = types.find((t) => t.id === model.kitchen.type && t.active) ? model.kitchen.type : 'straight';
   return (
     <div className="flex flex-col gap-4 p-6">
-      <p className="text-sm" style={{ color: '#64748b' }}>Select the kitchen layout type</p>
+      <p className="text-sm" style={{ color: '#64748b' }}>Select the kitchen shape</p>
       <div className="grid grid-cols-2 gap-3">
         {types.map((t) => (
           <button
@@ -112,9 +124,9 @@ function Step1({ onNext }: { onNext: () => void }) {
             onClick={() => t.active && setKitchenType(t.id)}
             className="py-5 rounded-xl font-bold text-base transition-all relative"
             style={{
-              background: model.kitchen.type === t.id ? '#1d4ed8' : '#1e2535',
-              color: model.kitchen.type === t.id ? '#fff' : t.active ? '#94a3b8' : '#374151',
-              border: model.kitchen.type === t.id ? '2px solid #3b82f6' : '2px solid #2a3347',
+              background: effectiveType === t.id ? '#1d4ed8' : '#1e2535',
+              color: effectiveType === t.id ? '#fff' : t.active ? '#94a3b8' : '#374151',
+              border: effectiveType === t.id ? '2px solid #3b82f6' : '2px solid #2a3347',
               cursor: t.active ? 'pointer' : 'not-allowed',
             }}
           >
@@ -133,23 +145,88 @@ function Step1({ onNext }: { onNext: () => void }) {
 }
 
 // ─── Step 2: Features ──────────────────────────────────────────────────────────
+// Rebuilt from scratch for I-Shape Kitchen (Phase 1 of the Kitchen Model
+// spec) — only the two Kadappa layout questions remain. The old generic
+// feature toggles (Existing Kadappa/Platform, Skirting, Loft, Wall/Base
+// Cabinets, Trolley, Open Box, Tall Unit, Corner Unit) belonged to the
+// retired cabinet-module system and are removed per the user's own
+// instruction to strip this step down to just the new Kadappa options.
+
+function WallSideOptionButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-1 py-3 rounded-lg font-bold text-sm transition-all"
+      style={{
+        background: selected ? '#1d4ed8' : '#161b27',
+        color: selected ? '#fff' : '#64748b',
+        border: `1.5px solid ${selected ? '#3b82f6' : '#2a3347'}`,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { model, updateKitchenConfig } = useApp();
-  const k = model.kitchen;
-  const cfg = (key: keyof typeof k) => (v: boolean) => updateKitchenConfig({ [key]: v });
+  const { model, updateIShapeConfig } = useApp();
+  const iShape = model.kitchen.iShape;
+
+  const wallSideOptions: WallSideKadappaOption[] = ['None', 'Left', 'Right', 'Both'];
+
   return (
     <div className="flex flex-col gap-2 p-6">
-      <p className="text-sm mb-2" style={{ color: '#64748b' }}>What does this kitchen require?</p>
-      <Toggle label="Existing Kadappa / Platform" value={k.hasKadappa} onChange={cfg('hasKadappa')} />
-      <Toggle label="Existing Skirting" value={k.hasSkirting} onChange={cfg('hasSkirting')} />
-      <Toggle label="Loft Required" value={k.loftRequired} onChange={cfg('loftRequired')} />
-      <Toggle label="Wall Cabinets Required" value={k.wallCabinetsRequired} onChange={cfg('wallCabinetsRequired')} />
-      <Toggle label="Base Cabinets Required" value={k.baseCabinetsRequired} onChange={cfg('baseCabinetsRequired')} />
-      <Toggle label="Trolley Required" value={k.trolleyRequired} onChange={cfg('trolleyRequired')} />
-      <Toggle label="Open Box Required" value={k.openBoxRequired} onChange={cfg('openBoxRequired')} />
-      <Toggle label="Tall Unit Required" value={k.tallUnitRequired} onChange={cfg('tallUnitRequired')} />
-      <Toggle label="Corner Unit Required" value={k.cornerUnitRequired} onChange={cfg('cornerUnitRequired')} />
+      <p className="text-sm mb-2" style={{ color: '#64748b' }}>Kadappa layout for this kitchen</p>
+
+      <div className="py-3 border-b" style={{ borderColor: '#2a3347' }}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-base font-medium" style={{ color: '#e2e8f0' }}>Wall Side Kadappa</span>
+        </div>
+        <div className="flex gap-2">
+          {wallSideOptions.map((opt) => (
+            <WallSideOptionButton
+              key={opt}
+              label={opt}
+              selected={iShape.wallSideKadappa === opt}
+              onClick={() => updateIShapeConfig({ wallSideKadappa: opt })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <Toggle
+        label="Inner Side Kadappa"
+        value={iShape.hasInnerKadappa}
+        onChange={(v) => updateIShapeConfig({
+          hasInnerKadappa: v,
+          // Seed a real count + width array the first time this is turned
+          // on (default count = 2, per the spec), so the measurement step
+          // always has real values to show rather than an empty list.
+          ...(v && iShape.innerKadappaWidths.length === 0
+            ? { innerKadappaCount: iShape.innerKadappaCount || 2, innerKadappaWidths: Array(iShape.innerKadappaCount || 2).fill(0) }
+            : {}),
+        })}
+      />
+      {iShape.hasInnerKadappa && (
+        <div className="py-3 flex flex-col gap-2">
+          <NumInput
+            label="Number of Inner Side Kadappa"
+            value={iShape.innerKadappaCount}
+            unit="count"
+            onChange={(count) => {
+              const safeCount = Math.max(1, Math.round(count) || 1);
+              // Resize innerKadappaWidths to match the new count — keep
+              // existing entries in place, pad new ones with 0, truncate
+              // extra ones. gapWidths is resized later (measurement step)
+              // once the total Kadappa count for this configuration is
+              // known there.
+              const widths = Array.from({ length: safeCount }, (_, i) => iShape.innerKadappaWidths[i] ?? 0);
+              updateIShapeConfig({ innerKadappaCount: safeCount, innerKadappaWidths: widths });
+            }}
+          />
+        </div>
+      )}
+
       <div className="flex gap-3 mt-4">
         <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
         <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
@@ -158,44 +235,160 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
   );
 }
 
-// ─── Step 3: Wall Measurements ────────────────────────────────────────────────
+// ─── Step 3: Measurements (I-Shape Kitchen) ───────────────────────────────────
+// Rebuilt from scratch per the Kitchen Model spec — Total Kitchen H/W,
+// Pani Patti H/W (width defaults to Total Kitchen Width, stays editable),
+// each Kadappa's own independently-entered Width (Wall Side + Inner
+// Side), and the gap width between every consecutive pair of Kadappas —
+// a genuinely separate measurement from any Kadappa's own width. Letters
+// (A, B, C, D...) are assigned sequentially left-to-right across however
+// many Kadappas are actually configured (see kadappaSequence below),
+// matching the naming rule confirmed with the user directly.
+
+/** One physical Kadappa in left-to-right order, with its resolved letter. */
+interface KadappaSlot {
+  letter: string;
+  kind: 'wall-left' | 'inner' | 'wall-right';
+  /** Index into iShape.innerKadappaWidths, only set when kind === 'inner'. */
+  innerIndex?: number;
+}
+
+/** Builds the physical left-to-right Kadappa sequence and assigns
+ * sequential letters — the single source of truth for naming, used by
+ * both the measurement step and the drawing engine so they never
+ * disagree on which letter belongs to which physical Kadappa. */
+export function buildKadappaSequence(iShape: KitchenProjectModel['kitchen']['iShape']): KadappaSlot[] {
+  const slots: KadappaSlot[] = [];
+  if (iShape.wallSideKadappa === 'Left' || iShape.wallSideKadappa === 'Both') {
+    slots.push({ kind: 'wall-left', letter: '' });
+  }
+  if (iShape.hasInnerKadappa) {
+    for (let i = 0; i < iShape.innerKadappaCount; i++) {
+      slots.push({ kind: 'inner', letter: '', innerIndex: i });
+    }
+  }
+  if (iShape.wallSideKadappa === 'Right' || iShape.wallSideKadappa === 'Both') {
+    slots.push({ kind: 'wall-right', letter: '' });
+  }
+  slots.forEach((s, i) => { s.letter = String.fromCharCode(65 + i); }); // A, B, C, D...
+  return slots;
+}
+
+function kadappaSlotLabel(kind: KadappaSlot['kind']): string {
+  if (kind === 'wall-left') return 'Left Side Wall Kadappa';
+  if (kind === 'wall-right') return 'Right Side Wall Kadappa';
+  return 'Inner Side Kadappa';
+}
 
 function Step3({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { model, updateWall, setCeilingHeight } = useApp();
-  const k = model.kitchen;
-  const wallA = k.walls.find((w) => w.id === 'A');
-  const wallB = k.walls.find((w) => w.id === 'B');
+  const { model, updateIShapeConfig } = useApp();
+  const iShape = model.kitchen.iShape;
+  const sequence = buildKadappaSequence(iShape);
+
+  // Keeps gapWidths sized to (sequence.length - 1) — the array is derived
+  // from wallSideKadappa/hasInnerKadappa/innerKadappaCount, all set on
+  // earlier steps, so this reconciles it here (rather than needing every
+  // upstream setter to know the current total Kadappa count) whenever the
+  // Kadappa sequence itself changes. Existing gap values are preserved by
+  // position; new slots start at 0, extra ones are dropped.
+  const gapCountNeeded = Math.max(0, sequence.length - 1);
+  React.useEffect(() => {
+    if (iShape.gapWidths.length !== gapCountNeeded) {
+      const resized = Array.from({ length: gapCountNeeded }, (_, i) => iShape.gapWidths[i] ?? 0);
+      updateIShapeConfig({ gapWidths: resized });
+    }
+    // Only re-run when the required COUNT changes, not on every gap edit
+    // (gapWidths itself is intentionally excluded — including it would
+    // re-run this effect on every keystroke into a gap field).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gapCountNeeded]);
+
   return (
     <div className="flex flex-col gap-5 p-6">
-      <p className="text-sm" style={{ color: '#64748b' }}>Enter all wall dimensions in mm</p>
+      <p className="text-sm" style={{ color: '#64748b' }}>Enter all kitchen dimensions in mm</p>
+
       <NumInput
-        label="Wall A Length (Main Wall)"
-        value={wallA?.length ?? 0}
-        onChange={(v) => updateWall('A', v)}
-        note="Measure from corner to corner along the main wall"
+        label="Total Kitchen Height"
+        value={iShape.height}
+        onChange={(v) => updateIShapeConfig({ height: v })}
+        note="Full height from floor to the top of the kitchen wall structure"
       />
-      {k.type === 'l-shape' && (
-        <NumInput
-          label="Wall B Length (Side Wall)"
-          value={wallB?.length ?? 0}
-          onChange={(v) => updateWall('B', v)}
-          note="Perpendicular wall from the same corner"
-        />
-      )}
       <NumInput
-        label="Floor to Ceiling Height"
-        value={k.ceilingHeight ?? 0}
-        onChange={setCeilingHeight}
-        note="Measure at multiple points — use the lowest value"
+        label="Total Kitchen Width"
+        value={iShape.width}
+        onChange={(v) => {
+          // Pani Patti Width defaults to Total Kitchen Width — but only
+          // while it hasn't been independently set, matching the same
+          // "default until touched, then stays independent" convention
+          // used elsewhere (TV Unit's Mandir/Partition Height).
+          const patch: Partial<typeof iShape> = { width: v };
+          if (iShape.paniPattiWidth === undefined) patch.paniPattiWidth = v;
+          updateIShapeConfig(patch);
+        }}
+        note="Left wall to right wall — the complete kitchen span"
       />
-      {k.hasKadappa && (
+
+      <div className="h-px" style={{ background: '#2a3347' }} />
+      <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Pani Patti</p>
+      <NumInput label="Pani Patti Height" value={iShape.paniPattiHeight} onChange={(v) => updateIShapeConfig({ paniPattiHeight: v })} />
+      <NumInput
+        label="Pani Patti Width"
+        value={iShape.paniPattiWidth ?? iShape.width}
+        onChange={(v) => updateIShapeConfig({ paniPattiWidth: v })}
+        note={`Defaults to Total Kitchen Width (${iShape.width} mm) — editable`}
+      />
+
+      {sequence.length > 0 && (
         <>
           <div className="h-px" style={{ background: '#2a3347' }} />
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Existing Kadappa / Platform</p>
-          <NumInput label="Kadappa Height" value={k.kadappa?.height ?? 0} onChange={(v) => updateWall('A', v)} />
-          <NumInput label="Kadappa Depth" value={k.kadappa?.depth ?? 0} onChange={(v) => {}} />
+          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Kadappa Widths</p>
+          {sequence.map((slot) => (
+            <NumInput
+              key={slot.letter}
+              label={`Kadappa ${slot.letter} — ${kadappaSlotLabel(slot.kind)}`}
+              value={
+                slot.kind === 'wall-left' ? iShape.leftWallKadappaWidth
+                  : slot.kind === 'wall-right' ? iShape.rightWallKadappaWidth
+                  : iShape.innerKadappaWidths[slot.innerIndex!] ?? 0
+              }
+              onChange={(v) => {
+                if (slot.kind === 'wall-left') updateIShapeConfig({ leftWallKadappaWidth: v });
+                else if (slot.kind === 'wall-right') updateIShapeConfig({ rightWallKadappaWidth: v });
+                else {
+                  const widths = [...iShape.innerKadappaWidths];
+                  widths[slot.innerIndex!] = v;
+                  updateIShapeConfig({ innerKadappaWidths: widths });
+                }
+              }}
+              note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
+            />
+          ))}
         </>
       )}
+
+      {sequence.length > 1 && (
+        <>
+          <div className="h-px" style={{ background: '#2a3347' }} />
+          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Gap Between Kadappas</p>
+          {sequence.slice(1).map((slot, i) => {
+            const prevLetter = sequence[i].letter;
+            return (
+              <NumInput
+                key={`gap-${i}`}
+                label={`Width from Kadappa ${prevLetter} to ${slot.letter}`}
+                value={iShape.gapWidths[i] ?? 0}
+                onChange={(v) => {
+                  const gaps = Array.from({ length: gapCountNeeded }, (_, gi) => iShape.gapWidths[gi] ?? 0);
+                  gaps[i] = v;
+                  updateIShapeConfig({ gapWidths: gaps });
+                }}
+                note="Open wall space between these two Kadappas — separate from either Kadappa's own Width"
+              />
+            );
+          })}
+        </>
+      )}
+
       <div className="flex gap-3 mt-2">
         <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
         <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>

@@ -103,7 +103,10 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     { label: 'Total (Overall)', color: '#22c55e', keys: ['totalWidth', 'totalHeight'] },
   ],
   'tv-unit': [
-    { label: 'T.V.', color: '#3b82f6', keys: ['H', 'W'] },
+    { label: 'TV Unit Box', color: '#3b82f6', keys: ['H', 'W', 'D'] },
+    { label: 'Black Tinted Box', color: '#94a3b8', keys: ['blackBoxSide'] },
+    { label: 'Mandir', color: '#0891b2', keys: ['hasMandir', 'mandirSide', 'mandirH', 'mandirW', 'mandirD'] },
+    { label: 'Partition', color: '#f59e0b', keys: ['hasPartition', 'partitionSide', 'partitionH', 'partitionW', 'partitionD'] },
   ],
   sofa: [
     { label: 'Sofa', color: '#3b82f6', keys: ['H', 'W', 'D'] },
@@ -549,31 +552,14 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
   ],
-  'tv-unit': [
-    {
-      id: 'back-panel',
-      label: 'Back Panel / Feature Wall',
-      icon: '🖼️',
-      description: 'Decorative back panel behind the TV unit',
-      placement: 'composite',
-      fields: [
-        { key: 'W', label: 'Panel Width',  defaultValue: 3200, min: 1200, max: 6000 },
-        { key: 'H', label: 'Panel Height', defaultValue: 2750, min: 2000, max: 3500 },
-      ],
-    },
-    {
-      id: 'storage-box',
-      label: 'Extra Storage Box',
-      icon: '📦',
-      description: 'Standalone storage cabinet next to the TV unit',
-      placement: 'separate',
-      fields: [
-        { key: 'H', label: 'Height', defaultValue: 450, min: 200, max: 900 },
-        { key: 'W', label: 'Width',  defaultValue: 600, min: 300, max: 1200 },
-        { key: 'D', label: 'Depth',  defaultValue: 350, min: 200, max: 600 },
-      ],
-    },
-  ],
+  // TV Unit's Mandir/Partition are now built into its own dedicated engine
+  // (src/products/tvUnit/tvUnitGeometry.ts) as plain measurementFields
+  // (Include Mandir / Include Partition bool toggles + their own H/W/D),
+  // per the user's own spec — no PRODUCT_ADDONS entry needed here anymore.
+  // The old Back Panel / Extra Storage Box add-ons (which reused the bare
+  // W/H/D keys and would collide with the new TV Unit's own W/H/D) have
+  // been removed rather than left dangling against a product that no
+  // longer reads them.
   // Shoe Rack has no base W/H/D of its own — it's built entirely from these
   // two optional box types, per the user's own reference sketch. Both take
   // a real Height x Width x Depth, and both can be added together (2 Door

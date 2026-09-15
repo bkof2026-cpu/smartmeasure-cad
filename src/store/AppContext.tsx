@@ -51,6 +51,10 @@ interface AppContextValue {
   updateKitchenConfig: (patch: Partial<KitchenProjectModel['kitchen']>) => void;
   updateWall: (id: string, length: number) => void;
   setCeilingHeight: (h: number) => void;
+  // I-Shape Kitchen — merges into kitchen.iShape specifically (a nested
+  // object, so the generic updateKitchenConfig partial-merge can't reach
+  // it directly).
+  updateIShapeConfig: (patch: Partial<KitchenProjectModel['kitchen']['iShape']>) => void;
 
   // Openings
   addOpening: (o: Opening) => void;
@@ -101,7 +105,11 @@ const AppContext = createContext<AppContextValue | null>(null);
 const STORAGE_KEY = 'smartmeasure-project';
 const RULES_KEY = 'smartmeasure-rules';
 const VERSION_KEY = 'smartmeasure-version';
-const STORAGE_VERSION = '3';
+// Bumped for the I-Shape Kitchen rebuild — KitchenConfig now requires
+// kitchen.iShape (Kadappa/Pani Patti model), which older saved projects
+// don't have; wipes stale storage rather than rendering against
+// undefined nested fields.
+const STORAGE_VERSION = '4';
 
 function clearStorage() {
   try {
@@ -190,6 +198,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateKitchenConfig = useCallback((patch: Partial<KitchenProjectModel['kitchen']>) => {
     setModel((prev) => ({ ...prev, kitchen: { ...prev.kitchen, ...patch } }));
+  }, []);
+
+  const updateIShapeConfig = useCallback((patch: Partial<KitchenProjectModel['kitchen']['iShape']>) => {
+    setModel((prev) => ({ ...prev, kitchen: { ...prev.kitchen, iShape: { ...prev.kitchen.iShape, ...patch } } }));
   }, []);
 
   const updateWall = useCallback((id: string, length: number) => {
@@ -365,7 +377,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         model, geo, rules, screen, selectedModuleId,
         setScreen, setSelectedModuleId,
-        updateProject, setKitchenType, updateKitchenConfig, updateWall, setCeilingHeight,
+        updateProject, setKitchenType, updateKitchenConfig, updateIShapeConfig, updateWall, setCeilingHeight,
         addOpening, updateOpening, removeOpening,
         addModule, updateModule, removeModule,
         addEvidence,

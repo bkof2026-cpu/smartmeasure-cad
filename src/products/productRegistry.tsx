@@ -23,6 +23,8 @@ import { StudyTableDrawing } from './studyTable/StudyTableDrawing';
 import { studyTableCutlist } from './studyTable/studyTableGeometry';
 import { PartitionDrawing } from './partition/PartitionDrawing';
 import { partitionCutlist } from './partition/partitionGeometry';
+import { TvUnitDrawing as NewTvUnitDrawing } from './tvUnit/TvUnitDrawing';
+import { tvUnitCutlist, type TvUnitInputs } from './tvUnit/tvUnitGeometry';
 import { DiningTableDrawing2 } from './diningTable/DiningTableDrawing2';
 import { diningTableCutlist } from './diningTable/diningTableGeometry';
 import { DoorDrawing } from './door/DoorDrawing';
@@ -1015,14 +1017,20 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
   },
 
   // ── TV UNIT ───────────────────────────────────────────────────────────────────
-  // Simplified in place per the user's own Product Library spec's "T.V."
-  // entry (H x W plain labeled box, no depth, no cabinet breakdown) — the
-  // user explicitly asked to edit this existing entry rather than add a
-  // separate "T.V." product to the dropdown. The old base/wall-cabinet
-  // TvUnitDrawing component above is kept intact (unused, not deleted),
-  // same "kept for a future detailed-fabrication mode" treatment already
-  // used for Side Table's old Front/Plan/Side view and Wardrobe's old
-  // 25-design system.
+  // Rebuilt per the user's own reference sketch and geometry correction:
+  // [ Black Tinted Box ] + [ TV Unit Box ] = the complete upper unit. TV
+  // Unit Box (H/W/D) is the main reference area — W is ONLY the TV Unit
+  // Box's own width. Black Tinted Box (compulsory, Left/Right) has its own
+  // independently-entered Width but its Height always equals TV Unit Box
+  // Height (flush top/bottom, no gap). Profile Shutter/the whole lower
+  // cabinet row spans the combined width (TV Unit Box W + Black Tinted Box
+  // W), never entered separately. Mandir and Partition are optional
+  // "extra measurement" attachments, each with its own H/W/D and a
+  // Left/Right side, drawn outside the combined unit without overlapping
+  // it. See src/products/tvUnit/{tvUnitGeometry,TvUnitDrawing}.tsx. The
+  // old simplified H×W labeled-box TvUnitDrawing above (and the base/
+  // wall-cabinet engine above that) are kept intact, unused, same
+  // convention as every other superseded product engine in this file.
   {
     id: 'tv-unit',
     name: 'TV Unit',
@@ -1030,23 +1038,47 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     category: 'furniture',
     roomCategory: 'Living Room',
     isFormulaVerified: true,
-    demoDimensions: { H: 700, W: 1400 },
+    // mandirH/partitionH are deliberately left OUT of demoDimensions (per
+    // the user: both default to TV Unit Height) — the form still shows an
+    // editable box for each (falling back to its own static defaultValue
+    // as a display placeholder only), but dims.mandirH/partitionH stay
+    // undefined until the user actually types a value, so computeCutlist/
+    // the drawing can tell "still defaulted to TV Unit Height" apart from
+    // "user set their own Mandir/Partition Height" and act accordingly.
+    demoDimensions: { H: 700, W: 2700, D: 450, blackBoxSide: 'Left', hasMandir: 0, mandirSide: 'Right', mandirW: 450, mandirD: 450, hasPartition: 0, partitionSide: 'Left', partitionW: 500, partitionD: 400 },
     measurementFields: [
-      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 700, min: 300, max: 1500 },
-      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1400, min: 400, max: 3000 },
+      { key: 'H', label: 'TV Unit Box Height', unit: 'mm', defaultValue: 700, min: 300, max: 1500 },
+      { key: 'W', label: 'TV Unit Box Width', unit: 'mm', defaultValue: 2700, min: 900, max: 6000 },
+      { key: 'D', label: 'TV Unit Depth', unit: 'mm', defaultValue: 450, min: 200, max: 800 },
+      { key: 'blackBoxSide', label: 'Black Tinted Box Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
+      { key: 'hasMandir', label: 'Include Mandir', unit: 'bool', defaultValue: 0 },
+      { key: 'mandirSide', label: 'Mandir Side', unit: 'select', defaultValue: 'Right', options: ['Left', 'Right'] },
+      { key: 'mandirH', label: 'Mandir Height (defaults to TV Unit Height)', unit: 'mm', defaultValue: 700, min: 300, max: 2400 },
+      { key: 'mandirW', label: 'Mandir Width', unit: 'mm', defaultValue: 450, min: 200, max: 1200 },
+      { key: 'mandirD', label: 'Mandir Depth', unit: 'mm', defaultValue: 450, min: 150, max: 800 },
+      { key: 'hasPartition', label: 'Include Partition', unit: 'bool', defaultValue: 0 },
+      { key: 'partitionSide', label: 'Partition Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
+      { key: 'partitionH', label: 'Partition Height (defaults to TV Unit Height)', unit: 'mm', defaultValue: 700, min: 300, max: 2700 },
+      { key: 'partitionW', label: 'Partition Width', unit: 'mm', defaultValue: 500, min: 150, max: 1200 },
+      { key: 'partitionD', label: 'Partition Depth', unit: 'mm', defaultValue: 400, min: 150, max: 800 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
-      const cfg: LabeledBoxConfig = { productType: 'tv-unit', boxLabel: 'T.V.', title: 'T.V.', color: '#3b82f6' };
-      const cutRows = labeledBoxCutlist({ primary: n(dims.W), secondary: n(dims.H), primaryLabel: 'W', secondaryLabel: 'H' }, cfg);
-      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+      const tvH = n(dims.H) || 700;
+      const inp: TvUnitInputs = {
+        H: tvH, W: n(dims.W) || 2700, D: n(dims.D) || 450,
+        blackBoxSide: String(dims.blackBoxSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left',
+        hasMandir: Number(dims.hasMandir) === 1,
+        mandirSide: String(dims.mandirSide ?? 'Right').toLowerCase() === 'right' ? 'right' : 'left',
+        mandirH: dims.mandirH === undefined ? tvH : n(dims.mandirH), mandirW: n(dims.mandirW) || 450, mandirD: n(dims.mandirD) || 450,
+        hasPartition: Number(dims.hasPartition) === 1,
+        partitionSide: String(dims.partitionSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left',
+        partitionH: dims.partitionH === undefined ? tvH : n(dims.partitionH), partitionW: n(dims.partitionW) || 500, partitionD: n(dims.partitionD) || 400,
+      };
+      const cutRows = tvUnitCutlist(inp);
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 18, '', r.remark));
     },
-    DrawingComponent: (props) => (
-      <LabeledBoxDrawing
-        inp={{ primary: n(props.dims.W), secondary: n(props.dims.H), primaryLabel: 'W', secondaryLabel: 'H' }}
-        cfg={{ productType: 'tv-unit', boxLabel: 'T.V.', title: 'T.V.', color: '#3b82f6' }}
-      />
-    ),
+    DrawingComponent: (props) => <NewTvUnitDrawing dims={props.dims} />,
   },
 
   // ── SHOE RACK ─────────────────────────────────────────────────────────────────

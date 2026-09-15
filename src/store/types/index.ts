@@ -1,4 +1,8 @@
-export type KitchenType = 'straight' | 'l-shape' | 'u-shape' | 'parallel' | 'island' | 'custom';
+// 'straight' = I-Shape Kitchen (the id is kept as-is for backward
+// compatibility with existing saved projects/localStorage — only the
+// user-facing label changed to "I-Shape Kitchen", per the Kitchen Model
+// spec's 4-shape list: I-Shape/L-Shape/U-Shape/Parallel).
+export type KitchenType = 'straight' | 'l-shape' | 'u-shape' | 'parallel';
 export type ModuleType = 'base' | 'wall' | 'loft' | 'trolley' | 'open-box' | 'tall-unit' | 'corner';
 export type OpeningType = 'door' | 'window' | 'column' | 'beam' | 'electrical' | 'plumbing' | 'gas' | 'chimney';
 export type EvidenceType = 'photo' | 'video' | 'note';
@@ -31,6 +35,48 @@ export interface SkirtingDetails {
   depth: number;
 }
 
+// ─── I-Shape Kitchen — Kadappa / Pani Patti model ─────────────────────────────
+// Deliberately separate from the existing singular KadappaDetails above
+// (a whole-kitchen "existing platform" record used by other kitchen
+// shapes) — this is the new, named, per-segment Kadappa system specific
+// to the I-Shape Kitchen rebuild (Phase 1 of the Kitchen Model spec).
+
+export type WallSideKadappaOption = 'None' | 'Left' | 'Right' | 'Both';
+
+export interface IShapeKitchenConfig {
+  /** Total Kitchen Height (mm) — also the default Height for every
+   * Kadappa (Wall Side and Inner Side alike). */
+  height: number;
+  /** Total Kitchen Width (mm) — also the default Width for Pani Patti. */
+  width: number;
+
+  paniPattiHeight: number;
+  /** Defaults to `width` when unset — stays independently editable. */
+  paniPattiWidth?: number;
+
+  wallSideKadappa: WallSideKadappaOption;
+  /** Width (mm) of the Left Wall Side Kadappa — present only when
+   * wallSideKadappa is 'Left' or 'Both'. */
+  leftWallKadappaWidth: number;
+  /** Width (mm) of the Right Wall Side Kadappa — present only when
+   * wallSideKadappa is 'Right' or 'Both'. */
+  rightWallKadappaWidth: number;
+
+  hasInnerKadappa: boolean;
+  /** Number of Inner Side Kadappas — manually entered, default 2. */
+  innerKadappaCount: number;
+  /** Each Inner Side Kadappa's own independently-entered Width (mm), in
+   * physical left-to-right order — length always kept in sync with
+   * innerKadappaCount. */
+  innerKadappaWidths: number[];
+
+  /** Gap width (mm) between each consecutive pair of Kadappas, in
+   * physical left-to-right order (length = total Kadappa count - 1) —
+   * e.g. for A,B,C,D this holds [A→B, B→C, C→D]. A genuinely separate
+   * measurement from any Kadappa's own width, per the spec's core rule. */
+  gapWidths: number[];
+}
+
 export interface KitchenConfig {
   type: KitchenType;
   walls: Wall[];
@@ -46,6 +92,8 @@ export interface KitchenConfig {
   openBoxRequired: boolean;
   tallUnitRequired: boolean;
   cornerUnitRequired: boolean;
+  /** Only meaningful when type === 'straight' (I-Shape Kitchen). */
+  iShape: IShapeKitchenConfig;
 }
 
 export interface Opening {

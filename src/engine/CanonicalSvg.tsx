@@ -290,14 +290,24 @@ export function TechnicalDrawingSvg({
                   <rect x={px + pw / 2 - Math.min(14, pw * 0.18)} y={py + Math.min(4, ph * 0.3)} width={Math.min(28, pw * 0.36)} height={1.6} rx={0.8} fill="#555" />
                 )
               )}
-              {name && fitsInside && (
-                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={forceInBox ? Math.max(4.5, Math.min(6.5, pw / (name.length * 0.62))) : (isHorizontalBand ? 6.5 : 7)}
-                  fontFamily="'DM Sans',sans-serif" fill={(isHorizontalBand || forceInBox) ? (style.stroke ?? '#333') : '#333'} fontWeight={700}
-                  {...((isHorizontalBand || forceInBox) ? { stroke: 'white', strokeWidth: 2.2, paintOrder: 'stroke' as const } : {})}>
-                  {(isHorizontalBand || forceInBox) ? name : c.label}
-                </text>
-              )}
+              {name && fitsInside && (() => {
+                // Plain in-box text previously hardcoded #333, which reads
+                // as invisible against a dark-filled component (e.g. TV
+                // Unit's Black Tinted Box) — fall back to a light color
+                // when the box's own fill is dark, same "readable against
+                // its own background" rule the horizontal-band/forceInBox
+                // branches already apply via style.stroke.
+                const fillIsDark = /^#(?:[0-3][0-9a-f]){3}$/i.test(style.fill) || /^#(?:[0-3][0-9a-f]){2}$/i.test(style.fill);
+                const textFill = (isHorizontalBand || forceInBox) ? (style.stroke ?? '#333') : (fillIsDark ? (style.stroke ?? '#e5e7eb') : '#333');
+                return (
+                  <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle"
+                    fontSize={forceInBox ? Math.max(4.5, Math.min(6.5, pw / (name.length * 0.62))) : (isHorizontalBand ? 6.5 : 7)}
+                    fontFamily="'DM Sans',sans-serif" fill={textFill} fontWeight={700}
+                    {...((isHorizontalBand || forceInBox) ? { stroke: 'white', strokeWidth: 2.2, paintOrder: 'stroke' as const } : {})}>
+                    {(isHorizontalBand || forceInBox) ? name : c.label}
+                  </text>
+                );
+              })()}
               {name && !fitsInside && isVerticalColumn && (
                 <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" fontSize={6.5} fontFamily="'DM Sans',sans-serif" fill={style.stroke ?? '#333'} fontWeight={700}
                   transform={`rotate(-90 ${px + pw / 2} ${py + ph / 2})`}

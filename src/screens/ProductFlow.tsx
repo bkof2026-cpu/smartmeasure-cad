@@ -792,6 +792,18 @@ export const ProductFlow: React.FC = () => {
   const addons = PRODUCT_ADDONS[selectedId] ?? [];
   const groups = FIELD_GROUPS[selectedId] ?? [];
 
+  // TV Unit's Mandir Height / Partition Height default to TV Unit Height
+  // (per the user) but stay independently editable — a plain static
+  // field.defaultValue would show a stale placeholder once the user
+  // changes TV Unit Height without touching Mandir/Partition Height, so
+  // the displayed (not yet entered) value tracks dims.H live instead.
+  // geometry/cutlist already apply this same fallback (dims.mandirH/
+  // partitionH undefined → TV Unit Height) independent of this display fix.
+  const measurementFieldDefault = (fieldKey: string, staticDefault: number | string): number | string =>
+    selectedId === 'tv-unit' && (fieldKey === 'mandirH' || fieldKey === 'partitionH')
+      ? Number(dims.H) || staticDefault
+      : staticDefault;
+
   // Marks the CURRENTLY active product in-progress the moment its
   // measurements/add-ons are first touched — never merely because its
   // measurement form was opened (that stays "not started" until edited).
@@ -842,9 +854,18 @@ export const ProductFlow: React.FC = () => {
   }, [selectedId, dims, selectedAddons, addonDims, productSessions]);
 
   const handleDimChange = useCallback((key: string, val: number | string) => {
-    setDims((prev) => ({ ...prev, [key]: val }));
+    setDims((prev) => {
+      // TV Unit: Mandir Height / Partition Height always track TV Unit
+      // Height (per the user) — changing H resyncs both, overwriting
+      // whatever independent value was typed into them, rather than just
+      // supplying a display default that stops applying once touched.
+      if (selectedId === 'tv-unit' && key === 'H') {
+        return { ...prev, H: val, mandirH: val, partitionH: val };
+      }
+      return { ...prev, [key]: val };
+    });
     markInProgress();
-  }, [markInProgress]);
+  }, [markInProgress, selectedId]);
 
   // liveComputedKeys lists which of this addon's OWN field keys have a real
   // live-computed recommendation elsewhere (deriveWardrobeAddonInputs /
@@ -1688,7 +1709,7 @@ export const ProductFlow: React.FC = () => {
                           ) : (
                             <div className="flex gap-1">
                               <MeasurementNumberInput
-                                value={Number(dims[field.key] ?? field.defaultValue)}
+                                value={Number(dims[field.key] ?? measurementFieldDefault(field.key, field.defaultValue))}
                                 onCommit={(val) => handleDimChange(field.key, val)}
                                 min={field.min} max={field.max} step={field.step ?? 1}
                                 className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"

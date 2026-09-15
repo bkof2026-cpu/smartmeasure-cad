@@ -34,6 +34,23 @@ export const DEMO_PROJECT: KitchenProjectModel = {
     openBoxRequired: true,
     tallUnitRequired: true,
     cornerUnitRequired: true,
+    // Not the active shape for this demo project (l-shape), but every
+    // KitchenConfig carries iShape so switching Kitchen Type to I-Shape
+    // always has real starting values — matches the spec's own
+    // acceptance-test example (§34) so a fresh look at I-Shape Kitchen
+    // shows a fully worked, sensible configuration rather than zeros.
+    iShape: {
+      height: 2200,
+      width: 3000,
+      paniPattiHeight: 100,
+      wallSideKadappa: 'Both',
+      leftWallKadappaWidth: 400,
+      rightWallKadappaWidth: 350,
+      hasInnerKadappa: true,
+      innerKadappaCount: 2,
+      innerKadappaWidths: [500, 600],
+      gapWidths: [250, 300, 150],
+    },
   },
   openings: [
     {
@@ -168,6 +185,18 @@ export function createNewProject(): KitchenProjectModel {
       openBoxRequired: false,
       tallUnitRequired: false,
       cornerUnitRequired: false,
+      iShape: {
+        height: 0,
+        width: 0,
+        paniPattiHeight: 0,
+        wallSideKadappa: 'None',
+        leftWallKadappaWidth: 0,
+        rightWallKadappaWidth: 0,
+        hasInnerKadappa: false,
+        innerKadappaCount: 2,
+        innerKadappaWidths: [],
+        gapWidths: [],
+      },
     },
     openings: [],
     modules: [],
