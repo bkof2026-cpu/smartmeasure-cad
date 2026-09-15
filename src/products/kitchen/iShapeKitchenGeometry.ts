@@ -93,13 +93,14 @@ export function resolveIShapeKitchenPlan(inputs: IShapeKitchenDrawingInputs): Re
 
   // Pani Patti — thin bar spanning the full kitchen width, drawn regardless
   // of whether any Kadappa is configured yet (spec §2: appears as soon as
-  // I-Shape is selected).
-  const paniPattiWidth = iShape.paniPattiWidth ?? iShape.width;
+  // I-Shape is selected). Width always equals Total Kitchen Width — never
+  // an independently entered value, per the user's explicit instruction.
+  const paniPattiWidth = iShape.width;
   const paniPattiH = Math.max(1, iShape.paniPattiHeight);
   components.push({
     id: 'pani-patti', type: 'PANI_PATTI', label: 'Pani Patti',
     x: kitchenX, y: kitchenY, width: Math.max(1, paniPattiWidth), height: paniPattiH, qty: 1, visible: true,
-    source: { formula: 'Pani Patti Width = Total Kitchen Width unless independently entered; Height = entered Pani Patti Height', constants: [] },
+    source: { formula: 'Pani Patti Width = Total Kitchen Width (always, never independently entered); Height = entered Pani Patti Height', constants: [] },
   });
 
   // Kadappa columns — each its own real, independently-entered width,

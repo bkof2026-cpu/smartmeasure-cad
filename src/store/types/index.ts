@@ -47,12 +47,12 @@ export interface IShapeKitchenConfig {
   /** Total Kitchen Height (mm) — also the default Height for every
    * Kadappa (Wall Side and Inner Side alike). */
   height: number;
-  /** Total Kitchen Width (mm) — also the default Width for Pani Patti. */
+  /** Total Kitchen Width (mm) — also ALWAYS the Pani Patti's own Width;
+   * Pani Patti has no independent Width field, per the user's explicit
+   * instruction (only its own Height is a real, separate measurement). */
   width: number;
 
   paniPattiHeight: number;
-  /** Defaults to `width` when unset — stays independently editable. */
-  paniPattiWidth?: number;
 
   wallSideKadappa: WallSideKadappaOption;
   /** Width (mm) of the Left Wall Side Kadappa — present only when

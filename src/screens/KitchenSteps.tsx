@@ -206,25 +206,15 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
       <NumInput
         label="Total Kitchen Width"
         value={iShape.width}
-        onChange={(v) => {
-          // Pani Patti Width defaults to Total Kitchen Width — but only
-          // while it hasn't been independently set (same "default until
-          // touched, then stays independent" convention used elsewhere).
-          const patch: Partial<typeof iShape> = { width: v };
-          if (iShape.paniPattiWidth === undefined) patch.paniPattiWidth = v;
-          updateIShapeConfig(patch);
-        }}
+        onChange={(v) => updateIShapeConfig({ width: v })}
       />
 
       <div className="h-px" style={{ background: '#2a3347' }} />
       <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Pani Patti</p>
+      {/* Pani Patti Width is never independently entered — it always
+          spans the same Total Kitchen Width, per the user's explicit
+          instruction. Only Height is a real, separate input. */}
       <NumInput label="Pani Patti Height" value={iShape.paniPattiHeight} onChange={(v) => updateIShapeConfig({ paniPattiHeight: v })} />
-      <NumInput
-        label="Pani Patti Width"
-        value={iShape.paniPattiWidth ?? iShape.width}
-        onChange={(v) => updateIShapeConfig({ paniPattiWidth: v })}
-        note={`Defaults to Total Kitchen Width (${iShape.width} mm) — editable`}
-      />
 
       <div className="h-px" style={{ background: '#2a3347' }} />
       <div className="py-1">
