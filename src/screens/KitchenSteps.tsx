@@ -179,20 +179,6 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
 
   const wallSideOptions: WallSideKadappaOption[] = ['None', 'Left', 'Right', 'Both'];
   const sequence = buildKadappaSequence(iShape);
-  const gapCountNeeded = Math.max(0, sequence.length - 1);
-
-  // Keeps gapWidths sized to (sequence.length - 1) — the array is derived
-  // from wallSideKadappa/hasInnerKadappa/innerKadappaCount, all set above
-  // in this same step, so this reconciles it live as those change.
-  // Existing gap values are preserved by position; new slots start at 0,
-  // extra ones are dropped.
-  React.useEffect(() => {
-    if (iShape.gapWidths.length !== gapCountNeeded) {
-      const resized = Array.from({ length: gapCountNeeded }, (_, i) => iShape.gapWidths[i] ?? 0);
-      updateIShapeConfig({ gapWidths: resized });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gapCountNeeded]);
 
   return (
     <div className="flex flex-col gap-5 p-6">
@@ -234,18 +220,16 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
       </div>
       {(iShape.wallSideKadappa === 'Left' || iShape.wallSideKadappa === 'Both') && (
         <NumInput
-          label="Left Kadappa (A) Width"
+          label="Kadappa A — Distance from Left Wall"
           value={iShape.leftWallKadappaWidth}
           onChange={(v) => updateIShapeConfig({ leftWallKadappaWidth: v })}
-          note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
         />
       )}
       {(iShape.wallSideKadappa === 'Right' || iShape.wallSideKadappa === 'Both') && (
         <NumInput
-          label="Right Kadappa Width"
+          label={`Kadappa ${sequence.length > 0 ? sequence[sequence.length - 1].letter : ''} — Distance from Previous Kadappa`}
           value={iShape.rightWallKadappaWidth}
           onChange={(v) => updateIShapeConfig({ rightWallKadappaWidth: v })}
-          note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
         />
       )}
 
@@ -272,49 +256,28 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
               const safeCount = Math.max(1, Math.round(count) || 1);
               // Resize innerKadappaWidths to match the new count — keep
               // existing entries in place, pad new ones with 0, truncate
-              // extra ones. gapWidths resizes itself via the effect above
-              // once the sequence length changes as a result.
+              // extra ones.
               const widths = Array.from({ length: safeCount }, (_, i) => iShape.innerKadappaWidths[i] ?? 0);
               updateIShapeConfig({ innerKadappaCount: safeCount, innerKadappaWidths: widths });
             }}
           />
-          {sequence.filter((s) => s.kind === 'inner').map((slot) => (
-            <NumInput
-              key={slot.letter}
-              label={`Inner Kadappa ${slot.letter} Width`}
-              value={iShape.innerKadappaWidths[slot.innerIndex!] ?? 0}
-              onChange={(v) => {
-                const widths = [...iShape.innerKadappaWidths];
-                widths[slot.innerIndex!] = v;
-                updateIShapeConfig({ innerKadappaWidths: widths });
-              }}
-              note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
-            />
-          ))}
-        </div>
-      )}
-
-      {sequence.length > 1 && (
-        <>
-          <div className="h-px" style={{ background: '#2a3347' }} />
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Gap Between Kadappas</p>
-          {sequence.slice(1).map((slot, i) => {
-            const prevLetter = sequence[i].letter;
+          {sequence.filter((s) => s.kind === 'inner').map((slot) => {
+            const idx = sequence.findIndex((s) => s.letter === slot.letter);
+            const prevLetter = idx > 0 ? sequence[idx - 1].letter : 'the Left Wall';
             return (
               <NumInput
-                key={`gap-${i}`}
-                label={`Width from Kadappa ${prevLetter} to ${slot.letter}`}
-                value={iShape.gapWidths[i] ?? 0}
+                key={slot.letter}
+                label={`Kadappa ${slot.letter} — Distance from ${idx > 0 ? `Kadappa ${prevLetter}` : prevLetter}`}
+                value={iShape.innerKadappaWidths[slot.innerIndex!] ?? 0}
                 onChange={(v) => {
-                  const gaps = Array.from({ length: gapCountNeeded }, (_, gi) => iShape.gapWidths[gi] ?? 0);
-                  gaps[i] = v;
-                  updateIShapeConfig({ gapWidths: gaps });
+                  const widths = [...iShape.innerKadappaWidths];
+                  widths[slot.innerIndex!] = v;
+                  updateIShapeConfig({ innerKadappaWidths: widths });
                 }}
-                note="Open wall space between these two Kadappas — separate from either Kadappa's own Width"
               />
             );
           })}
-        </>
+        </div>
       )}
 
       <div className="flex gap-3 mt-2">

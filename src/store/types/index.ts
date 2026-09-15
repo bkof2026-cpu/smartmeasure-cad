@@ -70,12 +70,6 @@ export interface IShapeKitchenConfig {
    * innerKadappaCount. */
   innerKadappaWidths: number[];
 
-  /** Gap width (mm) between each consecutive pair of Kadappas, in
-   * physical left-to-right order (length = total Kadappa count - 1) —
-   * e.g. for A,B,C,D this holds [A→B, B→C, C→D]. A genuinely separate
-   * measurement from any Kadappa's own width, per the spec's core rule. */
-  gapWidths: number[];
-
   /** Selected Trolley Type id (key into TROLLEY_TEMPLATES,
    * src/products/kitchen/trolleyTemplates.ts) — null until chosen in
    * Step 3 of the wizard. Its Outer Panel is inserted into the first

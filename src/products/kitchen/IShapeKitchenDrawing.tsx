@@ -6,9 +6,9 @@ import type { ComponentSpec, DimensionLine } from '../../engine/types';
 import type { IShapeKitchenConfig } from '../../store/types';
 
 const I_SHAPE_COMPONENT_COLORS: Record<string, ComponentStyle> = {
+  KITCHEN_BODY:         { fill: '#ffffff', stroke: '#111827', strokeWidth: 2 },
   PANI_PATTI:           { fill: '#f5f3ff', stroke: '#7c3aed', strokeWidth: 2 },
-  KADAPPA_WALL:         { fill: '#f0fdfa', stroke: '#0f766e', strokeWidth: 1.4 },
-  KADAPPA_INNER:        { fill: '#eff6ff', stroke: '#1d4ed8', strokeWidth: 1.4 },
+  KADAPPA_LINE:         { fill: '#0284c7', stroke: '#0284c7', strokeWidth: 0 },
   TROLLEY_OUTER:        { fill: '#fef3c7', stroke: '#b45309', strokeWidth: 1.6 },
   TROLLEY_INNER_DETAIL: { fill: '#fff7ed', stroke: '#b45309', strokeWidth: 1.1 },
 };

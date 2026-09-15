@@ -48,17 +48,20 @@ export const DEMO_PROJECT: KitchenProjectModel = {
     // shows a fully worked, sensible configuration rather than zeros.
     iShape: {
       height: 2200,
-      width: 3000,
+      // Kadappa are thin line markers — each value is the DISTANCE from
+      // the previous Kadappa line (or the left wall, for A). Cumulative
+      // positions: A=450, B=450+500=950, C=950+600=1550, D=1550+310=1860
+      // — the last Kadappa (D) lands exactly at the Total Width.
+      width: 1860,
       paniPattiHeight: 100,
       wallSideKadappa: 'Both',
-      leftWallKadappaWidth: 400,
-      rightWallKadappaWidth: 350,
+      leftWallKadappaWidth: 450,
+      rightWallKadappaWidth: 310,
       hasInnerKadappa: true,
       innerKadappaCount: 2,
       innerKadappaWidths: [500, 600],
-      gapWidths: [250, 300, 150],
-      // First Inner Kadappa exists (slot B, width 500) so the demo shows
-      // the real trolley template working end-to-end, not just Kadappa.
+      // First Inner Kadappa (B) exists so the demo shows the real trolley
+      // template's Outer Panel filling the A→B bay end-to-end.
       trolleyTemplateId: 'free-door-trolley',
     },
   },
@@ -205,7 +208,6 @@ export function createNewProject(): KitchenProjectModel {
         hasInnerKadappa: false,
         innerKadappaCount: 2,
         innerKadappaWidths: [],
-        gapWidths: [],
         trolleyTemplateId: null,
       },
     },
