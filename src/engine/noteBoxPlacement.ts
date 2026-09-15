@@ -196,21 +196,34 @@ function componentNameFootprint(c: ComponentSpec, mmPerPx: number): Rect | null 
 
 const CLEARANCE_PX = 10; // fixed screen-px breathing room kept around every obstacle
 
-function buildObstacles(ctx: PlacementContext, exclude: Set<string>, mmPerPx: number): Rect[] {
+/** Split so a callout BOX is kept clear of everything (body, name,
+ * dimension, line), but a leader LINE only ever gets vetoed for crossing
+ * real component geometry (`bodyObstacles`) — the CORE RULE's "component
+ * geometry must never be covered" — not for merely grazing a dimension's
+ * label or another line's caption. Vetoing a leader against every
+ * annotation too was far too strict: in a dense drawing almost any leader
+ * of useful length grazes SOME label, so every nearby ring candidate got
+ * rejected and callouts were pushed to a distant fallback with long ugly
+ * leaders instead of the short, slightly-imperfect ones a real drafter
+ * would accept. */
+function buildObstacles(ctx: PlacementContext, exclude: Set<string>, mmPerPx: number): { bodyObstacles: Rect[]; boxObstacles: Rect[] } {
   const clearance = CLEARANCE_PX * mmPerPx;
-  const obstacles: Rect[] = [];
+  const bodyObstacles: Rect[] = [];
+  const boxObstacles: Rect[] = [];
   for (const c of ctx.components) {
     if (!c.visible || exclude.has(c.id)) continue;
-    obstacles.push({ x: c.x - clearance, y: c.y - clearance, w: c.width + clearance * 2, h: c.height + clearance * 2 });
+    const body = { x: c.x - clearance, y: c.y - clearance, w: c.width + clearance * 2, h: c.height + clearance * 2 };
+    bodyObstacles.push(body);
+    boxObstacles.push(body);
     const nameFp = componentNameFootprint(c, mmPerPx);
-    if (nameFp) obstacles.push(nameFp);
+    if (nameFp) boxObstacles.push(nameFp);
   }
-  for (const d of ctx.dimensions) obstacles.push(dimensionFootprint(d, mmPerPx));
+  for (const d of ctx.dimensions) boxObstacles.push(dimensionFootprint(d, mmPerPx));
   for (const l of ctx.lines) {
     const fp = lineFootprint(l, mmPerPx);
-    if (fp) obstacles.push(fp);
+    if (fp) boxObstacles.push(fp);
   }
-  return obstacles;
+  return { bodyObstacles, boxObstacles };
 }
 
 /**
@@ -230,7 +243,7 @@ export function placeNoteBoxes(requests: CalloutRequest[], ctx: PlacementContext
   const clearance = CLEARANCE_PX * mmPerPx;
 
   const componentIds = new Set(requests.map((r) => r.id));
-  const baseObstacles = buildObstacles(ctx, componentIds, mmPerPx);
+  const { bodyObstacles, boxObstacles } = buildObstacles(ctx, componentIds, mmPerPx);
   // Also treat every OTHER callout's own component as a hard obstacle
   // (already included above via ctx.components using their real ids —
   // callers pass the same ComponentSpec[] that contains these boxes).
@@ -263,46 +276,77 @@ export function placeNoteBoxes(requests: CalloutRequest[], ctx: PlacementContext
     ];
     const rings = [40, 80, 130, 200, 300, 450, 650, 900, 1300];
 
-    let placed: { x: number; y: number; anchor: { x: number; y: number } } | null = null;
-    outer: for (const gap of rings) {
-      for (const dir of dirs) {
-        // Position the callout box's near corner `gap` world-mm past the
-        // component's own edge in this direction.
-        let bx: number, by: number;
-        if (dir.dx === 1) bx = cb.x + cb.w + gap;
-        else if (dir.dx === -1) bx = cb.x - gap - boxW;
-        else bx = cx - boxW / 2;
-        if (dir.dy === 1) by = cb.y + cb.h + gap;
-        else if (dir.dy === -1) by = cb.y - gap - boxH;
-        else by = cy - boxH / 2;
+    // Two-tier search: prefer a candidate whose leader avoids crossing any
+    // OTHER component's real body entirely, but in a dense composite (many
+    // small components clustered together — Storage/Open Box/Top Panel/
+    // Study Table's own Storage all crowding one corner) NO nearby ring
+    // candidate may satisfy that in every direction, which used to fall
+    // straight to the far-below fallback: every callout piling up well
+    // past the whole drawing with very long, near-parallel leaders — a
+    // much worse result than one short leader grazing a neighbour's edge.
+    // requireCleanLeader:true is tried first (closest, cleanest); only if
+    // it finds nothing across every ring does the loop retry the SAME
+    // rings/directions with that requirement dropped, so a nearby-but-
+    // imperfect placement always wins over a distant "clean" one.
+    const tryFind = (requireCleanLeader: boolean): { x: number; y: number; anchor: { x: number; y: number } } | null => {
+      for (const gap of rings) {
+        for (const dir of dirs) {
+          // Position the callout box's near corner `gap` world-mm past the
+          // component's own edge in this direction.
+          let bx: number, by: number;
+          if (dir.dx === 1) bx = cb.x + cb.w + gap;
+          else if (dir.dx === -1) bx = cb.x - gap - boxW;
+          else bx = cx - boxW / 2;
+          if (dir.dy === 1) by = cb.y + cb.h + gap;
+          else if (dir.dy === -1) by = cb.y - gap - boxH;
+          else by = cy - boxH / 2;
 
-        const candidate: Rect = { x: bx, y: by, w: boxW, h: boxH };
-        const collides =
-          baseObstacles.some((o) => rectsOverlap(candidate, o)) ||
-          placedCallouts.some((o) => rectsOverlap(candidate, o, clearance));
-        if (collides) continue;
+          const candidate: Rect = { x: bx, y: by, w: boxW, h: boxH };
+          const collides =
+            boxObstacles.some((o) => rectsOverlap(candidate, o)) ||
+            placedCallouts.some((o) => rectsOverlap(candidate, o, clearance));
+          if (collides) continue;
 
-        // Anchor: the component edge point closest to the chosen box.
-        const anchor =
-          dir.edge === 'right' ? { x: cb.x + cb.w, y: Math.min(Math.max(by + boxH / 2, cb.y), cb.y + cb.h) } :
-          dir.edge === 'left' ? { x: cb.x, y: Math.min(Math.max(by + boxH / 2, cb.y), cb.y + cb.h) } :
-          dir.edge === 'bottom' ? { x: Math.min(Math.max(bx + boxW / 2, cb.x), cb.x + cb.w), y: cb.y + cb.h } :
-          { x: Math.min(Math.max(bx + boxW / 2, cb.x), cb.x + cb.w), y: cb.y };
+          // Anchor: the component edge point closest to the chosen box.
+          const anchor =
+            dir.edge === 'right' ? { x: cb.x + cb.w, y: Math.min(Math.max(by + boxH / 2, cb.y), cb.y + cb.h) } :
+            dir.edge === 'left' ? { x: cb.x, y: Math.min(Math.max(by + boxH / 2, cb.y), cb.y + cb.h) } :
+            dir.edge === 'bottom' ? { x: Math.min(Math.max(bx + boxW / 2, cb.x), cb.x + cb.w), y: cb.y + cb.h } :
+            { x: Math.min(Math.max(bx + boxW / 2, cb.x), cb.x + cb.w), y: cb.y };
 
-        // The leader line itself (anchor -> this box's own centre, same
-        // point CanonicalSvg draws to) must not cut across any OTHER
-        // already-placed callout box, or an earlier box's own leader would
-        // read as pointing into/through this one. Box-vs-box rect checks
-        // above don't catch this — a box can be placed clear of every
-        // obstacle while the thin line connecting it to its component
-        // still crosses right over a neighbour.
-        const leaderHitsPlaced = placedCallouts.some((o) => segmentHitsRect(anchor.x, anchor.y, bx + boxW / 2, by + boxH / 2, o, clearance));
-        if (leaderHitsPlaced) continue;
+          // The leader line itself (anchor -> this box's own centre, same
+          // point CanonicalSvg draws to) must never cut across any OTHER
+          // already-placed callout box, or an earlier box's own leader
+          // would read as pointing into/through this one — this check
+          // always applies, in both tiers. Box-vs-box rect checks above
+          // don't catch this on their own: a box can be placed clear of
+          // every obstacle while the thin line connecting it to its
+          // component still crosses right over a neighbour.
+          const leaderHitsPlaced = placedCallouts.some((o) => segmentHitsRect(anchor.x, anchor.y, bx + boxW / 2, by + boxH / 2, o, clearance));
+          if (leaderHitsPlaced) continue;
 
-        placed = { x: bx, y: by, anchor };
-        break outer;
+          // Only in the first tier: also require the leader avoid every
+          // OTHER component's real body (never dimensions/names/lines —
+          // those are thin annotation ink a short leader may reasonably
+          // graze). This is the CORE RULE's actual concern (component
+          // geometry never covered) — but treated as a preference, not an
+          // absolute veto, since a dense cluster can leave no ring
+          // candidate satisfying it at all. bodyObstacles already excludes
+          // every requested component's own box (see buildObstacles'
+          // `exclude`), so a leader is never rejected for crossing the
+          // very component it points at.
+          if (requireCleanLeader) {
+            const leaderHitsBody = bodyObstacles.some((o) => segmentHitsRect(anchor.x, anchor.y, bx + boxW / 2, by + boxH / 2, o));
+            if (leaderHitsBody) continue;
+          }
+
+          return { x: bx, y: by, anchor };
+        }
       }
-    }
+      return null;
+    };
+
+    let placed = tryFind(true) ?? tryFind(false);
     // Last-resort fallback (should be unreachable in practice given the
     // ring sizes above): keep the component's own preferred anchor and
     // push far below the whole drawing, still collision-checked against
