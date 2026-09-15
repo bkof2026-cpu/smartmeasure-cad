@@ -105,11 +105,10 @@ const AppContext = createContext<AppContextValue | null>(null);
 const STORAGE_KEY = 'smartmeasure-project';
 const RULES_KEY = 'smartmeasure-rules';
 const VERSION_KEY = 'smartmeasure-version';
-// Bumped for the I-Shape Kitchen rebuild — KitchenConfig now requires
-// kitchen.iShape (Kadappa/Pani Patti model), which older saved projects
-// don't have; wipes stale storage rather than rendering against
-// undefined nested fields.
-const STORAGE_VERSION = '4';
+// Bumped for the I-Shape Kitchen Trolley system — iShape now requires
+// trolleyTemplateId, which projects saved under version '4' don't have;
+// wipes stale storage rather than rendering against an undefined field.
+const STORAGE_VERSION = '5';
 
 function clearStorage() {
   try {

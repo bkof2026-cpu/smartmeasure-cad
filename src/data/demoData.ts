@@ -57,6 +57,9 @@ export const DEMO_PROJECT: KitchenProjectModel = {
       innerKadappaCount: 2,
       innerKadappaWidths: [500, 600],
       gapWidths: [250, 300, 150],
+      // First Inner Kadappa exists (slot B, width 500) so the demo shows
+      // the real trolley template working end-to-end, not just Kadappa.
+      trolleyTemplateId: 'free-door-trolley',
     },
   },
   openings: [
@@ -203,6 +206,7 @@ export function createNewProject(): KitchenProjectModel {
         innerKadappaCount: 2,
         innerKadappaWidths: [],
         gapWidths: [],
+        trolleyTemplateId: null,
       },
     },
     openings: [],

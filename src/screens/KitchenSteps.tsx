@@ -1,21 +1,22 @@
 import React from 'react';
 import { useApp } from '../store/AppContext';
 import type { WallSideKadappaOption } from '../store/types';
+import { TROLLEY_TEMPLATES } from '../products/kitchen/trolleyTemplates';
+import { buildKadappaSequence } from '../products/kitchen/iShapeKitchenGeometry';
 
-// Steps 3-7 (Wall Measurements/Kadappa entry, Openings, Existing
-// Conditions, Cabinet Modules, Review) removed per the user's explicit
-// instruction — the Kitchen flow is now just Kitchen Type + Kadappa
-// layout choices, then straight to the live drawing. Their old
-// component functions (Step3-Step7), the Opening/CabinetModule-typed
-// UI, and buildKadappaSequence/KadappaSlot lived here; none of that
-// logic is used anywhere else, so it's deleted rather than kept unused
-// (the drawing itself, computeGeometry, and AppContext's store actions
-// are untouched — this only removes the removed steps' own UI).
-const TOTAL_STEPS = 2;
+// Steps 3-7 of the old generic wizard (Wall Measurements/Openings/Existing
+// Conditions/Cabinet Modules/Review) were removed per the user's explicit
+// instruction. A NEW Step 3 (Trolley Type) was added back per the
+// "SMARTMEASURE CAD — FINAL I-SHAPE KITCHEN UPDATE" spec's own flow
+// (Kitchen Type → Kadappa → Trolley Type → Drawing) — this is a distinct,
+// purpose-built step for the I-Shape Trolley system, not a revival of any
+// deleted generic step.
+const TOTAL_STEPS = 3;
 
 const STEP_LABELS = [
   'Kitchen Type',
   'Features',
+  'Trolley',
 ];
 
 function StepHeader({ step, total }: { step: number; total: number }) {
@@ -177,12 +178,56 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
   const iShape = model.kitchen.iShape;
 
   const wallSideOptions: WallSideKadappaOption[] = ['None', 'Left', 'Right', 'Both'];
+  const sequence = buildKadappaSequence(iShape);
+  const gapCountNeeded = Math.max(0, sequence.length - 1);
+
+  // Keeps gapWidths sized to (sequence.length - 1) — the array is derived
+  // from wallSideKadappa/hasInnerKadappa/innerKadappaCount, all set above
+  // in this same step, so this reconciles it live as those change.
+  // Existing gap values are preserved by position; new slots start at 0,
+  // extra ones are dropped.
+  React.useEffect(() => {
+    if (iShape.gapWidths.length !== gapCountNeeded) {
+      const resized = Array.from({ length: gapCountNeeded }, (_, i) => iShape.gapWidths[i] ?? 0);
+      updateIShapeConfig({ gapWidths: resized });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gapCountNeeded]);
 
   return (
-    <div className="flex flex-col gap-2 p-6">
-      <p className="text-sm mb-2" style={{ color: '#64748b' }}>Kadappa layout for this kitchen</p>
+    <div className="flex flex-col gap-5 p-6">
+      <p className="text-sm" style={{ color: '#64748b' }}>Kitchen measurements and Kadappa layout</p>
 
-      <div className="py-3 border-b" style={{ borderColor: '#2a3347' }}>
+      <NumInput
+        label="Total Kitchen Height"
+        value={iShape.height}
+        onChange={(v) => updateIShapeConfig({ height: v })}
+      />
+      <NumInput
+        label="Total Kitchen Width"
+        value={iShape.width}
+        onChange={(v) => {
+          // Pani Patti Width defaults to Total Kitchen Width — but only
+          // while it hasn't been independently set (same "default until
+          // touched, then stays independent" convention used elsewhere).
+          const patch: Partial<typeof iShape> = { width: v };
+          if (iShape.paniPattiWidth === undefined) patch.paniPattiWidth = v;
+          updateIShapeConfig(patch);
+        }}
+      />
+
+      <div className="h-px" style={{ background: '#2a3347' }} />
+      <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Pani Patti</p>
+      <NumInput label="Pani Patti Height" value={iShape.paniPattiHeight} onChange={(v) => updateIShapeConfig({ paniPattiHeight: v })} />
+      <NumInput
+        label="Pani Patti Width"
+        value={iShape.paniPattiWidth ?? iShape.width}
+        onChange={(v) => updateIShapeConfig({ paniPattiWidth: v })}
+        note={`Defaults to Total Kitchen Width (${iShape.width} mm) — editable`}
+      />
+
+      <div className="h-px" style={{ background: '#2a3347' }} />
+      <div className="py-1">
         <div className="flex items-center justify-between mb-3">
           <span className="text-base font-medium" style={{ color: '#e2e8f0' }}>Wall Side Kadappa</span>
         </div>
@@ -197,6 +242,22 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
           ))}
         </div>
       </div>
+      {(iShape.wallSideKadappa === 'Left' || iShape.wallSideKadappa === 'Both') && (
+        <NumInput
+          label="Left Kadappa (A) Width"
+          value={iShape.leftWallKadappaWidth}
+          onChange={(v) => updateIShapeConfig({ leftWallKadappaWidth: v })}
+          note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
+        />
+      )}
+      {(iShape.wallSideKadappa === 'Right' || iShape.wallSideKadappa === 'Both') && (
+        <NumInput
+          label="Right Kadappa Width"
+          value={iShape.rightWallKadappaWidth}
+          onChange={(v) => updateIShapeConfig({ rightWallKadappaWidth: v })}
+          note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
+        />
+      )}
 
       <Toggle
         label="Inner Side Kadappa"
@@ -204,15 +265,15 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
         onChange={(v) => updateIShapeConfig({
           hasInnerKadappa: v,
           // Seed a real count + width array the first time this is turned
-          // on (default count = 2, per the spec), so the measurement step
-          // always has real values to show rather than an empty list.
+          // on (default count = 2, per the spec), so this step always has
+          // real fields to show rather than an empty list.
           ...(v && iShape.innerKadappaWidths.length === 0
             ? { innerKadappaCount: iShape.innerKadappaCount || 2, innerKadappaWidths: Array(iShape.innerKadappaCount || 2).fill(0) }
             : {}),
         })}
       />
       {iShape.hasInnerKadappa && (
-        <div className="py-3 flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <NumInput
             label="Number of Inner Side Kadappa"
             value={iShape.innerKadappaCount}
@@ -221,19 +282,113 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
               const safeCount = Math.max(1, Math.round(count) || 1);
               // Resize innerKadappaWidths to match the new count — keep
               // existing entries in place, pad new ones with 0, truncate
-              // extra ones. gapWidths is resized later (measurement step)
-              // once the total Kadappa count for this configuration is
-              // known there.
+              // extra ones. gapWidths resizes itself via the effect above
+              // once the sequence length changes as a result.
               const widths = Array.from({ length: safeCount }, (_, i) => iShape.innerKadappaWidths[i] ?? 0);
               updateIShapeConfig({ innerKadappaCount: safeCount, innerKadappaWidths: widths });
             }}
           />
+          {sequence.filter((s) => s.kind === 'inner').map((slot) => (
+            <NumInput
+              key={slot.letter}
+              label={`Inner Kadappa ${slot.letter} Width`}
+              value={iShape.innerKadappaWidths[slot.innerIndex!] ?? 0}
+              onChange={(v) => {
+                const widths = [...iShape.innerKadappaWidths];
+                widths[slot.innerIndex!] = v;
+                updateIShapeConfig({ innerKadappaWidths: widths });
+              }}
+              note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
+            />
+          ))}
         </div>
+      )}
+
+      {sequence.length > 1 && (
+        <>
+          <div className="h-px" style={{ background: '#2a3347' }} />
+          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Gap Between Kadappas</p>
+          {sequence.slice(1).map((slot, i) => {
+            const prevLetter = sequence[i].letter;
+            return (
+              <NumInput
+                key={`gap-${i}`}
+                label={`Width from Kadappa ${prevLetter} to ${slot.letter}`}
+                value={iShape.gapWidths[i] ?? 0}
+                onChange={(v) => {
+                  const gaps = Array.from({ length: gapCountNeeded }, (_, gi) => iShape.gapWidths[gi] ?? 0);
+                  gaps[i] = v;
+                  updateIShapeConfig({ gapWidths: gaps });
+                }}
+                note="Open wall space between these two Kadappas — separate from either Kadappa's own Width"
+              />
+            );
+          })}
+        </>
+      )}
+
+      <div className="flex gap-3 mt-2">
+        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
+        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 3: Trolley Type ──────────────────────────────────────────────────────
+// Per the spec's own flow (Kitchen Type → Kadappa → Trolley Type →
+// Drawing). Dropdown-style button list of every registered
+// TROLLEY_TEMPLATES entry — currently just "Free Door Trolley," the one
+// real, fully worked template. The selected id is passed straight to the
+// I-Shape drawing engine, which inserts that template's Outer Panel into
+// the first Inner Side Kadappa section.
+
+function Step3({ onFinish, onBack }: { onFinish: () => void; onBack: () => void }) {
+  const { model, updateIShapeConfig } = useApp();
+  const iShape = model.kitchen.iShape;
+  const templates = Object.values(TROLLEY_TEMPLATES);
+
+  return (
+    <div className="flex flex-col gap-2 p-6">
+      <p className="text-sm mb-2" style={{ color: '#64748b' }}>Select the Trolley Type for this kitchen</p>
+
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => updateIShapeConfig({ trolleyTemplateId: null })}
+          className="text-left py-3 px-4 rounded-lg font-bold text-sm transition-all"
+          style={{
+            background: iShape.trolleyTemplateId === null ? '#1d4ed8' : '#161b27',
+            color: iShape.trolleyTemplateId === null ? '#fff' : '#64748b',
+            border: `1.5px solid ${iShape.trolleyTemplateId === null ? '#3b82f6' : '#2a3347'}`,
+          }}
+        >
+          No Trolley
+        </button>
+        {templates.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => updateIShapeConfig({ trolleyTemplateId: t.id })}
+            className="text-left py-3 px-4 rounded-lg font-bold text-sm transition-all"
+            style={{
+              background: iShape.trolleyTemplateId === t.id ? '#1d4ed8' : '#161b27',
+              color: iShape.trolleyTemplateId === t.id ? '#fff' : '#64748b',
+              border: `1.5px solid ${iShape.trolleyTemplateId === t.id ? '#3b82f6' : '#2a3347'}`,
+            }}
+          >
+            {t.name}
+          </button>
+        ))}
+      </div>
+
+      {iShape.trolleyTemplateId && !iShape.hasInnerKadappa && (
+        <p className="text-xs mt-2 px-1" style={{ color: '#fbbf24' }}>
+          ⚠ This trolley needs an Inner Side Kadappa to sit in — go back to Features and add one.
+        </p>
       )}
 
       <div className="flex gap-3 mt-4">
         <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>Open Live Drawing →</button>
+        <button onClick={onFinish} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>Open Live Drawing →</button>
       </div>
     </div>
   );
@@ -243,23 +398,20 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
 
 export const KitchenSteps: React.FC = () => {
   const { model, completeStep, setStep, setScreen } = useApp();
-  // A project saved (or the demo project) before Steps 3-7 were removed
-  // can have currentStep pointing PAST the new last step — that used to
-  // mean "already finished Wall Measurements/Openings/etc., ready to
-  // review/draw," which the new 2-step wizard has no equivalent screen
-  // for. Rather than clamp it into re-showing Step 2's Kadappa form (an
-  // I-Shape-only editor, meaningless for an already-configured L-Shape
-  // demo project), skip the wizard entirely and go straight to the
-  // drawing — the same real destination that state used to lead to.
+  // A project saved (or the demo project) under an older, shorter wizard
+  // can have currentStep pointing PAST the current last step — that used
+  // to mean "already finished the wizard, ready to review/draw." Rather
+  // than clamp it into re-showing an earlier step's form, skip the wizard
+  // entirely and go straight to the drawing — the same real destination
+  // that state used to lead to.
   React.useEffect(() => {
     if ((model.currentStep || 1) > TOTAL_STEPS) setScreen('drawing');
   }, [model.currentStep, setScreen]);
   const step = Math.min(TOTAL_STEPS, Math.max(1, model.currentStep || 1));
   const goNext = () => { completeStep(step); setStep(step + 1); };
   const goBack = () => setStep(Math.max(1, step - 1));
-  // Step 2 is now the last step — its own "Next →" button goes straight
-  // to the live drawing (see Step2's onNext prop below) instead of
-  // advancing to a step 3 that no longer exists.
+  // Step 3 (Trolley Type) is the last step — its own "Open Live Drawing →"
+  // button goes straight to the live drawing.
   const finish = () => { completeStep(step); setScreen('drawing'); };
 
   if ((model.currentStep || 1) > TOTAL_STEPS) return null;
@@ -268,7 +420,8 @@ export const KitchenSteps: React.FC = () => {
     <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#0d1117' }}>
       <StepHeader step={step} total={TOTAL_STEPS} />
       {step === 1 && <Step1 onNext={goNext} />}
-      {step === 2 && <Step2 onNext={finish} onBack={goBack} />}
+      {step === 2 && <Step2 onNext={goNext} onBack={goBack} />}
+      {step === 3 && <Step3 onFinish={finish} onBack={goBack} />}
     </div>
   );
 };

@@ -3,10 +3,11 @@ import { useApp } from '../store/AppContext';
 import { PlanView } from '../drawing/PlanView';
 import { ElevationA } from '../drawing/ElevationA';
 import { ElevationB } from '../drawing/ElevationB';
+import { IShapeKitchenDrawing } from '../products/kitchen/IShapeKitchenDrawing';
 import { openRutujaDemo } from '../App';
 import type { CabinetModule, ModuleType } from '../store/types';
 
-type DrawTab = 'plan' | 'elev-a' | 'elev-b';
+type DrawTab = 'plan' | 'elev-a' | 'elev-b' | 'i-shape';
 type PanelTab = 'measure' | 'drawing' | 'evidence' | 'ai';
 
 // ─── Small shared helpers ──────────────────────────────────────────────────────
@@ -423,7 +424,17 @@ function LeftPanel({ panelTab, setPanelTab }: { panelTab: PanelTab; setPanelTab:
 
 // ─── Drawing canvas area ───────────────────────────────────────────────────────
 
-const DRAW_TABS: { id: DrawTab; label: string; active: boolean }[] = [
+// I-Shape Kitchen (model.kitchen.type === 'straight') gets its own fixed
+// reference-style drawing (IShapeKitchenDrawing, driven by iShape/Trolley
+// config) instead of the generic wall/module Plan/Elevation views — those
+// have no I-Shape/Kadappa awareness at all (see iShapeKitchenGeometry.ts).
+// Other shapes (L/U-Shape, Parallel) keep the old generic tabs unchanged,
+// per the spec's own "other shapes remain available for future
+// development" instruction.
+const I_SHAPE_DRAW_TABS: { id: DrawTab; label: string; active: boolean }[] = [
+  { id: 'i-shape', label: 'I-SHAPE KITCHEN', active: true },
+];
+const GENERIC_DRAW_TABS: { id: DrawTab; label: string; active: boolean }[] = [
   { id: 'plan', label: 'PLAN', active: true },
   { id: 'elev-a', label: 'ELEVATION A', active: true },
   { id: 'elev-b', label: 'ELEVATION B', active: true },
@@ -432,7 +443,12 @@ const FUTURE_TABS = ['COUNTER PLAN', 'SECTION', 'DETAIL'];
 
 function DrawingCanvas() {
   const { model, geo, selectedModuleId, setSelectedModuleId, setScreen } = useApp();
-  const [drawTab, setDrawTab] = useState<DrawTab>('elev-a');
+  const isIShape = model.kitchen.type === 'straight';
+  const DRAW_TABS = isIShape ? I_SHAPE_DRAW_TABS : GENERIC_DRAW_TABS;
+  // Opens directly on the new I-Shape drawing (spec §2: "automatically
+  // appear") when that's the active kitchen shape, otherwise keeps the
+  // existing default of Elevation A for the generic system.
+  const [drawTab, setDrawTab] = useState<DrawTab>(isIShape ? 'i-shape' : 'elev-a');
 
   const exportSVG = useCallback(() => {
     const svg = document.getElementById('main-drawing-svg');
@@ -487,23 +503,34 @@ function DrawingCanvas() {
         </div>
       </div>
 
-      {/* SVG area */}
-      <div className="flex-1 overflow-hidden p-3" style={{ background: '#e8eaf0' }}>
-        <div className="w-full h-full rounded-xl overflow-hidden shadow-2xl" style={{ background: '#fff' }}>
-          {drawTab === 'plan' && (
-            <PlanView geo={geo} projectId={model.project.projectId}
-              selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
-          )}
-          {drawTab === 'elev-a' && (
-            <ElevationA geo={geo} projectId={model.project.projectId}
-              selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
-          )}
-          {drawTab === 'elev-b' && (
-            <ElevationB geo={geo} projectId={model.project.projectId}
-              selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
-          )}
+      {/* SVG area — the I-Shape drawing (TechnicalDrawingSvg) sizes itself
+          from real world-mm content and can be taller than the old fixed
+          module views ever were, so that tab gets its own scrollable
+          container instead of the generic tabs' overflow-hidden box. */}
+      {drawTab === 'i-shape' ? (
+        <div className="flex-1 overflow-auto p-3" style={{ background: '#e8eaf0' }}>
+          <div className="rounded-xl shadow-2xl p-4" style={{ background: '#fff' }}>
+            <IShapeKitchenDrawing iShape={model.kitchen.iShape} />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 overflow-hidden p-3" style={{ background: '#e8eaf0' }}>
+          <div className="w-full h-full rounded-xl overflow-hidden shadow-2xl" style={{ background: '#fff' }}>
+            {drawTab === 'plan' && (
+              <PlanView geo={geo} projectId={model.project.projectId}
+                selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
+            )}
+            {drawTab === 'elev-a' && (
+              <ElevationA geo={geo} projectId={model.project.projectId}
+                selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
+            )}
+            {drawTab === 'elev-b' && (
+              <ElevationB geo={geo} projectId={model.project.projectId}
+                selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Selected module info */}
       {selectedModuleId && (() => {

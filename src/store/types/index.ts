@@ -75,6 +75,12 @@ export interface IShapeKitchenConfig {
    * e.g. for A,B,C,D this holds [A→B, B→C, C→D]. A genuinely separate
    * measurement from any Kadappa's own width, per the spec's core rule. */
   gapWidths: number[];
+
+  /** Selected Trolley Type id (key into TROLLEY_TEMPLATES,
+   * src/products/kitchen/trolleyTemplates.ts) — null until chosen in
+   * Step 3 of the wizard. Its Outer Panel is inserted into the first
+   * Inner Side Kadappa section (slot B) by the I-Shape drawing engine. */
+  trolleyTemplateId: string | null;
 }
 
 export interface KitchenConfig {
