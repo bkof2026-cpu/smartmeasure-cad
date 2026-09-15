@@ -5,6 +5,13 @@ import type { KitchenProjectModel } from '../store/types';
 // ── Arc. Rutuja Joshi · Best Kitchennet · Nashik · imported from client PDF ──
 export const DEMO_PROJECT: KitchenProjectModel = {
   isDemoData: true,
+  // Left at 5 (the old wizard's "Review" step) even though the wizard is
+  // now only 2 steps (Kitchen Type, Features/Kadappa) — KitchenSteps.tsx
+  // treats any currentStep past its own TOTAL_STEPS as "already finished,
+  // go straight to the drawing" (this demo project — an already-fully-
+  // measured L-Shape kitchen imported from a client PDF — has nothing
+  // left to configure in the new wizard, and Step 2's Kadappa editor is
+  // I-Shape-only anyway, meaningless for an L-Shape project).
   currentStep: 5,
   completedSteps: [1, 2, 3, 4],
   project: {

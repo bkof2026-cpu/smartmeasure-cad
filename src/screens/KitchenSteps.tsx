@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../store/AppContext';
-import type { Opening, CabinetModule, WallSideKadappaOption, KitchenProjectModel } from '../store/types';
+import type { WallSideKadappaOption } from '../store/types';
 
-const TOTAL_STEPS = 7;
+// Steps 3-7 (Wall Measurements/Kadappa entry, Openings, Existing
+// Conditions, Cabinet Modules, Review) removed per the user's explicit
+// instruction — the Kitchen flow is now just Kitchen Type + Kadappa
+// layout choices, then straight to the live drawing. Their old
+// component functions (Step3-Step7), the Opening/CabinetModule-typed
+// UI, and buildKadappaSequence/KadappaSlot lived here; none of that
+// logic is used anywhere else, so it's deleted rather than kept unused
+// (the drawing itself, computeGeometry, and AppContext's store actions
+// are untouched — this only removes the removed steps' own UI).
+const TOTAL_STEPS = 2;
 
 const STEP_LABELS = [
   'Kitchen Type',
   'Features',
-  'Wall Measurements',
-  'Openings',
-  'Existing Conditions',
-  'Cabinet Modules',
-  'Review',
 ];
 
 function StepHeader({ step, total }: { step: number; total: number }) {
@@ -229,454 +233,7 @@ function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
 
       <div className="flex gap-3 mt-4">
         <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Step 3: Measurements (I-Shape Kitchen) ───────────────────────────────────
-// Rebuilt from scratch per the Kitchen Model spec — Total Kitchen H/W,
-// Pani Patti H/W (width defaults to Total Kitchen Width, stays editable),
-// each Kadappa's own independently-entered Width (Wall Side + Inner
-// Side), and the gap width between every consecutive pair of Kadappas —
-// a genuinely separate measurement from any Kadappa's own width. Letters
-// (A, B, C, D...) are assigned sequentially left-to-right across however
-// many Kadappas are actually configured (see kadappaSequence below),
-// matching the naming rule confirmed with the user directly.
-
-/** One physical Kadappa in left-to-right order, with its resolved letter. */
-interface KadappaSlot {
-  letter: string;
-  kind: 'wall-left' | 'inner' | 'wall-right';
-  /** Index into iShape.innerKadappaWidths, only set when kind === 'inner'. */
-  innerIndex?: number;
-}
-
-/** Builds the physical left-to-right Kadappa sequence and assigns
- * sequential letters — the single source of truth for naming, used by
- * both the measurement step and the drawing engine so they never
- * disagree on which letter belongs to which physical Kadappa. */
-export function buildKadappaSequence(iShape: KitchenProjectModel['kitchen']['iShape']): KadappaSlot[] {
-  const slots: KadappaSlot[] = [];
-  if (iShape.wallSideKadappa === 'Left' || iShape.wallSideKadappa === 'Both') {
-    slots.push({ kind: 'wall-left', letter: '' });
-  }
-  if (iShape.hasInnerKadappa) {
-    for (let i = 0; i < iShape.innerKadappaCount; i++) {
-      slots.push({ kind: 'inner', letter: '', innerIndex: i });
-    }
-  }
-  if (iShape.wallSideKadappa === 'Right' || iShape.wallSideKadappa === 'Both') {
-    slots.push({ kind: 'wall-right', letter: '' });
-  }
-  slots.forEach((s, i) => { s.letter = String.fromCharCode(65 + i); }); // A, B, C, D...
-  return slots;
-}
-
-function kadappaSlotLabel(kind: KadappaSlot['kind']): string {
-  if (kind === 'wall-left') return 'Left Side Wall Kadappa';
-  if (kind === 'wall-right') return 'Right Side Wall Kadappa';
-  return 'Inner Side Kadappa';
-}
-
-function Step3({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { model, updateIShapeConfig } = useApp();
-  const iShape = model.kitchen.iShape;
-  const sequence = buildKadappaSequence(iShape);
-
-  // Keeps gapWidths sized to (sequence.length - 1) — the array is derived
-  // from wallSideKadappa/hasInnerKadappa/innerKadappaCount, all set on
-  // earlier steps, so this reconciles it here (rather than needing every
-  // upstream setter to know the current total Kadappa count) whenever the
-  // Kadappa sequence itself changes. Existing gap values are preserved by
-  // position; new slots start at 0, extra ones are dropped.
-  const gapCountNeeded = Math.max(0, sequence.length - 1);
-  React.useEffect(() => {
-    if (iShape.gapWidths.length !== gapCountNeeded) {
-      const resized = Array.from({ length: gapCountNeeded }, (_, i) => iShape.gapWidths[i] ?? 0);
-      updateIShapeConfig({ gapWidths: resized });
-    }
-    // Only re-run when the required COUNT changes, not on every gap edit
-    // (gapWidths itself is intentionally excluded — including it would
-    // re-run this effect on every keystroke into a gap field).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gapCountNeeded]);
-
-  return (
-    <div className="flex flex-col gap-5 p-6">
-      <p className="text-sm" style={{ color: '#64748b' }}>Enter all kitchen dimensions in mm</p>
-
-      <NumInput
-        label="Total Kitchen Height"
-        value={iShape.height}
-        onChange={(v) => updateIShapeConfig({ height: v })}
-        note="Full height from floor to the top of the kitchen wall structure"
-      />
-      <NumInput
-        label="Total Kitchen Width"
-        value={iShape.width}
-        onChange={(v) => {
-          // Pani Patti Width defaults to Total Kitchen Width — but only
-          // while it hasn't been independently set, matching the same
-          // "default until touched, then stays independent" convention
-          // used elsewhere (TV Unit's Mandir/Partition Height).
-          const patch: Partial<typeof iShape> = { width: v };
-          if (iShape.paniPattiWidth === undefined) patch.paniPattiWidth = v;
-          updateIShapeConfig(patch);
-        }}
-        note="Left wall to right wall — the complete kitchen span"
-      />
-
-      <div className="h-px" style={{ background: '#2a3347' }} />
-      <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Pani Patti</p>
-      <NumInput label="Pani Patti Height" value={iShape.paniPattiHeight} onChange={(v) => updateIShapeConfig({ paniPattiHeight: v })} />
-      <NumInput
-        label="Pani Patti Width"
-        value={iShape.paniPattiWidth ?? iShape.width}
-        onChange={(v) => updateIShapeConfig({ paniPattiWidth: v })}
-        note={`Defaults to Total Kitchen Width (${iShape.width} mm) — editable`}
-      />
-
-      {sequence.length > 0 && (
-        <>
-          <div className="h-px" style={{ background: '#2a3347' }} />
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Kadappa Widths</p>
-          {sequence.map((slot) => (
-            <NumInput
-              key={slot.letter}
-              label={`Kadappa ${slot.letter} — ${kadappaSlotLabel(slot.kind)}`}
-              value={
-                slot.kind === 'wall-left' ? iShape.leftWallKadappaWidth
-                  : slot.kind === 'wall-right' ? iShape.rightWallKadappaWidth
-                  : iShape.innerKadappaWidths[slot.innerIndex!] ?? 0
-              }
-              onChange={(v) => {
-                if (slot.kind === 'wall-left') updateIShapeConfig({ leftWallKadappaWidth: v });
-                else if (slot.kind === 'wall-right') updateIShapeConfig({ rightWallKadappaWidth: v });
-                else {
-                  const widths = [...iShape.innerKadappaWidths];
-                  widths[slot.innerIndex!] = v;
-                  updateIShapeConfig({ innerKadappaWidths: widths });
-                }
-              }}
-              note={`Height = Total Kitchen Height (${iShape.height} mm) — automatic`}
-            />
-          ))}
-        </>
-      )}
-
-      {sequence.length > 1 && (
-        <>
-          <div className="h-px" style={{ background: '#2a3347' }} />
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Gap Between Kadappas</p>
-          {sequence.slice(1).map((slot, i) => {
-            const prevLetter = sequence[i].letter;
-            return (
-              <NumInput
-                key={`gap-${i}`}
-                label={`Width from Kadappa ${prevLetter} to ${slot.letter}`}
-                value={iShape.gapWidths[i] ?? 0}
-                onChange={(v) => {
-                  const gaps = Array.from({ length: gapCountNeeded }, (_, gi) => iShape.gapWidths[gi] ?? 0);
-                  gaps[i] = v;
-                  updateIShapeConfig({ gapWidths: gaps });
-                }}
-                note="Open wall space between these two Kadappas — separate from either Kadappa's own Width"
-              />
-            );
-          })}
-        </>
-      )}
-
-      <div className="flex gap-3 mt-2">
-        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Step 4: Openings ──────────────────────────────────────────────────────────
-
-function Step4({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { model, addOpening, removeOpening } = useApp();
-  const [type, setType] = useState<Opening['type']>('window');
-  const [wallId, setWallId] = useState('A');
-  const [width, setWidth] = useState(0);
-  const [height, setHeight] = useState(0);
-  const [dist, setDist] = useState(0);
-  const [sill, setSill] = useState(0);
-
-  const addNew = () => {
-    if (!width || !height) return;
-    addOpening({
-      id: `${type.toUpperCase()}-${Date.now()}`,
-      type, wallId, width, height,
-      distanceFromLeft: dist,
-      sillHeight: type === 'window' ? sill : undefined,
-    });
-    setWidth(0); setHeight(0); setDist(0); setSill(0);
-  };
-
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <p className="text-sm" style={{ color: '#64748b' }}>Record all doors, windows and obstacles</p>
-
-      {/* Existing openings */}
-      {model.openings.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {model.openings.map((o) => (
-            <div key={o.id} className="flex items-center justify-between rounded-lg px-4 py-3" style={{ background: '#1e2535', border: '1px solid #2a3347' }}>
-              <div>
-                <span className="text-sm font-bold font-mono" style={{ color: '#60a5fa' }}>{o.id}</span>
-                <span className="text-xs ml-2" style={{ color: '#64748b' }}>Wall {o.wallId} · {o.width}×{o.height} mm · @{o.distanceFromLeft}mm</span>
-              </div>
-              <button onClick={() => removeOpening(o.id)} className="text-xs px-2 py-1 rounded" style={{ background: '#7f1d1d', color: '#fca5a5' }}>Remove</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Add new */}
-      <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: '#1e2535', border: '1.5px solid #2a3347' }}>
-        <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#64748b' }}>Add New Opening</p>
-        <div className="grid grid-cols-2 gap-2">
-          {(['window', 'door', 'column', 'beam', 'electrical', 'plumbing'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setType(t)}
-              className="py-2 rounded-lg text-sm font-semibold"
-              style={{ background: type === t ? '#1d4ed8' : '#161b27', color: type === t ? '#fff' : '#64748b', border: `1.5px solid ${type === t ? '#3b82f6' : '#2a3347'}` }}
-            >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          {model.kitchen.walls.map((w) => (
-            <button key={w.id} onClick={() => setWallId(w.id)} className="flex-1 py-2 rounded-lg text-sm font-bold"
-              style={{ background: wallId === w.id ? '#1d4ed8' : '#161b27', color: wallId === w.id ? '#fff' : '#64748b', border: `1.5px solid ${wallId === w.id ? '#3b82f6' : '#2a3347'}` }}>
-              Wall {w.id}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wider" style={{ color: '#64748b' }}>Width (mm)</label>
-            <input type="number" inputMode="numeric" value={width || ''} onChange={(e) => setWidth(Number(e.target.value))} className="rounded-lg px-3 py-3 text-xl font-mono font-bold text-center outline-none" style={{ background: '#161b27', border: '2px solid #2a3347', color: '#60a5fa' }} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wider" style={{ color: '#64748b' }}>Height (mm)</label>
-            <input type="number" inputMode="numeric" value={height || ''} onChange={(e) => setHeight(Number(e.target.value))} className="rounded-lg px-3 py-3 text-xl font-mono font-bold text-center outline-none" style={{ background: '#161b27', border: '2px solid #2a3347', color: '#60a5fa' }} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wider" style={{ color: '#64748b' }}>Distance from Left (mm)</label>
-            <input type="number" inputMode="numeric" value={dist || ''} onChange={(e) => setDist(Number(e.target.value))} className="rounded-lg px-3 py-3 text-xl font-mono font-bold text-center outline-none" style={{ background: '#161b27', border: '2px solid #2a3347', color: '#60a5fa' }} />
-          </div>
-          {type === 'window' && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs uppercase tracking-wider" style={{ color: '#64748b' }}>Sill Height (mm)</label>
-              <input type="number" inputMode="numeric" value={sill || ''} onChange={(e) => setSill(Number(e.target.value))} className="rounded-lg px-3 py-3 text-xl font-mono font-bold text-center outline-none" style={{ background: '#161b27', border: '2px solid #2a3347', color: '#60a5fa' }} />
-            </div>
-          )}
-        </div>
-        <button onClick={addNew} className="w-full py-3 rounded-xl font-bold" style={{ background: '#064e3b', color: '#6ee7b7', border: '1.5px solid #065f46' }}>
-          + Add {type.charAt(0).toUpperCase() + type.slice(1)}
-        </button>
-      </div>
-
-      <div className="flex gap-3 mt-2">
-        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Step 5: Existing Conditions ──────────────────────────────────────────────
-
-function Step5({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { model, updateKitchenConfig } = useApp();
-  const k = model.kitchen;
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <p className="text-sm" style={{ color: '#64748b' }}>Record existing conditions on site</p>
-      {k.hasKadappa && (
-        <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: '#1e2535', border: '1.5px solid #2a3347' }}>
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Existing Kadappa / Platform</p>
-          <div className="grid grid-cols-3 gap-3">
-            {(['height', 'depth', 'length'] as const).map((dim) => (
-              <div key={dim} className="flex flex-col gap-1">
-                <label className="text-xs uppercase tracking-wider" style={{ color: '#64748b' }}>{dim} (mm)</label>
-                <input type="number" inputMode="numeric"
-                  value={k.kadappa?.[dim] ?? ''}
-                  onChange={(e) => updateKitchenConfig({ kadappa: { ...k.kadappa ?? { length: 0, depth: 0, height: 0 }, [dim]: Number(e.target.value) } })}
-                  className="rounded-lg px-2 py-3 text-lg font-mono font-bold text-center outline-none"
-                  style={{ background: '#161b27', border: '2px solid #2a3347', color: '#60a5fa' }}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {k.hasSkirting && (
-        <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: '#1e2535', border: '1.5px solid #2a3347' }}>
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Existing Skirting</p>
-          <div className="grid grid-cols-2 gap-3">
-            {(['height', 'depth'] as const).map((dim) => (
-              <div key={dim} className="flex flex-col gap-1">
-                <label className="text-xs uppercase tracking-wider" style={{ color: '#64748b' }}>{dim} (mm)</label>
-                <input type="number" inputMode="numeric"
-                  value={k.skirting?.[dim] ?? ''}
-                  onChange={(e) => updateKitchenConfig({ skirting: { ...k.skirting ?? { height: 0, depth: 0 }, [dim]: Number(e.target.value) } })}
-                  className="rounded-lg px-2 py-3 text-lg font-mono font-bold text-center outline-none"
-                  style={{ background: '#161b27', border: '2px solid #2a3347', color: '#60a5fa' }}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {!k.hasKadappa && !k.hasSkirting && (
-        <p className="text-sm py-8 text-center" style={{ color: '#475569' }}>No existing conditions selected in Step 2.</p>
-      )}
-      <div className="flex gap-3 mt-2">
-        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Step 6: Cabinet Modules ──────────────────────────────────────────────────
-
-function Step6({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { model, addModule, updateModule, removeModule, geo } = useApp();
-  const [editId, setEditId] = useState<string | null>(null);
-
-  const addBaseModule = (wallId: string) => {
-    const newMod: CabinetModule = {
-      id: `BASE-${wallId}-${Date.now()}`,
-      type: 'base', wallId,
-      position: -1,
-      width: 700, height: 750, depth: 600,
-      shutterRequired: true, hasDrawer: false, hasShelf: true,
-      isFixed: false,
-    };
-    addModule(newMod);
-  };
-
-  const addTrolley = (wallId: string) => {
-    addModule({
-      id: `TROLL-${wallId}-${Date.now()}`,
-      type: 'trolley', wallId, position: -1,
-      width: 450, height: 750, depth: 600,
-      shutterRequired: false, hasDrawer: false, hasShelf: false,
-      isFixed: true,
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <p className="text-sm" style={{ color: '#64748b' }}>Configure cabinet modules for each wall</p>
-
-      {model.kitchen.walls.map((wall) => {
-        const wallMods = model.modules.filter((m) => m.wallId === wall.id);
-        const avail = geo.availableWidth[wall.id] ?? 0;
-        const used = geo.usedWidth[wall.id] ?? 0;
-        const overflow = used > avail;
-        return (
-          <div key={wall.id} className="rounded-xl p-4 flex flex-col gap-3" style={{ background: '#1e2535', border: `1.5px solid ${overflow ? '#ef4444' : '#2a3347'}` }}>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold" style={{ color: '#e2e8f0' }}>Wall {wall.id} — {wall.length} mm</p>
-              <span className="text-xs font-mono" style={{ color: overflow ? '#ef4444' : '#10b981' }}>
-                {Math.round(used)}/{Math.round(avail)} mm
-              </span>
-            </div>
-            {wallMods.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: '#161b27', border: '1px solid #2a3347' }}>
-                <span className="text-xs font-mono font-bold flex-1" style={{ color: '#60a5fa' }}>{m.id.split('-').slice(0, 2).join('-')}</span>
-                <span className="text-xs" style={{ color: '#64748b' }}>{m.type}</span>
-                {editId === m.id ? (
-                  <input
-                    type="number" inputMode="numeric"
-                    value={m.width}
-                    onChange={(e) => updateModule(m.id, { width: Number(e.target.value) })}
-                    className="w-20 rounded px-2 py-1 text-sm font-mono text-center outline-none"
-                    style={{ background: '#1e2535', border: '2px solid #3b82f6', color: '#60a5fa' }}
-                    onBlur={() => setEditId(null)}
-                    autoFocus
-                  />
-                ) : (
-                  <button onClick={() => setEditId(m.id)} className="text-xs font-mono px-2 py-1 rounded" style={{ background: '#1e2535', color: '#60a5fa', border: '1px solid #2a3347' }}>
-                    {m.width} mm
-                  </button>
-                )}
-                <button onClick={() => removeModule(m.id)} className="text-xs px-2 py-1 rounded" style={{ background: '#450a0a', color: '#fca5a5' }}>✕</button>
-              </div>
-            ))}
-            <div className="flex gap-2">
-              <button onClick={() => addBaseModule(wall.id)} className="flex-1 py-2 rounded-lg text-sm font-semibold" style={{ background: '#064e3b', color: '#6ee7b7', border: '1.5px solid #065f46' }}>
-                + Base Cabinet
-              </button>
-              {model.kitchen.trolleyRequired && (
-                <button onClick={() => addTrolley(wall.id)} className="flex-1 py-2 rounded-lg text-sm font-semibold" style={{ background: '#78350f', color: '#fcd34d', border: '1.5px solid #92400e' }}>
-                  + Trolley
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      <div className="flex gap-3 mt-2">
-        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Step 7: Review ───────────────────────────────────────────────────────────
-
-function Step7({ onFinish, onBack }: { onFinish: () => void; onBack: () => void }) {
-  const { model, geo, setScreen } = useApp();
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="rounded-xl p-4" style={{ background: '#1e2535', border: '1.5px solid #2a3347' }}>
-        <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: '#64748b' }}>Measurement Completion</p>
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex-1 rounded-full h-3" style={{ background: '#161b27' }}>
-            <div className="h-3 rounded-full" style={{ background: '#3b82f6', width: `${geo.completionPercent}%` }} />
-          </div>
-          <span className="text-xl font-bold font-mono" style={{ color: '#60a5fa' }}>{geo.completionPercent}%</span>
-        </div>
-      </div>
-
-      {geo.validationIssues.map((issue) => (
-        <div key={issue.id} className="flex gap-3 items-start rounded-lg px-4 py-3" style={{
-          background: issue.level === 'error' ? '#450a0a' : issue.level === 'warning' ? '#451a03' : '#0c2a1a',
-          border: `1px solid ${issue.level === 'error' ? '#ef4444' : issue.level === 'warning' ? '#f59e0b' : '#10b981'}`,
-        }}>
-          <span>{issue.level === 'error' ? '🔴' : issue.level === 'warning' ? '🟡' : '🟢'}</span>
-          <span className="text-sm" style={{ color: '#e2e8f0' }}>{issue.message}</span>
-        </div>
-      ))}
-
-      {geo.validationIssues.length === 0 && (
-        <div className="flex gap-3 items-center rounded-lg px-4 py-4" style={{ background: '#0c2a1a', border: '1px solid #10b981' }}>
-          <span>✅</span>
-          <span className="text-sm font-bold" style={{ color: '#6ee7b7' }}>All measurements valid — READY FOR DRAWING</span>
-        </div>
-      )}
-
-      <button onClick={() => setScreen('drawing')} className="w-full py-5 rounded-xl font-bold text-base mt-2" style={{ background: '#1d4ed8', color: '#fff' }}>
-        Open Live Drawing →
-      </button>
-      <div className="flex gap-3">
-        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
-        <button onClick={onFinish} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Finish</button>
+        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>Open Live Drawing →</button>
       </div>
     </div>
   );
@@ -686,20 +243,32 @@ function Step7({ onFinish, onBack }: { onFinish: () => void; onBack: () => void 
 
 export const KitchenSteps: React.FC = () => {
   const { model, completeStep, setStep, setScreen } = useApp();
-  const step = model.currentStep || 1;
+  // A project saved (or the demo project) before Steps 3-7 were removed
+  // can have currentStep pointing PAST the new last step — that used to
+  // mean "already finished Wall Measurements/Openings/etc., ready to
+  // review/draw," which the new 2-step wizard has no equivalent screen
+  // for. Rather than clamp it into re-showing Step 2's Kadappa form (an
+  // I-Shape-only editor, meaningless for an already-configured L-Shape
+  // demo project), skip the wizard entirely and go straight to the
+  // drawing — the same real destination that state used to lead to.
+  React.useEffect(() => {
+    if ((model.currentStep || 1) > TOTAL_STEPS) setScreen('drawing');
+  }, [model.currentStep, setScreen]);
+  const step = Math.min(TOTAL_STEPS, Math.max(1, model.currentStep || 1));
   const goNext = () => { completeStep(step); setStep(step + 1); };
   const goBack = () => setStep(Math.max(1, step - 1));
+  // Step 2 is now the last step — its own "Next →" button goes straight
+  // to the live drawing (see Step2's onNext prop below) instead of
+  // advancing to a step 3 that no longer exists.
+  const finish = () => { completeStep(step); setScreen('drawing'); };
+
+  if ((model.currentStep || 1) > TOTAL_STEPS) return null;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#0d1117' }}>
       <StepHeader step={step} total={TOTAL_STEPS} />
       {step === 1 && <Step1 onNext={goNext} />}
-      {step === 2 && <Step2 onNext={goNext} onBack={goBack} />}
-      {step === 3 && <Step3 onNext={goNext} onBack={goBack} />}
-      {step === 4 && <Step4 onNext={goNext} onBack={goBack} />}
-      {step === 5 && <Step5 onNext={goNext} onBack={goBack} />}
-      {step === 6 && <Step6 onNext={goNext} onBack={goBack} />}
-      {step === 7 && <Step7 onBack={goBack} onFinish={() => setScreen('drawing')} />}
+      {step === 2 && <Step2 onNext={finish} onBack={goBack} />}
     </div>
   );
 };
