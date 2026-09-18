@@ -105,10 +105,11 @@ const AppContext = createContext<AppContextValue | null>(null);
 const STORAGE_KEY = 'smartmeasure-project';
 const RULES_KEY = 'smartmeasure-rules';
 const VERSION_KEY = 'smartmeasure-version';
-// Bumped for the I-Shape Kitchen Trolley system — iShape now requires
-// trolleyTemplateId, which projects saved under version '4' don't have;
-// wipes stale storage rather than rendering against an undefined field.
-const STORAGE_VERSION = '5';
+// Bumped for the Trolley Dimension Calculation frame — iShape now requires
+// depth, depthDeduction, trolleyHeightOverride/WidthOverride/DepthOverride
+// — wipes stale storage so an old saved project doesn't render with
+// undefined values feeding the H×W×D formulas.
+const STORAGE_VERSION = '9';
 
 function clearStorage() {
   try {
@@ -363,7 +364,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loadDemo = useCallback(() => {
     setModel(DEMO_PROJECT);
     setRules(DEFAULT_RULE_PARAMS);
-    setScreen('drawing');
+    // KitchenFlow (screen 'kitchen-steps') now owns both the wizard AND
+    // the drawing as its own internal tabs — there's no separate
+    // 'drawing' screen route any more. It opens straight on its Drawing
+    // tab on mount since DEMO_PROJECT.currentStep is already past the
+    // wizard's own last step.
+    setScreen('kitchen-steps');
   }, []);
 
   const newProject = useCallback(() => {

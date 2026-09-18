@@ -31,8 +31,7 @@ class ErrorBoundary extends React.Component<
   }
 }
 import { ProductFlow } from './screens/ProductFlow';
-import { KitchenSteps } from './screens/KitchenSteps';
-import { LiveDrawing } from './screens/LiveDrawing';
+import { KitchenFlow } from './screens/KitchenFlow';
 import { FinalDrawing } from './screens/FinalDrawing';
 import { RutujaDrawing } from './screens/RutujaDrawing';
 import { ProductViewer } from './screens/ProductViewer';
@@ -53,26 +52,18 @@ const NAV: { id: AppScreen; icon: string; label: string }[] = [
   { id: 'kitchen-steps', icon: '🍳', label: 'Kitchen' },
 ];
 
-// Kitchen's nav entry must always open the COMPLETE flow from Step 1
-// (Kitchen Type), never jump straight to an existing project's Measure/
-// Drawing screen — clicking "Kitchen" is how a user chooses/reconfigures
-// the kitchen shape, not just a shortcut back into whatever was last
-// open. KitchenSteps.tsx auto-redirects to the drawing whenever
-// model.currentStep is already past its own last step (the correct
-// behaviour for an IN-PROGRESS session resuming where it left off), so
-// without resetting currentStep here, clicking the nav item on an
-// already-configured project (e.g. the demo project, permanently at
-// step 5) always skipped the wizard entirely — there was no way back to
-// Step 1 to change the Kitchen Type.
-function navClickHandler(itemId: AppScreen, setScreen: (s: AppScreen) => void, setStep: (s: number) => void) {
-  return () => {
-    if (itemId === 'kitchen-steps') setStep(1);
-    setScreen(itemId);
-  };
+// Kitchen's nav entry routes to the single KitchenFlow screen, which owns
+// its own MEASUREMENTS | DRAWING tabs internally (see KitchenFlow.tsx) —
+// it decides which tab to open on mount from the project's own
+// currentStep, so clicking "Kitchen" always lands somewhere sensible
+// (Measurements if the wizard isn't finished yet, Drawing if it is) with
+// a real way to switch between them, unlike the old two-screen flow.
+function navClickHandler(itemId: AppScreen, setScreen: (s: AppScreen) => void) {
+  return () => setScreen(itemId);
 }
 
 function Sidebar({ onLogout }: { onLogout: () => void }) {
-  const { screen, setScreen, setStep, model, geo } = useApp();
+  const { screen, setScreen, model, geo } = useApp();
   return (
     <nav className="flex flex-col border-r"
       style={{ width: 64, background: '#0d1117', borderColor: '#243045', flexShrink: 0 }}>
@@ -85,7 +76,7 @@ function Sidebar({ onLogout }: { onLogout: () => void }) {
 
       <div className="flex flex-col flex-1 py-2 gap-1">
         {NAV.map((item) => (
-          <button key={item.id} onClick={navClickHandler(item.id, setScreen, setStep)} title={item.label}
+          <button key={item.id} onClick={navClickHandler(item.id, setScreen)} title={item.label}
             className="relative flex flex-col items-center gap-0.5 py-3 mx-1.5 rounded-xl transition-all"
             style={{
               background: screen === item.id ? '#1a2233' : 'transparent',
@@ -133,12 +124,12 @@ function Sidebar({ onLogout }: { onLogout: () => void }) {
 }
 
 function BottomNav() {
-  const { screen, setScreen, setStep } = useApp();
+  const { screen, setScreen } = useApp();
   return (
     <nav className="flex border-t lg:hidden"
       style={{ background: '#0d1117', borderColor: '#243045', flexShrink: 0 }}>
       {NAV.map((item) => (
-        <button key={item.id} onClick={navClickHandler(item.id, setScreen, setStep)}
+        <button key={item.id} onClick={navClickHandler(item.id, setScreen)}
           className="flex-1 flex flex-col items-center gap-0.5 py-2"
           style={{ color: screen === item.id ? '#60a5fa' : '#3d4f6a' }}>
           <span className="text-xl">{item.icon}</span>
@@ -533,8 +524,7 @@ function Shell() {
         )}
         <main className="flex-1 overflow-hidden flex flex-col">
           {(screen === 'products' || screen === 'demos') && <ProductFlow />}
-          {screen === 'kitchen-steps' && <KitchenSteps />}
-          {screen === 'drawing' && <LiveDrawing />}
+          {screen === 'kitchen-steps' && <KitchenFlow />}
           {screen === 'final' && <FinalDrawing />}
         </main>
       </div>

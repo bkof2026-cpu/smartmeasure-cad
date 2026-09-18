@@ -6,7 +6,10 @@ export type KitchenType = 'straight' | 'l-shape' | 'u-shape' | 'parallel';
 export type ModuleType = 'base' | 'wall' | 'loft' | 'trolley' | 'open-box' | 'tall-unit' | 'corner';
 export type OpeningType = 'door' | 'window' | 'column' | 'beam' | 'electrical' | 'plumbing' | 'gas' | 'chimney';
 export type EvidenceType = 'photo' | 'video' | 'note';
-export type AppScreen = 'project' | 'products' | 'kitchen-steps' | 'drawing' | 'admin' | 'final' | 'demos' | 'product-viewer' | 'ai-convert';
+// 'drawing' was a separate screen (LiveDrawing.tsx) before KitchenFlow.tsx
+// merged the wizard and the drawing into one screen with internal tabs —
+// removed since 'kitchen-steps' (KitchenFlow) now covers both roles.
+export type AppScreen = 'project' | 'products' | 'kitchen-steps' | 'admin' | 'final' | 'demos' | 'product-viewer' | 'ai-convert';
 
 export interface ProjectDetails {
   clientName: string;
@@ -51,30 +54,95 @@ export interface IShapeKitchenConfig {
    * Pani Patti has no independent Width field, per the user's explicit
    * instruction (only its own Height is a real, separate measurement). */
   width: number;
+  /** Total Kitchen Depth (mm) — a manual site measurement, used as the
+   * source value for the Trolley Depth calculation (Kitchen Depth −
+   * Depth Deduction). Not used anywhere else in the I-Shape drawing. */
+  depth: number;
 
   paniPattiHeight: number;
 
   wallSideKadappa: WallSideKadappaOption;
-  /** Width (mm) of the Left Wall Side Kadappa — present only when
-   * wallSideKadappa is 'Left' or 'Both'. */
+  /** The Left Wall Side Kadappa's own physical Width (mm) — a real box
+   * width, present only when wallSideKadappa is 'Left' or 'Both'. NOT a
+   * distance — the open space next to it is a separate Clear Width
+   * segment (see clearWidths below). */
   leftWallKadappaWidth: number;
-  /** Width (mm) of the Right Wall Side Kadappa — present only when
-   * wallSideKadappa is 'Right' or 'Both'. */
+  /** The Right Wall Side Kadappa's own physical Width (mm) — same rule as
+   * leftWallKadappaWidth, present only when wallSideKadappa is 'Right' or
+   * 'Both'. */
   rightWallKadappaWidth: number;
 
   hasInnerKadappa: boolean;
-  /** Number of Inner Side Kadappas — manually entered, default 2. */
+  /** Number of Inner Side Kadappas — manually entered, no fixed cap (any
+   * count >= 1). */
   innerKadappaCount: number;
-  /** Each Inner Side Kadappa's own independently-entered Width (mm), in
-   * physical left-to-right order — length always kept in sync with
-   * innerKadappaCount. */
+  /** Each Inner Side Kadappa's own independently-entered physical Width
+   * (mm), in physical left-to-right order — length always kept in sync
+   * with innerKadappaCount. */
   innerKadappaWidths: number[];
+
+  /** User-entered "Clear / Inside Width" segments — the open space
+   * between two consecutive physical boundaries, left to right. The
+   * number of segments and what each one spans depends on which Kadappa
+   * exist (see buildKadappaSequence + buildClearSegments in
+   * iShapeKitchenGeometry.ts): a wall with no Kadappa contributes a
+   * Wall→first-component segment; two consecutive Kadappa contribute one
+   * segment between them; a wall WITH a Kadappa contributes none (the
+   * Kadappa sits flush against it). Independent from Kadappa width — see
+   * the Kadappa-Width vs Clear-Width distinction (never conflate the
+   * two). Kept in sync with the live segment count whenever the Kadappa
+   * configuration changes. */
+  clearWidths: number[];
+
+  /** Which open Kitchen section (a ClearSegment.index from
+   * iShapeKitchenGeometry.ts's buildClearSegments) the Trolley's Outer
+   * Panel is placed in — null until the user explicitly picks one.
+   * NEVER auto-assigned when more than one section exists; the drawing
+   * engine refuses to place the Trolley into an unselected section. Only
+   * exception: when exactly one section exists, it may be auto-selected
+   * (no real ambiguity for the user to resolve). Reset to null whenever
+   * the Kadappa configuration changes and the previously selected
+   * section no longer exists. */
+  trolleySectionId: number | null;
 
   /** Selected Trolley Type id (key into TROLLEY_TEMPLATES,
    * src/products/kitchen/trolleyTemplates.ts) — null until chosen in
-   * Step 3 of the wizard. Its Outer Panel is inserted into the first
+   * Step 2 of the wizard. Its Outer Panel is inserted into the first
    * Inner Side Kadappa section (slot B) by the I-Shape drawing engine. */
   trolleyTemplateId: string | null;
+  /** Editable "SPO" cell values for the selected trolley template, keyed
+   * by that template's own TrolleySpoField.key (e.g. 'spo', 'spoRight',
+   * 'spoCenter') — a trolley with no SPO cells (e.g. 7P-Only) leaves this
+   * empty. Every template's spoFields[].default is used until the user
+   * edits a value here. Never shared across trolley types — switching
+   * Trolley Type does not carry old SPO values over to the new template's
+   * (possibly differently-keyed) fields. */
+  spoValues: Record<string, number>;
+
+  // ─── Trolley Dimension Calculation (H × W × D) ───────────────────────────
+  // Trolley Height  = Total Kitchen Height − Pani Patti Height − 10mm (gap)
+  //                    − 30mm (height clearance)
+  // Trolley Width   = Selected Trolley Section's real Inside/Clear Width
+  //                    − 30mm (width fit)
+  // Trolley Depth   = Total Kitchen Depth − depthDeduction
+  // All three calculated values may be manually overridden by the user
+  // (trolleyHeightOverride/etc, null = use the calculated value) — an
+  // override is never silently cleared by an unrelated field changing.
+
+  /** Depth deduction (mm) applied to Kitchen Depth to get Trolley Depth —
+   * editable, default 20mm, the only other common value is 10mm. */
+  depthDeduction: number;
+
+  /** Manual override for the calculated Trolley Height — null = use the
+   * live formula result. Set only when the user directly edits the Final
+   * Trolley Height field. */
+  trolleyHeightOverride: number | null;
+  /** Manual override for the calculated Trolley Width — null = use the
+   * live formula result. */
+  trolleyWidthOverride: number | null;
+  /** Manual override for the calculated Trolley Depth — null = use the
+   * live formula result. */
+  trolleyDepthOverride: number | null;
 }
 
 export interface KitchenConfig {

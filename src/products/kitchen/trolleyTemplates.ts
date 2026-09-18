@@ -3,8 +3,8 @@ import type { DimensionRequest } from '../../engine/dimensionEngine';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Trolley Template registry — reusable system for the I-Shape Kitchen's
-// Trolley section (spec §6-21). Each template owns its own name, fixed
-// dimensions, and two independent drawing-building functions:
+// Trolley section. Each template owns its own name, fixed dimensions, any
+// editable "SPO" cells, and two independent drawing-building functions:
 //
 //   buildOuterPanel  — what appears INSIDE the main I-Shape Kitchen drawing,
 //                       occupying the first Inner Side Kadappa panel. Per the
@@ -17,17 +17,40 @@ import type { DimensionRequest } from '../../engine/dimensionEngine';
 //                       real internal breakdown (fixed + derived dimensions)
 //                       actually appears.
 //
-// Only ONE real template exists today ('free-door-trolley', built from the
-// user's own reference sketch). The registry shape supports adding more
-// (up to the ~25 the spec describes) without touching the kitchen engine —
-// per spec §21 "Do not duplicate large amounts of drawing code for every
-// trolley" and §13/§30 "Do NOT invent formulas that have not yet been
-// provided" — every other template stays unbuilt until its own real
-// dimensions/formulas are supplied.
+// SPO cells: some trolley layouts have one or two cells with NO fixed
+// dimension — labeled "SPO" in the user's own reference sketches. These
+// become user-editable fields in the wizard (KitchenFlow.tsx Step 2),
+// stored in IShapeKitchenConfig.spoValues keyed by TrolleySpoField.key.
+// Every SPO field defaults to 200mm EXCEPT 5P-CSPO's two SPO cells, which
+// the user's own sketch explicitly range-labels "200/300 (editable)" —
+// confirmed as a special case, not a general rule (src/store confirmed via
+// direct chat, see project memory).
+//
+// The user has confirmed the exact box layout + fixed numbers for 8 of the
+// 9 known trolley types by walking through their own reference sketches one
+// at a time. The 9th ("4 Panel Only Trolley") has NO numeric labels in its
+// sketch and is intentionally left as an incomplete stub — do NOT invent
+// dimensions for it. The former 'free-door-trolley' / 'two-door-trolley'
+// templates (built from an earlier, now-superseded pair of sketches) have
+// been removed per the user's explicit instruction.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface TrolleyFixedDimensions {
   [key: string]: number;
+}
+
+/** One editable "SPO" cell a trolley template exposes to the wizard. */
+export interface TrolleySpoField {
+  /** Stable key into IShapeKitchenConfig.spoValues for this template. */
+  key: string;
+  /** Shown as the input's label in the wizard, e.g. "SPO (Right)". */
+  label: string;
+  default: number;
+  /** Only set for 5P-CSPO's two SPO cells — the user's sketch explicitly
+   * range-labels them "200/300 (editable)". Absent for every other
+   * template's SPO field (plain editable number, default 200, no range). */
+  min?: number;
+  max?: number;
 }
 
 export interface TrolleyBuildResult {
@@ -38,9 +61,28 @@ export interface TrolleyBuildResult {
 
 export interface TrolleyTemplate {
   id: string;
-  /** Shown in the Step 3 dropdown and inside the Outer Panel box. */
+  /** Shown in the Step 2 dropdown and inside the Outer Panel box. */
   name: string;
   fixedDimensions: TrolleyFixedDimensions;
+  /** Empty array = no SPO cells anywhere in this trolley (e.g. 7P-Only,
+   * 5P-Only). Populated in physical top-to-bottom, left-to-right order.
+   * Every SPO field's value is its column's WIDTH — never a height. SPO's
+   * own HEIGHT is always the full Total Trolley Height (see
+   * buildInnerTrolley's totalHeight param), never a separate input. */
+  spoFields: TrolleySpoField[];
+  /** The actual number of vertical pipe/separator lines in this
+   * template's own real structure — confirmed per-template by the user,
+   * never a generic guess. Pipe Deduction = pipeCount × 20mm. */
+  pipeCount: number;
+  /** Number of non-SPO ("normal") columns that share the calculated
+   * Normal Box Width — i.e. how many column-widths the formula's result
+   * gets applied to. Does not include the SPO column, if any. */
+  normalColumnCount: number;
+  /** True only for the intentionally-incomplete "4 Panel Only Trolley"
+   * stub — has no fixed dimensions at all yet, pending real values from
+   * the user. buildOuterPanel/buildInnerTrolley still exist but draw only
+   * a placeholder, never invented numbers. */
+  incomplete?: boolean;
   /** Builds the single Outer Panel box shown inside the main I-Shape
    * drawing — origin is the panel's own top-left corner, outerWidth/
    * outerHeight are that panel's REAL resolved size (from the Kadappa
@@ -49,8 +91,59 @@ export interface TrolleyTemplate {
   /** Builds the detailed Inner Trolley drawing — origin is wherever the
    * kitchen engine has decided to place it (below the whole main drawing,
    * with real clearance) — the template only lays out its OWN geometry
-   * relative to that origin, never touching kitchen-level coordinates. */
-  buildInnerTrolley(origin: { x: number; y: number }): TrolleyBuildResult;
+   * relative to that origin, never touching kitchen-level coordinates.
+   * `spoValues` are the user's current edited SPO WIDTH values for THIS
+   * template (already defaulted — see getSpoValue below). `totalHeight`
+   * is the real Total Trolley Height every full-height column (including
+   * SPO) is drawn against. `normalColumnWidth` is the calculated width
+   * (via calculateNormalColumnWidth below) every non-SPO column/box uses
+   * for its physical width — replaces the old COL_W placeholder. */
+  buildInnerTrolley(origin: { x: number; y: number }, spoValues: Record<string, number>, totalHeight: number, normalColumnWidth: number): TrolleyBuildResult;
+}
+
+export const PIPE_WIDTH_MM = 20;
+
+export interface NormalColumnWidthResult {
+  pipeDeduction: number;
+  spoWidth: number;
+  /** The calculated width for every normal (non-SPO) column/box —
+   * Math.max(1, ...) floor applied so a pathological input never produces
+   * a zero/negative box; validity is reported separately via `valid`. */
+  normalColumnWidth: number;
+  valid: boolean;
+  invalidReason: string | null;
+}
+
+/**
+ * The ONE shared width-calculation engine every trolley template uses —
+ * per the spec's own "reusable calculation engine" requirement.
+ *
+ *   Normal Box Width = (Trolley Width − pipeCount×20mm − SPO Width if
+ *                        present) ÷ normalColumnCount
+ *
+ * SPO Width is deducted only when the template actually has an SPO field;
+ * it is never itself sized by this formula (SPO Width stays the
+ * template's own editable value).
+ */
+export function calculateNormalColumnWidth(
+  template: Pick<TrolleyTemplate, 'pipeCount' | 'normalColumnCount' | 'spoFields'>,
+  trolleyWidth: number,
+  spoValues: Record<string, number>,
+): NormalColumnWidthResult {
+  const pipeDeduction = template.pipeCount * PIPE_WIDTH_MM;
+  const spoWidth = template.spoFields.length > 0 ? getSpoValue(template.spoFields[0], spoValues) : 0;
+  const available = trolleyWidth - pipeDeduction - spoWidth;
+  const columnCount = Math.max(1, template.normalColumnCount);
+  const normalColumnWidth = available / columnCount;
+
+  const valid = normalColumnWidth > 0;
+  return {
+    pipeDeduction,
+    spoWidth,
+    normalColumnWidth: Math.max(1, normalColumnWidth),
+    valid,
+    invalidReason: valid ? null : `Trolley Width (${Math.round(trolleyWidth)}mm) is too small for this template's pipe deduction (${Math.round(pipeDeduction)}mm)${spoWidth > 0 ? ` + SPO Width (${Math.round(spoWidth)}mm)` : ''} — normal column width would be ${Math.round(normalColumnWidth)}mm.`,
+  };
 }
 
 let idCounter = 0;
@@ -60,241 +153,467 @@ function nextId(prefix: string): string {
 }
 
 const TROLLEY_COLOR = '#b45309';
+const SPO_COLOR = '#9333ea'; // distinct colour for editable SPO cells, so they read as different from fixed dimensions at a glance
 
-/**
- * "Free Door Trolley" — the one real, fully worked template, built exactly
- * from the user's own reference sketch. Fixed dimensions used are ONLY the
- * ones actually labeled there:
- *   - left column, top cell:  220mm
- *   - center gap:             200mm (unlabeled/blank column between the two side columns)
- *   - right column, top cell: 130mm
- *   - right column, bottom cell: 200mm
- * The left column's bottom cell has no labeled value in the sketch and is
- * deliberately left undimensioned in the drawing below — never invented.
- */
-const freeDoorTrolley: TrolleyTemplate = {
-  id: 'free-door-trolley',
-  name: 'Free Door Trolley',
-  fixedDimensions: {
-    innerLeftTop: 220,
-    centerGap: 200,
-    innerRightTop: 130,
-    innerRightBottom: 200,
-  },
+/** Reads a template's current SPO value, falling back to its field default
+ * when the user hasn't edited it yet (or the value was cleared to 0/undefined). */
+function getSpoValue(field: TrolleySpoField, spoValues: Record<string, number>): number {
+  const v = spoValues[field.key];
+  return v && v > 0 ? v : field.default;
+}
 
-  buildOuterPanel(origin, outerWidth, outerHeight) {
-    const { x, y } = origin;
-    const w = Math.max(1, outerWidth);
-    const h = Math.max(1, outerHeight);
-    const components: ComponentSpec[] = [
-      {
-        id: nextId('trolley-outer'),
-        type: 'TROLLEY_OUTER',
-        // Two-line label ("<Name>\n<Width> mm") — CanonicalSvg centres
-        // multi-line labels inside the box; the small-box callout system
-        // (noteBoxPlacement.ts, driven by the kitchen engine one level up)
-        // takes over automatically if this box is too small to hold it.
-        label: `${freeDoorTrolley.name}\n${Math.round(w)} mm`,
-        x, y, width: w, height: h, qty: 1, visible: true,
-        source: {
-          formula: 'Outer Panel size = the Inner Side Kadappa (slot B) panel it occupies — never independently entered',
-          constants: [],
-        },
+const COL_W = 220; // shared drawing-only column width for the Inner Trolley detail (a layout choice, not a claimed measurement — matches the pre-existing Free Door Trolley convention)
+
+/** Builds a plain "Name\nWidth mm" single-box Outer Panel — identical
+ * shape/label convention for every trolley template. */
+function buildSimpleOuterPanel(name: string, origin: { x: number; y: number }, outerWidth: number, outerHeight: number): TrolleyBuildResult {
+  const { x, y } = origin;
+  const w = Math.max(1, outerWidth);
+  const h = Math.max(1, outerHeight);
+  return {
+    components: [{
+      id: nextId('trolley-outer'),
+      type: 'TROLLEY_OUTER',
+      label: `${name}\n${Math.round(w)} mm`,
+      x, y, width: w, height: h, qty: 1, visible: true,
+      source: {
+        formula: 'Outer Panel size = the Inner Side Kadappa (slot B) panel it occupies — never independently entered',
+        constants: [],
       },
-    ];
-    return { components, dimensions: [], lines: [] };
-  },
+    }],
+    dimensions: [],
+    lines: [],
+  };
+}
 
-  buildInnerTrolley(origin) {
-    const { x, y } = origin;
-    const { innerLeftTop, centerGap, innerRightTop, innerRightBottom } = freeDoorTrolley.fixedDimensions;
-    // Left column: two stacked cells — top labeled 220mm, bottom
-    // unlabeled (sketch gives no value for it). Same visual width as the
-    // right column for a balanced drawing; height split evenly since no
-    // ratio is given for the bottom cell either.
-    const colW = 220;
-    const totalH = 450; // top+bottom cell reference height from the sketch's own proportions (220 top + ~230 bottom implied by the drawing) — only the TOP cell's value (220) is a real labeled dimension; the total column height is a drawing-only layout choice, not a claimed measurement.
-    const topH = innerLeftTop;
-    const bottomH = totalH - topH;
+function innerTrolleyTitleLine(x: number, y: number): AnnotationLine {
+  return { x1: x, y1: y - 14, x2: x, y2: y - 14, color: TROLLEY_COLOR, label: 'INNER TROLLEY' };
+}
 
+/** Pushes one stacked FIXED-HEIGHT cell into a column, plus its own
+ * vertical dimension line for the HEIGHT (a real vertical quantity, drawn
+ * as a vertical dimension on the box's edge — correct CAD convention), and
+ * an in-box "{width}(W)" text label for the WIDTH (a horizontal quantity,
+ * shown as plain text inside the box, matching the reference drawing's own
+ * "445(W) / 220(H)" convention — never a rotated dimension line). Returns
+ * the Y position right after this cell. */
+function pushFixedCell(
+  components: ComponentSpec[], dimensions: DimensionRequest[],
+  opts: { x: number; y: number; width: number; height: number; edge: 'left' | 'right'; color: string; formula: string },
+): number {
+  const { x, y, width, height, edge, color, formula } = opts;
+  const id = nextId('trolley-inner-fixed');
+  components.push({
+    id, type: 'TROLLEY_INNER_DETAIL', label: `${Math.round(width)}(W)`,
+    x, y, width, height, qty: 1, visible: true,
+    source: { formula, constants: [], fixed: true },
+  });
+  const dimX = edge === 'left' ? x : x + width;
+  dimensions.push({
+    axis: 'v', x1: dimX, y1: y, x2: dimX, y2: y + height, edge,
+    componentIds: [id], label: `${Math.round(height)} mm`, color,
+    source: { formula, constants: [], fixed: true },
+  });
+  return y + height;
+}
+
+/** Pushes an EMPTY BOX — a real structural cell whose HEIGHT is not yet
+ * defined (a future formula will size it — height stays undimensioned,
+ * per the explicit "do not invent its height formula" instruction). Its
+ * WIDTH, however, is now a real known value (the calculated Normal Column
+ * Width it inherits from its parent column), so it IS labeled — as plain
+ * HORIZONTAL text sitting inside the box (matching the reference drawing's
+ * own "445(W)" convention, same as a fixed box's "220(H)" label), never as
+ * a rotated/vertical dimension line on the box's edge. */
+function pushEmptyBox(
+  components: ComponentSpec[],
+  opts: { x: number; y: number; width: number; bottomY: number; note: string },
+): void {
+  const { x, y, width, bottomY, note } = opts;
+  const height = Math.max(1, bottomY - y);
+  const id = nextId('trolley-inner-empty');
+  components.push({
+    id, type: 'TROLLEY_INNER_EMPTY', label: `${Math.round(width)}(W)`,
+    x, y, width, height, qty: 1, visible: true,
+    source: { formula: `Empty Box Width = calculated Normal Column Width = ${Math.round(width)}mm (Height: DERIVED DIMENSION — FORMULA TO BE PROVIDED)`, constants: [], needsVerification: true, note },
+  });
+}
+
+/** Pushes one real 20mm-wide vertical PIPE — a physical structural
+ * separator, not a subtraction-only number. Drawn as its own thin filled
+ * component spanning the full Total Trolley Height, at the given x
+ * position. Returns x + PIPE_WIDTH_MM (the x position immediately after
+ * the pipe), so callers can chain pipe → column → pipe → column left to
+ * right without manual arithmetic at each call site. */
+function pushPipe(
+  components: ComponentSpec[],
+  opts: { x: number; y: number; totalHeight: number },
+): number {
+  const { x, y, totalHeight } = opts;
+  components.push({
+    id: nextId('trolley-inner-pipe'), type: 'TROLLEY_INNER_PIPE', label: '',
+    x, y, width: PIPE_WIDTH_MM, height: Math.max(1, totalHeight), qty: 1, visible: true,
+    source: { formula: `Structural pipe — fixed ${PIPE_WIDTH_MM}mm width`, constants: [], fixed: true },
+  });
+  return x + PIPE_WIDTH_MM;
+}
+
+/** Pushes a full-height SPO column — height is ALWAYS totalHeight (never a
+ * separate input), width is the template's own editable SPO field value.
+ * Draws one continuous box, never split, with a horizontal WIDTH
+ * dimension below it (never a vertical/height dimension, since SPO's
+ * height is derived from the shared Total Trolley Height, not its own
+ * measured value). */
+function pushSpoColumn(
+  components: ComponentSpec[], dimensions: DimensionRequest[],
+  opts: { x: number; y: number; width: number; totalHeight: number; bottomLabelY: number; formula: string },
+): void {
+  const { x, y, width, totalHeight, bottomLabelY, formula } = opts;
+  const id = nextId('trolley-inner-spo');
+  components.push({
+    id, type: 'TROLLEY_INNER_SPO', label: 'SPO',
+    x, y, width, height: Math.max(1, totalHeight), qty: 1, visible: true,
+    source: { formula, constants: [], needsVerification: false, note: 'SPO — Height = Total Trolley Height (not a manual input). Width/Breadth is the editable value shown below.' },
+  });
+  dimensions.push({
+    axis: 'h', x1: x, y1: bottomLabelY, x2: x + width, y2: bottomLabelY, edge: 'bottom',
+    componentIds: [id], label: `${Math.round(width)} mm (SPO Width)`, color: SPO_COLOR,
+    source: { formula, constants: [] },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. 7P-Only Trolley — 3 columns, fully fixed, no SPO.
+//    Left: one full-height box, 220. Middle: 130 top / 200 bottom.
+//    Right: one full-height box, 220 (mirrors left).
+// ─────────────────────────────────────────────────────────────────────────────
+const sevenPanelOnly: TrolleyTemplate = {
+  id: '7p-only',
+  name: '7P-Only Trolley',
+  fixedDimensions: { left: 220, middleTop: 130, middleBottom: 200, right: 220 },
+  spoFields: [],
+  pipeCount: 4,
+  normalColumnCount: 3,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('7P-Only Trolley', origin, w, h),
+  buildInnerTrolley(origin, _spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { left, middleTop, middleBottom, right } = this.fixedDimensions;
+    const totalH = left; // left column's own full height IS the trolley's total height here
     const components: ComponentSpec[] = [];
     const dimensions: DimensionRequest[] = [];
-    const lines: AnnotationLine[] = [];
 
-    // Left column
-    components.push({
-      id: nextId('trolley-inner-left-top'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x, y, width: colW, height: topH, qty: 1, visible: true,
-      source: { formula: `Free Door Trolley fixed dimension — innerLeftTop = ${innerLeftTop}mm`, constants: [], fixed: true },
-    });
-    components.push({
-      id: nextId('trolley-inner-left-bottom'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x, y: y + topH, width: colW, height: bottomH, qty: 1, visible: true,
-      source: { formula: 'Free Door Trolley — bottom cell has no labeled dimension in the reference sketch', constants: [], needsVerification: true, note: 'No fixed value supplied for this cell — left undimensioned.' },
-    });
-    dimensions.push({
-      axis: 'v', x1: x, y1: y, x2: x, y2: y + topH, edge: 'left',
-      componentIds: [components[0].id], label: `${Math.round(innerLeftTop)} mm`,
-      color: TROLLEY_COLOR,
-      source: { formula: `Free Door Trolley fixed dimension — innerLeftTop = ${innerLeftTop}mm`, constants: [], fixed: true },
-    });
+    // 4 real pipes: left outer edge, left|middle, middle|right, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight: totalH });
+    pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: totalH, edge: 'left', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — left column = ${left}mm (full height)` });
 
-    // Center gap column (blank, matching the sketch's unlabeled middle strip)
-    const gapX = x + colW;
-    components.push({
-      id: nextId('trolley-inner-gap'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x: gapX, y, width: centerGap, height: totalH, qty: 1, visible: true,
-      source: { formula: `Free Door Trolley fixed dimension — centerGap = ${centerGap}mm`, constants: [], fixed: true },
-    });
-    dimensions.push({
-      axis: 'h', x1: gapX, y1: y + totalH, x2: gapX + centerGap, y2: y + totalH, edge: 'bottom',
-      componentIds: [components[2].id], label: `${Math.round(centerGap)} mm`,
-      color: TROLLEY_COLOR,
-      source: { formula: `Free Door Trolley fixed dimension — centerGap = ${centerGap}mm`, constants: [], fixed: true },
-    });
+    const midX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight: totalH });
+    let midY = pushFixedCell(components, dimensions, { x: midX, y, width: normalColumnWidth, height: middleTop, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — middle top = ${middleTop}mm` });
+    pushFixedCell(components, dimensions, { x: midX, y: midY, width: normalColumnWidth, height: middleBottom, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — middle bottom = ${middleBottom}mm` });
 
-    // Right column: top labeled 130mm, bottom labeled 200mm
-    const rightX = gapX + centerGap;
-    const rightTopH = innerRightTop;
-    const rightBottomH = innerRightBottom;
-    components.push({
-      id: nextId('trolley-inner-right-top'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x: rightX, y, width: colW, height: rightTopH, qty: 1, visible: true,
-      source: { formula: `Free Door Trolley fixed dimension — innerRightTop = ${innerRightTop}mm`, constants: [], fixed: true },
-    });
-    components.push({
-      id: nextId('trolley-inner-right-bottom'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x: rightX, y: y + rightTopH, width: colW, height: rightBottomH, qty: 1, visible: true,
-      source: { formula: `Free Door Trolley fixed dimension — innerRightBottom = ${innerRightBottom}mm`, constants: [], fixed: true },
-    });
-    dimensions.push({
-      axis: 'v', x1: rightX + colW, y1: y, x2: rightX + colW, y2: y + rightTopH, edge: 'right',
-      componentIds: [components[3].id], label: `${Math.round(innerRightTop)} mm`,
-      color: TROLLEY_COLOR,
-      source: { formula: `Free Door Trolley fixed dimension — innerRightTop = ${innerRightTop}mm`, constants: [], fixed: true },
-    });
-    dimensions.push({
-      axis: 'v', x1: rightX + colW, y1: y + rightTopH, x2: rightX + colW, y2: y + rightTopH + rightBottomH, edge: 'right',
-      componentIds: [components[4].id], label: `${Math.round(innerRightBottom)} mm`,
-      color: TROLLEY_COLOR,
-      source: { formula: `Free Door Trolley fixed dimension — innerRightBottom = ${innerRightBottom}mm`, constants: [], fixed: true },
-    });
+    const rightX = pushPipe(components, { x: midX + normalColumnWidth, y, totalHeight: totalH });
+    pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: right, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — right column = ${right}mm (full height)` });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight: totalH });
 
-    lines.push({
-      x1: x, y1: y - 14, x2: x, y2: y - 14, color: TROLLEY_COLOR,
-      label: 'INNER TROLLEY',
-    });
-
-    return { components, dimensions, lines };
+    void totalHeight;
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
   },
 };
 
-/**
- * "2 Door Trolley" — second real template, from the user's own follow-up
- * reference sketch. Same left/right column split as Free Door Trolley
- * (left top 220mm; right top 130mm, right bottom 200mm) but the two
- * columns sit directly adjacent — NO center gap column between them.
- * Same rule as Free Door Trolley: only labeled sketch values are used as
- * fixed dimensions; the left column's bottom cell has no labeled value
- * and stays undimensioned.
- */
-const twoDoorTrolley: TrolleyTemplate = {
-  id: 'two-door-trolley',
-  name: '2 Door Trolley',
-  fixedDimensions: {
-    innerLeftTop: 220,
-    innerRightTop: 130,
-    innerRightBottom: 200,
-  },
-
-  buildOuterPanel(origin, outerWidth, outerHeight) {
-    const { x, y } = origin;
-    const w = Math.max(1, outerWidth);
-    const h = Math.max(1, outerHeight);
-    const components: ComponentSpec[] = [
-      {
-        id: nextId('trolley-outer'),
-        type: 'TROLLEY_OUTER',
-        label: `${twoDoorTrolley.name}\n${Math.round(w)} mm`,
-        x, y, width: w, height: h, qty: 1, visible: true,
-        source: {
-          formula: 'Outer Panel size = the Inner Side Kadappa (slot B) panel it occupies — never independently entered',
-          constants: [],
-        },
-      },
-    ];
-    return { components, dimensions: [], lines: [] };
-  },
-
-  buildInnerTrolley(origin) {
-    const { x, y } = origin;
-    const { innerLeftTop, innerRightTop, innerRightBottom } = twoDoorTrolley.fixedDimensions;
-    const colW = 220;
-    const totalH = 450;
-    const topH = innerLeftTop;
-    const bottomH = totalH - topH;
-
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. 5P-Only Trolley — 2 columns, fully fixed, no SPO.
+//    Left: one full-height box, 220. Right: 130 top / 200 bottom.
+// ─────────────────────────────────────────────────────────────────────────────
+const fivePanelOnly: TrolleyTemplate = {
+  id: '5p-only',
+  name: '5P-Only Trolley',
+  fixedDimensions: { left: 220, rightTop: 130, rightBottom: 200 },
+  spoFields: [],
+  pipeCount: 3,
+  normalColumnCount: 2,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('5P-Only Trolley', origin, w, h),
+  buildInnerTrolley(origin, _spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { left, rightTop, rightBottom } = this.fixedDimensions;
+    const totalH = left;
     const components: ComponentSpec[] = [];
     const dimensions: DimensionRequest[] = [];
-    const lines: AnnotationLine[] = [];
 
-    // Left column
-    components.push({
-      id: nextId('trolley-inner-left-top'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x, y, width: colW, height: topH, qty: 1, visible: true,
-      source: { formula: `2 Door Trolley fixed dimension — innerLeftTop = ${innerLeftTop}mm`, constants: [], fixed: true },
-    });
-    components.push({
-      id: nextId('trolley-inner-left-bottom'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x, y: y + topH, width: colW, height: bottomH, qty: 1, visible: true,
-      source: { formula: '2 Door Trolley — bottom cell has no labeled dimension in the reference sketch', constants: [], needsVerification: true, note: 'No fixed value supplied for this cell — left undimensioned.' },
-    });
-    dimensions.push({
-      axis: 'v', x1: x, y1: y, x2: x, y2: y + topH, edge: 'left',
-      componentIds: [components[0].id], label: `${Math.round(innerLeftTop)} mm`,
-      color: TROLLEY_COLOR,
-      source: { formula: `2 Door Trolley fixed dimension — innerLeftTop = ${innerLeftTop}mm`, constants: [], fixed: true },
-    });
+    // 3 real pipes: left outer edge, left|right boundary, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight: totalH });
+    pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: totalH, edge: 'left', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — left column = ${left}mm (full height)` });
 
-    // Right column — directly adjacent to the left column, no gap.
-    const rightX = x + colW;
-    const rightTopH = innerRightTop;
-    const rightBottomH = innerRightBottom;
-    components.push({
-      id: nextId('trolley-inner-right-top'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x: rightX, y, width: colW, height: rightTopH, qty: 1, visible: true,
-      source: { formula: `2 Door Trolley fixed dimension — innerRightTop = ${innerRightTop}mm`, constants: [], fixed: true },
-    });
-    components.push({
-      id: nextId('trolley-inner-right-bottom'), type: 'TROLLEY_INNER_DETAIL', label: '',
-      x: rightX, y: y + rightTopH, width: colW, height: rightBottomH, qty: 1, visible: true,
-      source: { formula: `2 Door Trolley fixed dimension — innerRightBottom = ${innerRightBottom}mm`, constants: [], fixed: true },
-    });
-    dimensions.push({
-      axis: 'v', x1: rightX + colW, y1: y, x2: rightX + colW, y2: y + rightTopH, edge: 'right',
-      componentIds: [components[2].id], label: `${Math.round(innerRightTop)} mm`,
-      color: TROLLEY_COLOR,
-      source: { formula: `2 Door Trolley fixed dimension — innerRightTop = ${innerRightTop}mm`, constants: [], fixed: true },
-    });
-    dimensions.push({
-      axis: 'v', x1: rightX + colW, y1: y + rightTopH, x2: rightX + colW, y2: y + rightTopH + rightBottomH, edge: 'right',
-      componentIds: [components[3].id], label: `${Math.round(innerRightBottom)} mm`,
-      color: TROLLEY_COLOR,
-      source: { formula: `2 Door Trolley fixed dimension — innerRightBottom = ${innerRightBottom}mm`, constants: [], fixed: true },
-    });
+    const rightX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight: totalH });
+    let ry = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: rightTop, edge: 'right', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — right top = ${rightTop}mm` });
+    pushFixedCell(components, dimensions, { x: rightX, y: ry, width: normalColumnWidth, height: rightBottom, edge: 'right', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — right bottom = ${rightBottom}mm` });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight: totalH });
 
-    lines.push({
-      x1: x, y1: y - 14, x2: x, y2: y - 14, color: TROLLEY_COLOR,
-      label: 'INNER TROLLEY',
-    });
+    void totalHeight;
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
+  },
+};
 
-    return { components, dimensions, lines };
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. 2P-RSPO — Left column: fixed 220mm box on top + Empty Box below (down
+//    to Total Trolley Height). Right column: SPO, full height, editable
+//    Width (default 200mm). Confirmed structure — SPO is never split,
+//    there is no box below it, and it is not a third column.
+// ─────────────────────────────────────────────────────────────────────────────
+const twoPanelRspo: TrolleyTemplate = {
+  id: '2p-rspo',
+  name: '2P-RSPO',
+  fixedDimensions: { leftTop: 220 },
+  spoFields: [{ key: 'spo', label: 'SPO Width/Breadth', default: 200 }],
+  pipeCount: 3,
+  normalColumnCount: 1,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('2P-RSPO', origin, w, h),
+  buildInnerTrolley(origin, spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { leftTop } = this.fixedDimensions;
+    const spoW = getSpoValue(this.spoFields[0], spoValues);
+    const components: ComponentSpec[] = [];
+    const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
+
+    // 3 real pipes: left outer edge, left column|SPO boundary, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    const afterFixed = pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: leftTop, edge: 'left', color: TROLLEY_COLOR, formula: `2P-RSPO fixed — top box = ${leftTop}mm` });
+    pushEmptyBox(components, { x, y: afterFixed, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
+
+    const rightX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight });
+    pushSpoColumn(components, dimensions, { x: rightX, y, width: spoW, totalHeight, bottomLabelY: bottomY + 30, formula: `2P-RSPO — SPO Width (editable, default 200mm) = ${spoW}mm` });
+    pushPipe(components, { x: rightX + spoW, y, totalHeight });
+
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. 2P-LSPO — mirror of 2P-RSPO. Left column: SPO, full height, editable
+//    Width. Right column: fixed 220mm box on top + Empty Box below.
+// ─────────────────────────────────────────────────────────────────────────────
+const twoPanelLspo: TrolleyTemplate = {
+  id: '2p-lspo',
+  name: '2P-LSPO',
+  fixedDimensions: { rightTop: 220 },
+  spoFields: [{ key: 'spo', label: 'SPO Width/Breadth', default: 200 }],
+  pipeCount: 3,
+  normalColumnCount: 1,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('2P-LSPO', origin, w, h),
+  buildInnerTrolley(origin, spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { rightTop } = this.fixedDimensions;
+    const spoW = getSpoValue(this.spoFields[0], spoValues);
+    const components: ComponentSpec[] = [];
+    const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
+
+    // 3 real pipes: left outer edge, SPO|right column boundary, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    pushSpoColumn(components, dimensions, { x, y, width: spoW, totalHeight, bottomLabelY: bottomY + 30, formula: `2P-LSPO — SPO Width (editable, default 200mm) = ${spoW}mm` });
+
+    const rightX = pushPipe(components, { x: x + spoW, y, totalHeight });
+    const afterFixed = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: rightTop, edge: 'right', color: TROLLEY_COLOR, formula: `2P-LSPO fixed — top box = ${rightTop}mm` });
+    pushEmptyBox(components, { x: rightX, y: afterFixed, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight });
+
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. 3P-RSPO — Left: 130 top / 200 bottom (fixed). Right: SPO + 200 fixed bottom.
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. 3P-RSPO — Left column: fixed 130mm + fixed 200mm stacked + Empty Box
+//    below (down to Total Trolley Height). Right column: SPO, full height,
+//    editable Width. No box below SPO.
+// ─────────────────────────────────────────────────────────────────────────────
+const threePanelRspo: TrolleyTemplate = {
+  id: '3p-rspo',
+  name: '3P-RSPO',
+  fixedDimensions: { leftTop: 130, leftMiddle: 200 },
+  spoFields: [{ key: 'spo', label: 'SPO Width/Breadth', default: 200 }],
+  pipeCount: 3,
+  normalColumnCount: 1,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('3P-RSPO', origin, w, h),
+  buildInnerTrolley(origin, spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { leftTop, leftMiddle } = this.fixedDimensions;
+    const spoW = getSpoValue(this.spoFields[0], spoValues);
+    const components: ComponentSpec[] = [];
+    const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
+
+    // 3 real pipes: left outer edge, left column|SPO boundary, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    let ly = pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: leftTop, edge: 'left', color: TROLLEY_COLOR, formula: `3P-RSPO fixed — top box = ${leftTop}mm` });
+    ly = pushFixedCell(components, dimensions, { x, y: ly, width: normalColumnWidth, height: leftMiddle, edge: 'left', color: TROLLEY_COLOR, formula: `3P-RSPO fixed — middle box = ${leftMiddle}mm` });
+    pushEmptyBox(components, { x, y: ly, width: normalColumnWidth, bottomY, note: 'Empty Box below the 130+200mm fixed boxes — height not yet defined.' });
+
+    const rightX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight });
+    pushSpoColumn(components, dimensions, { x: rightX, y, width: spoW, totalHeight, bottomLabelY: bottomY + 30, formula: `3P-RSPO — SPO Width (editable, default 200mm) = ${spoW}mm` });
+    pushPipe(components, { x: rightX + spoW, y, totalHeight });
+
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. 3P-LSPO — mirror of 3P-RSPO. Left column: SPO, full height, editable
+//    Width. Right column: fixed 130mm + fixed 200mm stacked + Empty Box below.
+// ─────────────────────────────────────────────────────────────────────────────
+const threePanelLspo: TrolleyTemplate = {
+  id: '3p-lspo',
+  name: '3P-LSPO',
+  fixedDimensions: { rightTop: 130, rightMiddle: 200 },
+  spoFields: [{ key: 'spo', label: 'SPO Width/Breadth', default: 200 }],
+  pipeCount: 3,
+  normalColumnCount: 1,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('3P-LSPO', origin, w, h),
+  buildInnerTrolley(origin, spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { rightTop, rightMiddle } = this.fixedDimensions;
+    const spoW = getSpoValue(this.spoFields[0], spoValues);
+    const components: ComponentSpec[] = [];
+    const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
+
+    // 3 real pipes: left outer edge, SPO|right column boundary, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    pushSpoColumn(components, dimensions, { x, y, width: spoW, totalHeight, bottomLabelY: bottomY + 30, formula: `3P-LSPO — SPO Width (editable, default 200mm) = ${spoW}mm` });
+
+    const rightX = pushPipe(components, { x: x + spoW, y, totalHeight });
+    let ry = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: rightTop, edge: 'right', color: TROLLEY_COLOR, formula: `3P-LSPO fixed — top box = ${rightTop}mm` });
+    ry = pushFixedCell(components, dimensions, { x: rightX, y: ry, width: normalColumnWidth, height: rightMiddle, edge: 'right', color: TROLLEY_COLOR, formula: `3P-LSPO fixed — middle box = ${rightMiddle}mm` });
+    pushEmptyBox(components, { x: rightX, y: ry, width: normalColumnWidth, bottomY, note: 'Empty Box below the 130+200mm fixed boxes — height not yet defined.' });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight });
+
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. 5P-CSPO — 3 columns, SPO in the CENTER. Left: fixed 220mm box +
+//    Empty Box below. Center: SPO, full height, editable Width (default
+//    200mm). Right: fixed 130mm + fixed 200mm stacked + Empty Box below.
+//    No box below SPO; the right column's third position is a real Empty
+//    Box, not a second SPO.
+// ─────────────────────────────────────────────────────────────────────────────
+const fivePanelCspo: TrolleyTemplate = {
+  id: '5p-cspo',
+  name: '5P-CSPO',
+  fixedDimensions: { leftTop: 220, rightTop: 130, rightMiddle: 200 },
+  spoFields: [{ key: 'spoCenter', label: 'SPO Width/Breadth', default: 200, min: 200, max: 300 }],
+  pipeCount: 4,
+  normalColumnCount: 2,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('5P-CSPO', origin, w, h),
+  buildInnerTrolley(origin, spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { leftTop, rightTop, rightMiddle } = this.fixedDimensions;
+    const spoW = getSpoValue(this.spoFields[0], spoValues);
+    const components: ComponentSpec[] = [];
+    const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
+
+    // 4 real pipes: left outer edge, left column|SPO, SPO|right column, right outer edge
+    // — matches the user's own confirmed reference drawing exactly.
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    const afterLeft = pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: leftTop, edge: 'left', color: TROLLEY_COLOR, formula: `5P-CSPO fixed — left top box = ${leftTop}mm` });
+    pushEmptyBox(components, { x, y: afterLeft, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
+
+    const midX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight });
+    pushSpoColumn(components, dimensions, { x: midX, y, width: spoW, totalHeight, bottomLabelY: bottomY + 30, formula: `5P-CSPO — center SPO Width (editable, default 200mm, range 200-300) = ${spoW}mm` });
+
+    const rightX = pushPipe(components, { x: midX + spoW, y, totalHeight });
+    let ry = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: rightTop, edge: 'right', color: TROLLEY_COLOR, formula: `5P-CSPO fixed — right top box = ${rightTop}mm` });
+    ry = pushFixedCell(components, dimensions, { x: rightX, y: ry, width: normalColumnWidth, height: rightMiddle, edge: 'right', color: TROLLEY_COLOR, formula: `5P-CSPO fixed — right middle box = ${rightMiddle}mm` });
+    pushEmptyBox(components, { x: rightX, y: ry, width: normalColumnWidth, bottomY, note: 'Empty Box below the 130+200mm fixed boxes — height not yet defined.' });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight });
+
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. 5P-LSPO — 3 columns, SPO on the LEFT (full height, editable Width).
+//    Middle: fixed 220mm box + Empty Box below. Right: fixed 130mm +
+//    fixed 200mm stacked + Empty Box below.
+// ─────────────────────────────────────────────────────────────────────────────
+const fivePanelLspo: TrolleyTemplate = {
+  id: '5p-lspo',
+  name: '5P-LSPO',
+  fixedDimensions: { middleTop: 220, rightTop: 130, rightMiddle: 200 },
+  spoFields: [{ key: 'spo', label: 'SPO Width/Breadth', default: 200 }],
+  pipeCount: 4,
+  normalColumnCount: 2,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('5P-LSPO', origin, w, h),
+  buildInnerTrolley(origin, spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { middleTop, rightTop, rightMiddle } = this.fixedDimensions;
+    const spoW = getSpoValue(this.spoFields[0], spoValues);
+    const components: ComponentSpec[] = [];
+    const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
+
+    // 4 real pipes: left outer edge, SPO|middle boundary, middle|right boundary, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    pushSpoColumn(components, dimensions, { x, y, width: spoW, totalHeight, bottomLabelY: bottomY + 30, formula: `5P-LSPO — SPO Width (editable, default 200mm) = ${spoW}mm` });
+
+    const midX = pushPipe(components, { x: x + spoW, y, totalHeight });
+    const afterMid = pushFixedCell(components, dimensions, { x: midX, y, width: normalColumnWidth, height: middleTop, edge: 'left', color: TROLLEY_COLOR, formula: `5P-LSPO fixed — middle top box = ${middleTop}mm` });
+    pushEmptyBox(components, { x: midX, y: afterMid, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
+
+    const rightX = pushPipe(components, { x: midX + normalColumnWidth, y, totalHeight });
+    let ry = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: rightTop, edge: 'right', color: TROLLEY_COLOR, formula: `5P-LSPO fixed — right top box = ${rightTop}mm` });
+    ry = pushFixedCell(components, dimensions, { x: rightX, y: ry, width: normalColumnWidth, height: rightMiddle, edge: 'right', color: TROLLEY_COLOR, formula: `5P-LSPO fixed — right middle box = ${rightMiddle}mm` });
+    pushEmptyBox(components, { x: rightX, y: ry, width: normalColumnWidth, bottomY, note: 'Empty Box below the 130+200mm fixed boxes — height not yet defined.' });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight });
+
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. 4 Panel Only Trolley — INCOMPLETE STUB. The user's own reference sketch
+//    has NO numeric labels at all. Deliberately left with zero fixed
+//    dimensions until the user gives real values or confirms it's fully
+//    proportional — per explicit instruction, do not guess or invent, and
+//    do not assume it shares 7P/5P-Only's fixed-value style.
+// ─────────────────────────────────────────────────────────────────────────────
+const fourPanelOnly: TrolleyTemplate = {
+  id: '4p-only',
+  name: '4 Panel Only Trolley',
+  fixedDimensions: {},
+  spoFields: [],
+  pipeCount: 3,
+  normalColumnCount: 2,
+  incomplete: true,
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('4 Panel Only Trolley (incomplete)', origin, w, h),
+  buildInnerTrolley(origin) {
+    const { x, y } = origin;
+    return {
+      components: [{
+        id: nextId('trolley-inner-incomplete'), type: 'TROLLEY_INNER_DETAIL',
+        label: '4 Panel Only Trolley\n— dimensions not yet provided —',
+        x, y, width: COL_W * 2, height: 300, qty: 1, visible: true,
+        source: { formula: 'No fixed dimensions supplied yet for this trolley template', constants: [], needsVerification: true, note: 'Awaiting real measurements or a "fully proportional" confirmation from the user.' },
+      }],
+      dimensions: [],
+      lines: [innerTrolleyTitleLine(x, y)],
+    };
   },
 };
 
 export const TROLLEY_TEMPLATES: Record<string, TrolleyTemplate> = {
-  'free-door-trolley': freeDoorTrolley,
-  'two-door-trolley': twoDoorTrolley,
+  '7p-only': sevenPanelOnly,
+  '5p-only': fivePanelOnly,
+  '2p-rspo': twoPanelRspo,
+  '2p-lspo': twoPanelLspo,
+  '3p-rspo': threePanelRspo,
+  '3p-lspo': threePanelLspo,
+  '5p-cspo': fivePanelCspo,
+  '5p-lspo': fivePanelLspo,
+  '4p-only': fourPanelOnly,
 };
 
 export function getTrolleyTemplate(id: string | null | undefined): TrolleyTemplate | null {

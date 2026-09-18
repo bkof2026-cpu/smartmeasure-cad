@@ -6,12 +6,13 @@ import type { KitchenProjectModel } from '../store/types';
 export const DEMO_PROJECT: KitchenProjectModel = {
   isDemoData: true,
   // Left at 5 (the old wizard's "Review" step) even though the wizard is
-  // now only 2 steps (Kitchen Type, Features/Kadappa) — KitchenSteps.tsx
-  // treats any currentStep past its own TOTAL_STEPS as "already finished,
-  // go straight to the drawing" (this demo project — an already-fully-
-  // measured L-Shape kitchen imported from a client PDF — has nothing
-  // left to configure in the new wizard, and Step 2's Kadappa editor is
-  // I-Shape-only anyway, meaningless for an L-Shape project).
+  // now only 3 steps (Kitchen Type, Features/Kadappa, Trolley) —
+  // KitchenFlow.tsx opens straight on its Drawing tab whenever
+  // currentStep is already past TOTAL_STEPS (this demo project — an
+  // already-fully-measured L-Shape kitchen imported from a client PDF —
+  // has nothing left to configure in the new wizard, and Step 2's
+  // Kadappa editor is I-Shape-only anyway, meaningless for an L-Shape
+  // project).
   currentStep: 5,
   completedSteps: [1, 2, 3, 4],
   project: {
@@ -48,11 +49,16 @@ export const DEMO_PROJECT: KitchenProjectModel = {
     // shows a fully worked, sensible configuration rather than zeros.
     iShape: {
       height: 2200,
-      // Kadappa are thin line markers — each value is the DISTANCE from
-      // the previous Kadappa line (or the left wall, for A). Cumulative
-      // positions: A=450, B=450+500=950, C=950+600=1550, D=1550+310=1860
-      // — the last Kadappa (D) lands exactly at the Total Width.
-      width: 1860,
+      // Kadappa are real proportional-width boxes; Clear Widths are the
+      // OPEN space between them, entered separately (never conflated) —
+      // matches the spec's own §40 worked example exactly:
+      // A(450) + A→B(300) + B(500) + B→C(250) + C(600) + C→D(300) + D(310)
+      // = 2710 ≠ 3000, so a real remaining/open segment intentionally
+      // still shows a WIDTH_SUM_MISMATCH warning in this demo (never
+      // silently stretched) — matches §27's own "remaining 290mm must be
+      // represented, do not silently stretch" acceptance example.
+      width: 3000,
+      depth: 600,
       paniPattiHeight: 100,
       wallSideKadappa: 'Both',
       leftWallKadappaWidth: 450,
@@ -60,9 +66,19 @@ export const DEMO_PROJECT: KitchenProjectModel = {
       hasInnerKadappa: true,
       innerKadappaCount: 2,
       innerKadappaWidths: [500, 600],
-      // First Inner Kadappa (B) exists so the demo shows the real trolley
-      // template's Outer Panel filling the A→B bay end-to-end.
-      trolleyTemplateId: 'free-door-trolley',
+      clearWidths: [300, 250, 300],
+      // Explicit section pick (A → B, index 0) — the demo shows the real
+      // trolley template's Outer Panel filling that section end-to-end;
+      // no longer auto-assumed by the engine, matches the section-
+      // selection spec's requirement that Trolley placement is always a
+      // real user choice.
+      trolleySectionId: 0,
+      trolleyTemplateId: '7p-only',
+      spoValues: {},
+      depthDeduction: 20,
+      trolleyHeightOverride: null,
+      trolleyWidthOverride: null,
+      trolleyDepthOverride: null,
     },
   },
   openings: [
@@ -201,6 +217,7 @@ export function createNewProject(): KitchenProjectModel {
       iShape: {
         height: 0,
         width: 0,
+        depth: 0,
         paniPattiHeight: 0,
         wallSideKadappa: 'None',
         leftWallKadappaWidth: 0,
@@ -208,7 +225,14 @@ export function createNewProject(): KitchenProjectModel {
         hasInnerKadappa: false,
         innerKadappaCount: 2,
         innerKadappaWidths: [],
+        clearWidths: [],
+        trolleySectionId: null,
         trolleyTemplateId: null,
+        spoValues: {},
+        depthDeduction: 20,
+        trolleyHeightOverride: null,
+        trolleyWidthOverride: null,
+        trolleyDepthOverride: null,
       },
     },
     openings: [],

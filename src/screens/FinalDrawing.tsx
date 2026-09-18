@@ -192,7 +192,7 @@ export const FinalDrawing: React.FC = () => {
       {/* Top bar */}
       <div className="flex items-center gap-4 px-5 py-3 border-b sticky top-0 z-10"
         style={{ background: '#0d1117', borderColor: '#243045' }}>
-        <button onClick={() => setScreen('drawing')}
+        <button onClick={() => setScreen('kitchen-steps')}
           className="px-4 py-2 rounded-xl text-sm font-bold"
           style={{ background: '#1a2233', color: '#94a3b8', border: '1px solid #243045' }}>
           ← Drawing

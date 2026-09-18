@@ -107,7 +107,25 @@ function DimensionLineView({ d, ox, oy, scale, onSelect, plainLabels }: { d: Dim
     plainLabels ? null : (
       <rect x={bx - lw / 2} y={by - fs * 0.7} width={lw} height={fs * 1.4} fill="white" stroke={dc} strokeWidth={0.4} rx={1} />
     );
-  const labelStroke = plainLabels ? { stroke: 'white', strokeWidth: 2.6, paintOrder: 'stroke' as const } : {};
+  // plainLabels' white halo used to rely on CSS `paint-order: stroke` to
+  // paint the white stroke BEHIND the coloured fill — correct in every
+  // browser, but svg2pdf.js (the PDF export engine) doesn't read
+  // paint-order at all: it always emits PDF text-rendering-mode 2
+  // ("fill then stroke"), so the thick white stroke painted AFTER the fill
+  // completely erased the digits in exported PDFs. Fixed by using real SVG
+  // paint order instead of a CSS property: render two separate <text>
+  // elements — a stroke-only white "halo" copy first, then the coloured
+  // fill-only copy on top — since SVG (and svg2pdf.js) always paints
+  // elements in document order regardless of renderer.
+  const PlainLabel = (lx: number, ly: number) =>
+    plainLabels ? (
+      <>
+        <text x={lx} y={ly} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fontWeight={700} fill="none" stroke="white" strokeWidth={2.6}>{d.label}</text>
+        <text x={lx} y={ly} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fontWeight={700} fill={dc}>{d.label}</text>
+      </>
+    ) : (
+      <text x={lx} y={ly} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700}>{d.label}</text>
+    );
   if (d.axis === 'h') {
     const y = d.edge === 'top' ? Math.min(p.y1, p.y2) - off : Math.max(p.y1, p.y2) + off;
     const mx = (p.x1 + p.x2) / 2;
@@ -117,7 +135,7 @@ function DimensionLineView({ d, ox, oy, scale, onSelect, plainLabels }: { d: Dim
         <line x1={p.x1} y1={p.y1} x2={p.x1} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
         <line x1={p.x2} y1={p.y2} x2={p.x2} y2={y} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
         {LabelBg(mx, y)}
-        <text x={mx} y={y + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700} {...labelStroke}>{d.label}</text>
+        {PlainLabel(mx, y + fs * 0.35)}
       </g>
     );
   }
@@ -136,7 +154,7 @@ function DimensionLineView({ d, ox, oy, scale, onSelect, plainLabels }: { d: Dim
       <line x1={p.x2} y1={p.y2} x2={x} y2={p.y2} stroke={dc} strokeWidth={0.35} strokeDasharray="2 2" />
       <g transform={`rotate(-90 ${x} ${my})`}>
         {LabelBg(x, my)}
-        <text x={x} y={my + fs * 0.35} textAnchor="middle" fontSize={fs} fontFamily="'JetBrains Mono',monospace" fill={dc} fontWeight={700} {...labelStroke}>{d.label}</text>
+        {PlainLabel(x, my + fs * 0.35)}
       </g>
     </g>
   );
@@ -231,7 +249,7 @@ export function TechnicalDrawingSvg({
         // that must render centred inside the box regardless of the
         // number-prefix skip rule below.
         const alwaysInBoxLabel = (c: ComponentSpec) =>
-          (c.type === 'OPEN_BOX' || c.type === 'STORAGE_DOOR') && !!(c.label || '').trim();
+          (c.type === 'OPEN_BOX' || c.type === 'STORAGE_DOOR' || c.type === 'TROLLEY_INNER_DETAIL' || c.type === 'TROLLEY_INNER_EMPTY') && !!(c.label || '').trim();
         const nameOf = (c: ComponentSpec) => {
           if (alwaysInBoxLabel(c)) return c.label.trim();
           const first = (c.label || '').split('\n')[0].trim();
@@ -299,19 +317,25 @@ export function TechnicalDrawingSvg({
                 // branches already apply via style.stroke.
                 const fillIsDark = /^#(?:[0-3][0-9a-f]){3}$/i.test(style.fill) || /^#(?:[0-3][0-9a-f]){2}$/i.test(style.fill);
                 const textFill = (isHorizontalBand || forceInBox) ? (style.stroke ?? '#333') : (fillIsDark ? (style.stroke ?? '#e5e7eb') : '#333');
-                return (
-                  <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle"
-                    fontSize={forceInBox ? Math.max(4.5, Math.min(6.5, pw / (name.length * 0.62))) : (isHorizontalBand ? 6.5 : 7)}
-                    fontFamily="'DM Sans',sans-serif" fill={textFill} fontWeight={700}
-                    {...((isHorizontalBand || forceInBox) ? { stroke: 'white', strokeWidth: 2.2, paintOrder: 'stroke' as const } : {})}>
-                    {(isHorizontalBand || forceInBox) ? name : c.label}
-                  </text>
+                const fSize = forceInBox ? Math.max(4.5, Math.min(6.5, pw / (name.length * 0.62))) : (isHorizontalBand ? 6.5 : 7);
+                const label = (isHorizontalBand || forceInBox) ? name : c.label;
+                // Real duplicate-text halo, not CSS paint-order — see the
+                // comment on PlainLabel in DimensionLineView above for why
+                // paint-order silently breaks in the PDF export pipeline.
+                return (isHorizontalBand || forceInBox) ? (
+                  <>
+                    <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={fSize} fontFamily="'DM Sans',sans-serif" fontWeight={700} fill="none" stroke="white" strokeWidth={2.2}>{label}</text>
+                    <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={fSize} fontFamily="'DM Sans',sans-serif" fontWeight={700} fill={textFill}>{label}</text>
+                  </>
+                ) : (
+                  <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" dominantBaseline="middle" fontSize={fSize} fontFamily="'DM Sans',sans-serif" fill={textFill} fontWeight={700}>{label}</text>
                 );
               })()}
               {name && !fitsInside && isVerticalColumn && (
-                <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" fontSize={6.5} fontFamily="'DM Sans',sans-serif" fill={style.stroke ?? '#333'} fontWeight={700}
-                  transform={`rotate(-90 ${px + pw / 2} ${py + ph / 2})`}
-                  stroke="white" strokeWidth={2.2} paintOrder="stroke">{name}</text>
+                <g transform={`rotate(-90 ${px + pw / 2} ${py + ph / 2})`}>
+                  <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" fontSize={6.5} fontFamily="'DM Sans',sans-serif" fontWeight={700} fill="none" stroke="white" strokeWidth={2.2}>{name}</text>
+                  <text x={px + pw / 2} y={py + ph / 2} textAnchor="middle" fontSize={6.5} fontFamily="'DM Sans',sans-serif" fill={style.stroke ?? '#333'} fontWeight={700}>{name}</text>
+                </g>
               )}
             </g>
           );
@@ -331,11 +355,14 @@ export function TechnicalDrawingSvg({
               const lx = s.toLeft ? s.ax - STUB : s.ax + STUB;
               const ly = s.ay + spread;
               const col = calloutColor(s.c);
+              const tx = s.toLeft ? lx - 2 : lx + 2;
+              const ty = ly + 2.5;
+              const anchor = s.toLeft ? 'end' : 'start';
               return (
                 <g key={`callout-${s.c.id}`} pointerEvents="none">
                   <line x1={s.ax} y1={s.ay} x2={lx} y2={ly} stroke={col} strokeWidth={1} opacity={0.85} />
-                  <text x={s.toLeft ? lx - 2 : lx + 2} y={ly + 2.5} textAnchor={s.toLeft ? 'end' : 'start'} fontSize={7} fontFamily="'DM Sans',sans-serif" fill={col} fontWeight={800}
-                    stroke="white" strokeWidth={2.4} paintOrder="stroke">{s.name}</text>
+                  <text x={tx} y={ty} textAnchor={anchor} fontSize={7} fontFamily="'DM Sans',sans-serif" fontWeight={800} fill="none" stroke="white" strokeWidth={2.4}>{s.name}</text>
+                  <text x={tx} y={ty} textAnchor={anchor} fontSize={7} fontFamily="'DM Sans',sans-serif" fill={col} fontWeight={800}>{s.name}</text>
                 </g>
               );
             });
@@ -450,10 +477,12 @@ export function TechnicalDrawingSvg({
                     fill="white" opacity={0.85}
                   />
                 )}
-                <text
-                  x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}
-                  {...(plainDimLabels ? { stroke: 'white', strokeWidth: 2.6, paintOrder: 'stroke' as const } : {})}
-                >
+                {plainDimLabels && (
+                  <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fontWeight={700} fill="none" stroke="white" strokeWidth={2.6}>
+                    {l.label}
+                  </text>
+                )}
+                <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}>
                   {l.label}
                 </text>
               </g>
