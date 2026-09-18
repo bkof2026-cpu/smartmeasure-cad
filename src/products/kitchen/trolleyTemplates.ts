@@ -74,9 +74,14 @@ export interface TrolleyTemplate {
    * template's own real structure — confirmed per-template by the user,
    * never a generic guess. Pipe Deduction = pipeCount × 20mm. */
   pipeCount: number;
-  /** Number of non-SPO ("normal") columns that share the calculated
-   * Normal Box Width — i.e. how many column-widths the formula's result
-   * gets applied to. Does not include the SPO column, if any. */
+  /** Divisor for the Normal Box Width formula — the number of columns
+   * that actually CONTAIN a real empty box (never simply "all non-SPO
+   * columns"; a column that is fully fixed-height with no empty box does
+   * not count). Every template in the confirmed roster happens to have
+   * exactly one empty box per normal column, so this equals "normal
+   * column count" in practice — but the divisor's real meaning is empty-
+   * box count, confirmed explicitly by the user. Does not include the SPO
+   * column, if any (SPO is never counted here). */
   normalColumnCount: number;
   /** True only for the intentionally-incomplete "4 Panel Only Trolley"
    * stub — has no fixed dimensions at all yet, pending real values from
@@ -283,9 +288,13 @@ function pushSpoColumn(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. 7P-Only Trolley — 3 columns, fully fixed, no SPO.
-//    Left: one full-height box, 220. Middle: 130 top / 200 bottom.
-//    Right: one full-height box, 220 (mirrors left).
+// 1. 7P-Only Trolley — 3 columns, no SPO, 3 empty boxes (one per column).
+//    Left: fixed 220mm box + Empty Box below. Middle: fixed 130mm + fixed
+//    200mm stacked + Empty Box below. Right: fixed 220mm box + Empty Box
+//    below (mirrors left). Corrected structure — every column reaches down
+//    to the real Total Trolley Height via its own empty box, matching the
+//    user's own reference drawing exactly (3 empty boxes -> divisor 3 in
+//    the Normal Box Width formula).
 // ─────────────────────────────────────────────────────────────────────────────
 const sevenPanelOnly: TrolleyTemplate = {
   id: '7p-only',
@@ -298,30 +307,33 @@ const sevenPanelOnly: TrolleyTemplate = {
   buildInnerTrolley(origin, _spoValues, totalHeight, normalColumnWidth) {
     const { x: originX, y } = origin;
     const { left, middleTop, middleBottom, right } = this.fixedDimensions;
-    const totalH = left; // left column's own full height IS the trolley's total height here
     const components: ComponentSpec[] = [];
     const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
 
     // 4 real pipes: left outer edge, left|middle, middle|right, right outer edge.
-    let x = pushPipe(components, { x: originX, y, totalHeight: totalH });
-    pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: totalH, edge: 'left', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — left column = ${left}mm (full height)` });
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    const afterLeft = pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: left, edge: 'left', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — left top box = ${left}mm` });
+    pushEmptyBox(components, { x, y: afterLeft, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
 
-    const midX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight: totalH });
+    const midX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight });
     let midY = pushFixedCell(components, dimensions, { x: midX, y, width: normalColumnWidth, height: middleTop, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — middle top = ${middleTop}mm` });
-    pushFixedCell(components, dimensions, { x: midX, y: midY, width: normalColumnWidth, height: middleBottom, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — middle bottom = ${middleBottom}mm` });
+    midY = pushFixedCell(components, dimensions, { x: midX, y: midY, width: normalColumnWidth, height: middleBottom, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — middle bottom = ${middleBottom}mm` });
+    pushEmptyBox(components, { x: midX, y: midY, width: normalColumnWidth, bottomY, note: 'Empty Box below the 130+200mm fixed boxes — height not yet defined.' });
 
-    const rightX = pushPipe(components, { x: midX + normalColumnWidth, y, totalHeight: totalH });
-    pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: right, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — right column = ${right}mm (full height)` });
-    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight: totalH });
+    const rightX = pushPipe(components, { x: midX + normalColumnWidth, y, totalHeight });
+    const afterRight = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: right, edge: 'right', color: TROLLEY_COLOR, formula: `7P-Only Trolley fixed — right top box = ${right}mm` });
+    pushEmptyBox(components, { x: rightX, y: afterRight, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight });
 
-    void totalHeight;
     return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
   },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. 5P-Only Trolley — 2 columns, fully fixed, no SPO.
-//    Left: one full-height box, 220. Right: 130 top / 200 bottom.
+// 2. 5P-Only Trolley — 2 columns, no SPO, 2 empty boxes (one per column).
+//    Left: fixed 220mm box + Empty Box below. Right: fixed 130mm + fixed
+//    200mm stacked + Empty Box below.
 // ─────────────────────────────────────────────────────────────────────────────
 const fivePanelOnly: TrolleyTemplate = {
   id: '5p-only',
@@ -334,20 +346,21 @@ const fivePanelOnly: TrolleyTemplate = {
   buildInnerTrolley(origin, _spoValues, totalHeight, normalColumnWidth) {
     const { x: originX, y } = origin;
     const { left, rightTop, rightBottom } = this.fixedDimensions;
-    const totalH = left;
     const components: ComponentSpec[] = [];
     const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
 
     // 3 real pipes: left outer edge, left|right boundary, right outer edge.
-    let x = pushPipe(components, { x: originX, y, totalHeight: totalH });
-    pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: totalH, edge: 'left', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — left column = ${left}mm (full height)` });
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    const afterLeft = pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: left, edge: 'left', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — left top box = ${left}mm` });
+    pushEmptyBox(components, { x, y: afterLeft, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
 
-    const rightX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight: totalH });
+    const rightX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight });
     let ry = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: rightTop, edge: 'right', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — right top = ${rightTop}mm` });
-    pushFixedCell(components, dimensions, { x: rightX, y: ry, width: normalColumnWidth, height: rightBottom, edge: 'right', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — right bottom = ${rightBottom}mm` });
-    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight: totalH });
+    ry = pushFixedCell(components, dimensions, { x: rightX, y: ry, width: normalColumnWidth, height: rightBottom, edge: 'right', color: TROLLEY_COLOR, formula: `5P-Only Trolley fixed — right bottom = ${rightBottom}mm` });
+    pushEmptyBox(components, { x: rightX, y: ry, width: normalColumnWidth, bottomY, note: 'Empty Box below the 130+200mm fixed boxes — height not yet defined.' });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight });
 
-    void totalHeight;
     return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
   },
 };
