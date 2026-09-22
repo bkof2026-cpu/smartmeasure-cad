@@ -249,7 +249,7 @@ export function TechnicalDrawingSvg({
         // that must render centred inside the box regardless of the
         // number-prefix skip rule below.
         const alwaysInBoxLabel = (c: ComponentSpec) =>
-          (c.type === 'OPEN_BOX' || c.type === 'STORAGE_DOOR' || c.type === 'TROLLEY_INNER_DETAIL' || c.type === 'TROLLEY_INNER_EMPTY') && !!(c.label || '').trim();
+          (c.type === 'OPEN_BOX' || c.type === 'STORAGE_DOOR' || c.type === 'TROLLEY_INNER_DETAIL' || c.type === 'TROLLEY_INNER_EMPTY' || c.type === 'TROLLEY_PANEL' || c.type === 'TROLLEY_PANEL_SPO') && !!(c.label || '').trim();
         const nameOf = (c: ComponentSpec) => {
           if (alwaysInBoxLabel(c)) return c.label.trim();
           const first = (c.label || '').split('\n')[0].trim();
@@ -266,7 +266,12 @@ export function TechnicalDrawingSvg({
           const selected = selectedComponentId === c.id;
           const px = ox + c.x * scale, py = oy + c.y * scale, pw = Math.max(0, c.width * scale), ph = Math.max(0, c.height * scale);
           const worldCx = c.x + c.width / 2;
-          const handleOnRight = worldCx < worldWidth / 2;
+          // handleSide, when set, overrides the generic "which half of the
+          // WHOLE drawing" heuristic — needed for a small local group of
+          // doors (e.g. two Side Section Doors sharing one Kadappa gap),
+          // where each door's handle should sit near the boundary BETWEEN
+          // them, not wherever the whole-drawing heuristic happens to land.
+          const handleOnRight = c.handleSide ? c.handleSide === 'right' : worldCx < worldWidth / 2;
           const showHandle = isPullType(c.type) && pw > 14 && ph > 10 && !c.noHandle;
           const name = nameOf(c);
           // A horizontal band (much wider than tall — e.g. Skirting)

@@ -7,7 +7,8 @@ import type { ClearSegment } from './iShapeKitchenGeometry';
 // frame, the CAD drawing, and (later) the PDF. Never compute these values
 // a second way anywhere else in the app.
 //
-//   Trolley Height = Total Kitchen Height − Pani Patti Height − GAP_MM (10)
+//   Trolley Height = Total Kitchen Height − Pani Patti Height
+//                     − Floor Ceiling Patti Height (editable, default 10)
 //                     − HEIGHT_CLEARANCE_MM (30)
 //   Trolley Width  = Selected Section's real Inside/Clear Width (manual,
 //                     never auto-calculated) − WIDTH_FIT_MM (30)
@@ -17,7 +18,7 @@ import type { ClearSegment } from './iShapeKitchenGeometry';
 // is stored separately and never silently cleared by an unrelated change.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const HEIGHT_GAP_MM = 10;
+export const DEFAULT_FLOOR_CEILING_PATTI_MM = 10;
 export const HEIGHT_CLEARANCE_MM = 30;
 export const WIDTH_FIT_MM = 30;
 export const DEFAULT_DEPTH_DEDUCTION_MM = 20;
@@ -56,7 +57,8 @@ export function calculateTrolleyDimensions(
   iShape: IShapeKitchenConfig,
   resolvedSection: ClearSegment | null,
 ): TrolleyDimensionResult {
-  const calculatedHeight = iShape.height - iShape.paniPattiHeight - HEIGHT_GAP_MM - HEIGHT_CLEARANCE_MM;
+  const floorCeilingPattiHeight = iShape.floorCeilingPattiHeight ?? DEFAULT_FLOOR_CEILING_PATTI_MM;
+  const calculatedHeight = iShape.height - iShape.paniPattiHeight - floorCeilingPattiHeight - HEIGHT_CLEARANCE_MM;
 
   const sectionInsideWidth = resolvedSection ? (iShape.clearWidths[resolvedSection.index] ?? 0) : null;
   const calculatedWidth = sectionInsideWidth !== null ? sectionInsideWidth - WIDTH_FIT_MM : null;

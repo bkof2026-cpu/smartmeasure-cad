@@ -7,6 +7,8 @@ import type { AddonDef } from '../products/addons';
 import WardrobeDesignSelection, { type WardrobeDesign } from './WardrobeDesignSelection';
 import { SimpleBedDrawing } from '../products/bed/SimpleBedDrawing';
 import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type ProfileShutterInput, type ProfileShutterSide } from '../products/bed/simpleBedGeometry';
+import { ChildrenBedDrawing } from '../products/bed/ChildrenBedDrawing';
+import { childrenBedCutlist, childrenBedInputsFromDims, type CenterTableInput } from '../products/bed/childrenBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
 import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
 import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, totalFixPattiWidth, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
@@ -110,6 +112,30 @@ function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>,
     light: ((addonDims['profile-shutter']?.light) ?? 0) === 1,
   };
   return { lst, rst, profileShutter };
+}
+
+/** Children Bed's own Center Table/LST/RST — from their own "+" addon cards (children-bed-center-table/lst/rst), completely separate from the plain Bed's side-table-left/side-table-right above (never confused: only one set is ever shown, gated by Bed Measurement Type). */
+function deriveChildrenBedAddonInputs(productId: ProductId, dims: Record<string, number | string>, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
+  const isChildrenBed = productId === 'bed' && String(dims.bedType ?? 'Bed') === 'Children Bed';
+  const centerTable: CenterTableInput = {
+    enabled: isChildrenBed && selectedAddons.has('children-bed-center-table'),
+    H: (addonDims['children-bed-center-table']?.H) ?? 500,
+    W: (addonDims['children-bed-center-table']?.W) ?? 500,
+    D: (addonDims['children-bed-center-table']?.D) ?? 450,
+  };
+  const lst: SimpleSideTableInput = {
+    enabled: isChildrenBed && selectedAddons.has('children-bed-lst'),
+    widthMm: (addonDims['children-bed-lst']?.W) ?? 560,
+    depthMm: (addonDims['children-bed-lst']?.D) ?? 460,
+    drawerCount: 0,
+  };
+  const rst: SimpleSideTableInput = {
+    enabled: isChildrenBed && selectedAddons.has('children-bed-rst'),
+    widthMm: (addonDims['children-bed-rst']?.W) ?? 560,
+    depthMm: (addonDims['children-bed-rst']?.D) ?? 460,
+    drawerCount: 0,
+  };
+  return { centerTable, lst, rst };
 }
 
 const FIX_PATTI_POSITIONS: FixPattiPosition[] = ['none', 'left', 'right', 'both'];
@@ -428,7 +454,7 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
   }
   if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
     const { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
-    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), doorCount: n(dims.doorCount ?? 0), doorWidthMm: n(dims.doorWidthMm ?? 0), dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
       element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} adjacentLoft={adjacentLoft} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
@@ -790,7 +816,21 @@ export const ProductFlow: React.FC = () => {
   const { model, setEvidenceNote, saveMeasurementSnapshot, updateProject } = useApp();
   const product = getProduct(selectedId);
   const addons = PRODUCT_ADDONS[selectedId] ?? [];
-  const groups = FIELD_GROUPS[selectedId] ?? [];
+  // Bed's own field groups split by Bed Measurement Type — the plain "Bed"
+  // group (W/L/H/Headboard) shows only for bedType 'Bed', and Bed A/Bed B
+  // only for 'Children Bed', so switching the type never shows both sets
+  // of fields at once (Center Table/LST/RST for Children Bed are their own
+  // PRODUCT_ADDONS "+" cards below, not plain fields, per the user's
+  // explicit direction — the plain Bed's own LST/RST/Dressing addons stay
+  // hidden for Children Bed, handled separately below).
+  const isChildrenBedType = selectedId === 'bed' && String(dims.bedType ?? 'Bed') === 'Children Bed';
+  const groups = selectedId === 'bed'
+    ? (FIELD_GROUPS.bed ?? []).filter((g) => {
+        if (g.label === 'Bed' || g.label === 'Headboard') return !isChildrenBedType;
+        if (g.label === 'Bed A' || g.label === 'Bed B') return isChildrenBedType;
+        return true;
+      })
+    : (FIELD_GROUPS[selectedId] ?? []);
 
   // TV Unit's Mandir Height / Partition Height default to TV Unit Height
   // (per the user) but stay independently editable — a plain static
@@ -1077,6 +1117,7 @@ export const ProductFlow: React.FC = () => {
   // elementAndIssuesForSession above), called here with the live state for
   // whichever product is currently active on screen.
   const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
+  const { centerTable: childrenBedCenterTable, lst: childrenBedLST, rst: childrenBedRST } = deriveChildrenBedAddonInputs(selectedId, dims, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
   const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
   // Live-computed defaults for the Wardrobe's own auto-calculated-but-
@@ -1115,8 +1156,14 @@ export const ProductFlow: React.FC = () => {
     const view = viewOverride ?? activeView;
 
     // Bed — single simplified plan view; LST/RST height always auto-fetched
-    // from the Bed's own H field, never independently entered.
+    // from the Bed's own H field, never independently entered. Children Bed
+    // is a separate measurement type on the same product entry (Bed A/Bed B
+    // + optional Center Table/LST/RST) — its own drawing, never mixed with
+    // the plain Bed's own LST/RST/Dressing add-ons above.
     if (selectedId === 'bed') {
+      if (String(dims.bedType ?? 'Bed') === 'Children Bed') {
+        return <ChildrenBedDrawing dims={dims} centerTable={childrenBedCenterTable} lst={childrenBedLST} rst={childrenBedRST} />;
+      }
       return <SimpleBedDrawing dims={dims} lst={bedLST} rst={bedRST} profileShutter={bedProfileShutter} />;
     }
 
@@ -1154,10 +1201,12 @@ export const ProductFlow: React.FC = () => {
         .map((v, i) => ({ label: v.replace(/-/g, ' '), svgEl: svgs[i] }))
         .filter((v): v is PdfViewItem => !!v.svgEl);
 
-      const cutlist: PdfCutRow[] = selectedId === 'bed'
+      const cutlist: PdfCutRow[] = selectedId === 'bed' && String(dims.bedType ?? 'Bed') === 'Children Bed'
+        ? childrenBedCutlist(childrenBedInputsFromDims(dims, childrenBedCenterTable, childrenBedLST, childrenBedRST)).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        : selectedId === 'bed'
         ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
-        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doorCount: n(dims.doorCount ?? 0), doorWidthMm: n(dims.doorWidthMm ?? 0), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
@@ -1352,7 +1401,7 @@ export const ProductFlow: React.FC = () => {
   const compositeAddonsAsSeparate = addons.filter((a) =>
     selectedAddons.has(a.id) && a.placement === 'composite' &&
     !(
-      (selectedId === 'bed' && (a.id === 'side-table-left' || a.id === 'side-table-right' || a.id === 'profile-shutter')) ||
+      (selectedId === 'bed' && (a.id === 'side-table-left' || a.id === 'side-table-right' || a.id === 'profile-shutter' || a.id === 'children-bed-center-table' || a.id === 'children-bed-lst' || a.id === 'children-bed-rst')) ||
       // 'side-panel' was the addon's OLD id, before its explicit rename to
       // 'top-panel' — kept here (harmlessly, since no addon list uses that
       // id any more) alongside the real current id so this exclusion list
@@ -1682,7 +1731,7 @@ export const ProductFlow: React.FC = () => {
                           style={{ borderLeft: `2px solid ${group.color}40`, paddingLeft: 8 }}>
                           <label className="text-xs font-semibold" style={{ color: `${group.color}cc` }}>
                             {field.label}
-                            {field.unit !== 'select' && field.unit !== 'bool' && (
+                            {field.unit !== 'select' && field.unit !== 'bool' && field.unit !== 'count' && (
                               <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>({field.unit})</span>
                             )}
                           </label>
@@ -1715,8 +1764,10 @@ export const ProductFlow: React.FC = () => {
                                 className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                                 style={{ background: '#1e293b', color: '#e2e8f0', border: `1px solid ${group.color}40` }}
                               />
-                              <span className="flex items-center text-xs px-1.5 rounded"
-                                style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                              {field.unit !== 'count' && (
+                                <span className="flex items-center text-xs px-1.5 rounded"
+                                  style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1730,7 +1781,7 @@ export const ProductFlow: React.FC = () => {
                     <div key={field.key} className="flex flex-col gap-0.5">
                       <label className="text-xs font-semibold" style={{ color: '#94a3b8' }}>
                         {field.label}
-                        {field.unit !== 'select' && field.unit !== 'bool' && (
+                        {field.unit !== 'select' && field.unit !== 'bool' && field.unit !== 'count' && (
                           <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>({field.unit})</span>
                         )}
                       </label>
@@ -1795,14 +1846,26 @@ export const ProductFlow: React.FC = () => {
               );
             })()}
 
-            {/* Add Extra Items */}
-            {addons.length > 0 && (
+            {/* Add Extra Items — for Bed, the addon set itself is split by
+                Bed Measurement Type: plain "Bed" shows LST/RST/Dressing
+                (side-table-left/side-table-right/profile-shutter); "Children
+                Bed" shows its own separate Center Table/LST/RST cards
+                (children-bed-center-table/lst/rst) instead — the two sets
+                never both show at once. */}
+            {(() => {
+              const visibleAddons = selectedId === 'bed'
+                ? addons.filter((a) => isChildrenBedType
+                    ? (a.id === 'children-bed-center-table' || a.id === 'children-bed-lst' || a.id === 'children-bed-rst')
+                    : (a.id === 'side-table-left' || a.id === 'side-table-right' || a.id === 'profile-shutter'))
+                : addons;
+              if (visibleAddons.length === 0) return null;
+              return (
               <div>
                 <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#a855f7' }}>
                   Add Extra Items
                 </div>
                 <div className="flex flex-col gap-2">
-                  {addons.map((addon) => {
+                  {visibleAddons.map((addon) => {
                     const active = selectedAddons.has(addon.id);
                     const adDims = addonDims[addon.id] ?? {};
                     // Live-computed default (Top Panel Width / Loft Height /
@@ -1968,7 +2031,8 @@ export const ProductFlow: React.FC = () => {
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
           </div>
         </div>

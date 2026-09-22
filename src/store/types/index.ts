@@ -3,6 +3,7 @@
 // user-facing label changed to "I-Shape Kitchen", per the Kitchen Model
 // spec's 4-shape list: I-Shape/L-Shape/U-Shape/Parallel).
 export type KitchenType = 'straight' | 'l-shape' | 'u-shape' | 'parallel';
+export type KitchenFixPattiPosition = 'none' | 'left' | 'right' | 'both';
 export type ModuleType = 'base' | 'wall' | 'loft' | 'trolley' | 'open-box' | 'tall-unit' | 'corner';
 export type OpeningType = 'door' | 'window' | 'column' | 'beam' | 'electrical' | 'plumbing' | 'gas' | 'chimney';
 export type EvidenceType = 'photo' | 'video' | 'note';
@@ -120,14 +121,20 @@ export interface IShapeKitchenConfig {
   spoValues: Record<string, number>;
 
   // ─── Trolley Dimension Calculation (H × W × D) ───────────────────────────
-  // Trolley Height  = Total Kitchen Height − Pani Patti Height − 10mm (gap)
-  //                    − 30mm (height clearance)
+  // Trolley Height  = Total Kitchen Height − Pani Patti Height −
+  //                    Floor Ceiling Patti Height − 30mm (height clearance)
   // Trolley Width   = Selected Trolley Section's real Inside/Clear Width
   //                    − 30mm (width fit)
   // Trolley Depth   = Total Kitchen Depth − depthDeduction
   // All three calculated values may be manually overridden by the user
   // (trolleyHeightOverride/etc, null = use the calculated value) — an
   // override is never silently cleared by an unrelated field changing.
+
+  /** Floor Ceiling Patti height (mm) deducted from Total Kitchen Height —
+   * editable (was a fixed 10mm "Gap"). Not every kitchen has one, and
+   * where it exists its height varies site to site, so this is a real
+   * user-entered value rather than a constant. */
+  floorCeilingPattiHeight: number;
 
   /** Depth deduction (mm) applied to Kitchen Depth to get Trolley Depth —
    * editable, default 20mm, the only other common value is 10mm. */
@@ -143,6 +150,32 @@ export interface IShapeKitchenConfig {
   /** Manual override for the calculated Trolley Depth — null = use the
    * live formula result. */
   trolleyDepthOverride: number | null;
+
+  // ─── Side Section Doors (src/products/kitchen/sideSectionDoorCalc.ts) ───
+  // The plain cabinet door(s) filling the LEFT/RIGHT outer Clear-Width
+  // section (the section against the actual room wall — never the section
+  // the Trolley sits in). Door count is auto-recommended from that
+  // section's own width (<=600mm -> 1, >=600mm -> 2) but stays editable —
+  // null means "use the auto-recommendation," matching the same override
+  // convention as trolleyHeightOverride/etc above.
+  /** Manual override for the Left side section's door count — null = auto-recommended. */
+  leftSideDoorCountOverride: number | null;
+  /** Manual override for the Right side section's door count — null = auto-recommended. */
+  rightSideDoorCountOverride: number | null;
+
+  // ─── Fix Patti (src/products/kitchen/fixPattiCalc.ts) ────────────────────
+  // A real vertical panel attached to the OUTSIDE of the kitchen box, on
+  // the chosen side(s) — same None/Left/Right/Both shape as the Wardrobe's
+  // own Fix Patti (src/engine/loftDoorEngine.ts's FixPattiPosition), kept
+  // as its own local type here since this file intentionally has no
+  // imports. Both Height and Width are manually entered per side (never
+  // derived) — the defaults shown in the UI are Height = Total Kitchen
+  // Height, Width = 40mm, but the user can type any real value.
+  fixPattiPosition: KitchenFixPattiPosition;
+  fixPattiLeftHeight: number;
+  fixPattiLeftWidth: number;
+  fixPattiRightHeight: number;
+  fixPattiRightWidth: number;
 }
 
 export interface KitchenConfig {

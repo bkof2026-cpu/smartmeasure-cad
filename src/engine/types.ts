@@ -42,6 +42,15 @@ export interface ComponentSpec {
    * sketches, which never show a handle on Loft doors). Every other
    * pull-type component elsewhere keeps its handle unchanged. */
   noHandle?: boolean;
+  /** Forces which side of this component's own box the drawn door/drawer
+   * pull handle sits on, overriding the generic "which half of the whole
+   * drawing is this component in" heuristic. Needed when several doors
+   * sit right next to each other in their own small local group (e.g. two
+   * Side Section Doors in one Kadappa gap) — each door's handle should sit
+   * near the shared boundary BETWEEN the doors, not wherever the generic
+   * whole-drawing heuristic happens to place it. Omit to keep the default
+   * heuristic (every existing pull-type component is unaffected). */
+  handleSide?: 'left' | 'right';
 }
 
 export type DimensionEdge = 'top' | 'bottom' | 'left' | 'right';

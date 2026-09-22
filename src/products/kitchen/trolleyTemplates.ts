@@ -202,21 +202,23 @@ function innerTrolleyTitleLine(x: number, y: number): AnnotationLine {
  * shown as plain text inside the box, matching the reference drawing's own
  * "445(W) / 220(H)" convention — never a rotated dimension line). Returns
  * the Y position right after this cell. */
+/** Pushes a FIXED box — a real structural cell whose Height is a known,
+ * fixed template value. Shows its own HEIGHT as plain in-box text (never
+ * Width, never a dimension arrow/line) — the mirror image of an Empty Box
+ * (below), which shows its own WIDTH as plain text instead. Per the user's
+ * explicit correction: "show the width in the empty boxes only and height
+ * in fixed boxes... without line and arrow." `dimensions`/`edge`/`color`
+ * stay in the signature (unused) so every existing call site — this is
+ * called from ~15 different trolley templates — keeps working unchanged. */
 function pushFixedCell(
-  components: ComponentSpec[], dimensions: DimensionRequest[],
+  components: ComponentSpec[], _dimensions: DimensionRequest[],
   opts: { x: number; y: number; width: number; height: number; edge: 'left' | 'right'; color: string; formula: string },
 ): number {
-  const { x, y, width, height, edge, color, formula } = opts;
+  const { x, y, width, height, formula } = opts;
   const id = nextId('trolley-inner-fixed');
   components.push({
-    id, type: 'TROLLEY_INNER_DETAIL', label: `${Math.round(width)}(W)`,
+    id, type: 'TROLLEY_INNER_DETAIL', label: `${Math.round(height)}(H)`,
     x, y, width, height, qty: 1, visible: true,
-    source: { formula, constants: [], fixed: true },
-  });
-  const dimX = edge === 'left' ? x : x + width;
-  dimensions.push({
-    axis: 'v', x1: dimX, y1: y, x2: dimX, y2: y + height, edge,
-    componentIds: [id], label: `${Math.round(height)} mm`, color,
     source: { formula, constants: [], fixed: true },
   });
   return y + height;
@@ -587,33 +589,39 @@ const fivePanelLspo: TrolleyTemplate = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. 4 Panel Only Trolley — INCOMPLETE STUB. The user's own reference sketch
-//    has NO numeric labels at all. Deliberately left with zero fixed
-//    dimensions until the user gives real values or confirms it's fully
-//    proportional — per explicit instruction, do not guess or invent, and
-//    do not assume it shares 7P/5P-Only's fixed-value style.
+// 9. 4 Panel Only Trolley — Left[A,empty] Right[A,empty], per the user's own
+//    reference drawing/formula: two symmetric columns, each a single 220mm
+//    fixed top box + one Empty Box below (down to Total Trolley Height) —
+//    the same shape as 7P-Only's own left/right columns, just without a
+//    center column. Confirmed worked example: Trolley Width 1410mm, pipe
+//    deduction 3×20=60mm, Normal Box Width = (1410−60)/2 = 675mm each.
 // ─────────────────────────────────────────────────────────────────────────────
 const fourPanelOnly: TrolleyTemplate = {
   id: '4p-only',
   name: '4 Panel Only Trolley',
-  fixedDimensions: {},
+  fixedDimensions: { left: 220, right: 220 },
   spoFields: [],
   pipeCount: 3,
   normalColumnCount: 2,
-  incomplete: true,
-  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('4 Panel Only Trolley (incomplete)', origin, w, h),
-  buildInnerTrolley(origin) {
-    const { x, y } = origin;
-    return {
-      components: [{
-        id: nextId('trolley-inner-incomplete'), type: 'TROLLEY_INNER_DETAIL',
-        label: '4 Panel Only Trolley\n— dimensions not yet provided —',
-        x, y, width: COL_W * 2, height: 300, qty: 1, visible: true,
-        source: { formula: 'No fixed dimensions supplied yet for this trolley template', constants: [], needsVerification: true, note: 'Awaiting real measurements or a "fully proportional" confirmation from the user.' },
-      }],
-      dimensions: [],
-      lines: [innerTrolleyTitleLine(x, y)],
-    };
+  buildOuterPanel: (origin, w, h) => buildSimpleOuterPanel('4 Panel Only Trolley', origin, w, h),
+  buildInnerTrolley(origin, _spoValues, totalHeight, normalColumnWidth) {
+    const { x: originX, y } = origin;
+    const { left, right } = this.fixedDimensions;
+    const components: ComponentSpec[] = [];
+    const dimensions: DimensionRequest[] = [];
+    const bottomY = y + Math.max(1, totalHeight);
+
+    // 3 real pipes: left outer edge, left|right boundary, right outer edge.
+    let x = pushPipe(components, { x: originX, y, totalHeight });
+    const afterLeft = pushFixedCell(components, dimensions, { x, y, width: normalColumnWidth, height: left, edge: 'left', color: TROLLEY_COLOR, formula: `4P-Only Trolley fixed — left top box = ${left}mm` });
+    pushEmptyBox(components, { x, y: afterLeft, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
+
+    const rightX = pushPipe(components, { x: x + normalColumnWidth, y, totalHeight });
+    const afterRight = pushFixedCell(components, dimensions, { x: rightX, y, width: normalColumnWidth, height: right, edge: 'right', color: TROLLEY_COLOR, formula: `4P-Only Trolley fixed — right top box = ${right}mm` });
+    pushEmptyBox(components, { x: rightX, y: afterRight, width: normalColumnWidth, bottomY, note: 'Empty Box below the 220mm fixed box — height not yet defined.' });
+    pushPipe(components, { x: rightX + normalColumnWidth, y, totalHeight });
+
+    return { components, dimensions, lines: [innerTrolleyTitleLine(originX, y)] };
   },
 };
 

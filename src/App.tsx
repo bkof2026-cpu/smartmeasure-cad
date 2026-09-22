@@ -34,9 +34,6 @@ import { ProductFlow } from './screens/ProductFlow';
 import { KitchenFlow } from './screens/KitchenFlow';
 import { FinalDrawing } from './screens/FinalDrawing';
 import { RutujaDrawing } from './screens/RutujaDrawing';
-import { ProductViewer } from './screens/ProductViewer';
-import { subscribeViewer } from './products/viewerBus';
-import type { ProductId } from './products/productTypes';
 import type { AppScreen } from './store/types';
 import {
   employeeLogin, adminLogin, fetchMe, logout as apiLogout,
@@ -540,36 +537,16 @@ export function openRutujaDemo() { rutujaListeners.forEach(fn => fn(true)); }
 
 export default function App() {
   const [showRutuja, setShowRutuja] = React.useState(false);
-  const [viewerState, setViewerState] = React.useState<{ id: ProductId; tab: string } | null>(null);
 
   React.useEffect(() => {
     rutujaListeners.add(setShowRutuja);
     return () => { rutujaListeners.delete(setShowRutuja); };
   }, []);
 
-  React.useEffect(() => {
-    const unsub = subscribeViewer((state) => {
-      setViewerState({ id: state.id as ProductId, tab: state.tab });
-    });
-    return unsub;
-  }, []);
-
   if (showRutuja) {
     return (
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <RutujaDrawing onBack={() => setShowRutuja(false)} />
-      </div>
-    );
-  }
-
-  if (viewerState) {
-    return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <ProductViewer
-          productId={viewerState.id}
-          initialTab={viewerState.tab as 'measurements' | 'drawing' | 'cutlist'}
-          onBack={() => setViewerState(null)}
-        />
       </div>
     );
   }

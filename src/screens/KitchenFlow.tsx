@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../store/AppContext';
-import { PlanView } from '../drawing/PlanView';
-import { ElevationA } from '../drawing/ElevationA';
-import { ElevationB } from '../drawing/ElevationB';
 import { IShapeKitchenDrawing } from '../products/kitchen/IShapeKitchenDrawing';
 import type { WallSideKadappaOption } from '../store/types';
 import { TROLLEY_TEMPLATES } from '../products/kitchen/trolleyTemplates';
 import { buildKadappaSequence, buildClearSegments, resolveTrolleySectionId } from '../products/kitchen/iShapeKitchenGeometry';
 import { calculateTrolleyDimensions } from '../products/kitchen/trolleyDimensions';
+import { calculateSideSectionDoors } from '../products/kitchen/sideSectionDoorCalc';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The whole Kitchen product lives on ONE screen now — a simple
@@ -26,6 +24,18 @@ type KitchenTab = 'measurements' | 'drawing';
 
 const TOTAL_STEPS = 3;
 const STEP_LABELS = ['Kitchen Type', 'Trolley', 'Features'];
+
+// Total Kitchen Height — per the user's explicit instruction, whatever is
+// TYPED into this field has a fixed 15mm deducted immediately, and the
+// FIELD ITSELF then holds and displays that adjusted value (not the raw
+// entry) — the same single number is what every downstream formula reads
+// as iShape.height, so there is no separate "raw vs adjusted" pair to
+// track anywhere else in the Kitchen engine. Re-editing the field edits
+// the adjusted value directly (typing the same number again deducts
+// another 15mm), matching the user's own confirmed "the box just shows
+// the adjusted value afterward" behaviour (originally applied to Width,
+// corrected to Height per the user's own follow-up).
+const TOTAL_KITCHEN_HEIGHT_DEDUCTION_MM = 15;
 
 function StepHeader({ step, total }: { step: number; total: number }) {
   return (
@@ -98,7 +108,7 @@ function NumInput({ label, value, onChange, unit = 'mm', note, required }: {
         onBlur={() => setDraft(null)}
         onWheel={(e) => e.currentTarget.blur()}
         placeholder="0"
-        className="w-full rounded-lg px-3 py-2.5 text-base font-mono font-bold outline-none border focus:ring-2 focus:ring-blue-500 text-center"
+        className="w-full min-w-0 rounded-lg px-2 py-2.5 text-base font-mono font-bold outline-none border focus:ring-2 focus:ring-blue-500 text-center"
         style={{ background: '#1e2535', border: `2px solid ${required && isEmpty ? '#dc2626' : '#2a3347'}`, color: '#60a5fa' }}
       />
       {required && isEmpty && (
@@ -238,41 +248,45 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
 
   // Kadappa's own WIDTH fields (never a distance) — collected so they
   // render packed 2-per-row instead of each claiming a full-width row.
-  const kadappaWidthFields: { key: string; label: string; value: number; onChange: (v: number) => void }[] = [];
+  // Wall Side (Left/Right) width fields sit right under the Wall Side
+  // Kadappa selector they belong to; Inner width fields are kept separate
+  // so they can render AFTER "Number of Inner Side Kadappa" instead of
+  // appearing above the Yes/No toggle that controls whether they exist.
+  const wallKadappaWidthFields: { key: string; label: string; value: number; onChange: (v: number) => void }[] = [];
   if (iShape.wallSideKadappa === 'Left' || iShape.wallSideKadappa === 'Both') {
-    kadappaWidthFields.push({
+    wallKadappaWidthFields.push({
       key: 'left-wall', label: 'Kadappa A — Width', value: iShape.leftWallKadappaWidth,
       onChange: (v) => updateIShapeConfig({ leftWallKadappaWidth: v }),
     });
   }
-  sequence.filter((s) => s.kind === 'inner').forEach((slot) => {
-    kadappaWidthFields.push({
-      key: `inner-${slot.innerIndex}`, label: `Kadappa ${slot.letter} — Width`,
-      value: iShape.innerKadappaWidths[slot.innerIndex!] ?? 0,
-      onChange: (v) => {
-        const widths = [...iShape.innerKadappaWidths];
-        widths[slot.innerIndex!] = v;
-        updateIShapeConfig({ innerKadappaWidths: widths });
-      },
-    });
-  });
   if (iShape.wallSideKadappa === 'Right' || iShape.wallSideKadappa === 'Both') {
-    kadappaWidthFields.push({
+    wallKadappaWidthFields.push({
       key: 'right-wall', label: `Kadappa ${sequence.length > 0 ? sequence[sequence.length - 1].letter : ''} — Width`,
       value: iShape.rightWallKadappaWidth,
       onChange: (v) => updateIShapeConfig({ rightWallKadappaWidth: v }),
     });
   }
 
+  const innerKadappaWidthFields = sequence.filter((s) => s.kind === 'inner').map((slot) => ({
+    key: `inner-${slot.innerIndex}`, label: `Kadappa ${slot.letter} — Width`,
+    value: iShape.innerKadappaWidths[slot.innerIndex!] ?? 0,
+    onChange: (v: number) => {
+      const widths = [...iShape.innerKadappaWidths];
+      widths[slot.innerIndex!] = v;
+      updateIShapeConfig({ innerKadappaWidths: widths });
+    },
+  }));
+
   return (
     <div className="flex flex-col gap-4 p-6">
       <p className="text-sm" style={{ color: '#64748b' }}>Kitchen measurements and Kadappa layout</p>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-2">
         <NumInput
           label="Total Kitchen Height"
           value={iShape.height}
-          onChange={(v) => updateIShapeConfig({ height: v })}
+          onChange={(v) => updateIShapeConfig({ height: Math.max(0, v - TOTAL_KITCHEN_HEIGHT_DEDUCTION_MM) })}
+          note={iShape.height > 0 ? `Height −${TOTAL_KITCHEN_HEIGHT_DEDUCTION_MM}mm applied — entered value became ${Math.round(iShape.height)}mm.` : undefined}
           required
         />
         <NumInput
@@ -311,9 +325,9 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
         </div>
       </div>
 
-      {kadappaWidthFields.length > 0 && (
+      {wallKadappaWidthFields.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          {kadappaWidthFields.map((f) => (
+          {wallKadappaWidthFields.map((f) => (
             <NumInput key={f.key} label={f.label} value={f.value} onChange={f.onChange} />
           ))}
         </div>
@@ -330,18 +344,27 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
         })}
       />
       {iShape.hasInnerKadappa && (
-        <div className="grid grid-cols-2 gap-3">
-          <NumInput
-            label="Number of Inner Side Kadappa"
-            value={iShape.innerKadappaCount}
-            unit="count"
-            onChange={(count) => {
-              const safeCount = Math.max(1, Math.round(count) || 1);
-              const widths = Array.from({ length: safeCount }, (_, i) => iShape.innerKadappaWidths[i] ?? 0);
-              updateIShapeConfig({ innerKadappaCount: safeCount, innerKadappaWidths: widths });
-            }}
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <NumInput
+              label="Number of Inner Side Kadappa"
+              value={iShape.innerKadappaCount}
+              unit="count"
+              onChange={(count) => {
+                const safeCount = Math.max(1, Math.round(count) || 1);
+                const widths = Array.from({ length: safeCount }, (_, i) => iShape.innerKadappaWidths[i] ?? 0);
+                updateIShapeConfig({ innerKadappaCount: safeCount, innerKadappaWidths: widths });
+              }}
+            />
+          </div>
+          {innerKadappaWidthFields.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {innerKadappaWidthFields.map((f) => (
+                <NumInput key={f.key} label={f.label} value={f.value} onChange={f.onChange} />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {clearSegments.length > 0 && (
@@ -366,6 +389,10 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
         </>
       )}
 
+      <SideSectionDoorsFrame iShape={iShape} clearSegments={clearSegments} updateIShapeConfig={updateIShapeConfig} />
+
+      <FixPattiFrame iShape={iShape} updateIShapeConfig={updateIShapeConfig} />
+
       {iShape.trolleyTemplateId && (
         <TrolleySectionPicker iShape={iShape} clearSegments={clearSegments} updateIShapeConfig={updateIShapeConfig} />
       )}
@@ -379,6 +406,134 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
         <button onClick={onFinish} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>View Drawing →</button>
       </div>
     </div>
+  );
+}
+
+/** Side Section Doors — read-only calculated door count/width for each
+ * OUTER (wall-adjacent) Clear-Width section, per
+ * sideSectionDoorCalc.ts. Only the door COUNT is editable (an override
+ * input, defaulting to the auto-recommendation); the door WIDTH is always
+ * derived, never a separate field — same "auto-recommended but editable
+ * count, always-derived width" pattern as the Loft's own door engine.
+ * Never shown for the section the Trolley itself occupies (that section's
+ * content is the Trolley Panel, not a plain door). */
+function SideSectionDoorsFrame({ iShape, clearSegments, updateIShapeConfig }: {
+  iShape: ReturnType<typeof useApp>['model']['kitchen']['iShape'];
+  clearSegments: ReturnType<typeof buildClearSegments>;
+  updateIShapeConfig: ReturnType<typeof useApp>['updateIShapeConfig'];
+}) {
+  const resolvedTrolleySectionId = resolveTrolleySectionId(iShape, clearSegments);
+  const outerSections = clearSegments.filter((seg) =>
+    (seg.fromLetter === null || seg.toLetter === null) && seg.index !== resolvedTrolleySectionId
+  );
+  if (outerSections.length === 0) return null;
+
+  return (
+    <>
+      <div className="h-px" style={{ background: '#2a3347' }} />
+      <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#0891b2' }}>Side Section Doors</p>
+      <div className="flex flex-col gap-3">
+        {outerSections.map((seg) => {
+          const side = seg.fromLetter === null ? 'left' : 'right';
+          const override = side === 'left' ? iShape.leftSideDoorCountOverride : iShape.rightSideDoorCountOverride;
+          const doors = calculateSideSectionDoors(iShape, seg, side, override);
+          return (
+            <div key={seg.index} className="rounded-xl p-3" style={{ background: '#101825', border: '1px solid #1e2a3d' }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold" style={{ color: '#67e8f9' }}>{seg.label} ({Math.round(doors.sectionWidth)}mm)</span>
+                {!doors.valid && <span className="text-xs" style={{ color: '#f87171' }}>⚠ invalid</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <NumInput
+                  label="Number of Doors"
+                  value={doors.doorCount}
+                  onChange={(v) => updateIShapeConfig(
+                    side === 'left' ? { leftSideDoorCountOverride: v } : { rightSideDoorCountOverride: v }
+                  )}
+                  note={override === null ? `Auto-recommended (${doors.recommendedDoorCount})` : undefined}
+                />
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Door Width</label>
+                  <div className="rounded-lg px-2 py-2.5 text-base font-mono font-bold text-center" style={{ background: '#1e2535', border: '2px solid #2a3347', color: '#67e8f9' }}>
+                    {Math.round(doors.doorWidth)} mm
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>
+                    {doors.sectionWidth} − 2mm (inner) − {doors.wallDeductionMm}mm ({doors.hasWallKadappa ? 'wall Kadappa' : 'wall'})
+                    {doors.doorCount > 1 ? ` − ${(doors.doorCount - 1) * 2}mm (gaps) ÷ ${doors.doorCount}` : ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/** Fix Patti — a real vertical panel attached to the OUTSIDE of the
+ * kitchen box, on the chosen side(s). Per the user's explicit spec: a
+ * Position selector (None/Left/Right/Both) plus manually-entered Height ×
+ * Width per side — defaults shown are Height = Total Kitchen Height,
+ * Width = 40mm, but both stay fully editable, never derived. */
+function FixPattiFrame({ iShape, updateIShapeConfig }: {
+  iShape: ReturnType<typeof useApp>['model']['kitchen']['iShape'];
+  updateIShapeConfig: ReturnType<typeof useApp>['updateIShapeConfig'];
+}) {
+  const positions: { value: typeof iShape.fixPattiPosition; label: string }[] = [
+    { value: 'none', label: 'None' }, { value: 'left', label: 'Left' },
+    { value: 'right', label: 'Right' }, { value: 'both', label: 'Both' },
+  ];
+  const showLeft = iShape.fixPattiPosition === 'left' || iShape.fixPattiPosition === 'both';
+  const showRight = iShape.fixPattiPosition === 'right' || iShape.fixPattiPosition === 'both';
+
+  return (
+    <>
+      <div className="h-px" style={{ background: '#2a3347' }} />
+      <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#16a34a' }}>Fix Patti</p>
+      <div className="flex gap-2">
+        {positions.map((opt) => (
+          <WallSideOptionButton
+            key={opt.value}
+            label={opt.label}
+            selected={iShape.fixPattiPosition === opt.value}
+            onClick={() => updateIShapeConfig({ fixPattiPosition: opt.value })}
+          />
+        ))}
+      </div>
+      {(showLeft || showRight) && (
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          {showLeft && (
+            <>
+              <NumInput
+                label="Left Fix Patti Height"
+                value={iShape.fixPattiLeftHeight || iShape.height}
+                onChange={(v) => updateIShapeConfig({ fixPattiLeftHeight: v })}
+              />
+              <NumInput
+                label="Left Fix Patti Width"
+                value={iShape.fixPattiLeftWidth || 40}
+                onChange={(v) => updateIShapeConfig({ fixPattiLeftWidth: v })}
+              />
+            </>
+          )}
+          {showRight && (
+            <>
+              <NumInput
+                label="Right Fix Patti Height"
+                value={iShape.fixPattiRightHeight || iShape.height}
+                onChange={(v) => updateIShapeConfig({ fixPattiRightHeight: v })}
+              />
+              <NumInput
+                label="Right Fix Patti Width"
+                value={iShape.fixPattiRightWidth || 40}
+                onChange={(v) => updateIShapeConfig({ fixPattiRightWidth: v })}
+              />
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -443,6 +598,41 @@ function TrolleySectionPicker({ iShape, clearSegments, updateIShapeConfig }: {
 
 const DEPTH_DEDUCTION_OPTIONS = [10, 20];
 
+/** Small inline-editable number used inside the compact Trolley Dimensions
+ * rows (e.g. Floor Ceiling Patti Height, Final Trolley Depth override) —
+ * same "don't silently insert 0 while the box is empty" behavior as
+ * NumInput, but sized to sit inline in a single row instead of its own
+ * labeled block. */
+function InlineNumEdit({ value, onChange, prefix = '', suffix = ' mm' }: {
+  value: number; onChange: (v: number) => void; prefix?: string; suffix?: string;
+}) {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const displayValue = draft !== null ? draft : (value || value === 0 ? String(value) : '');
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 2 }}>
+      {prefix}
+      <input
+        type="number"
+        inputMode="numeric"
+        value={displayValue}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setDraft(raw);
+          if (raw === '') return;
+          const n = Number(raw);
+          if (Number.isFinite(n)) onChange(n);
+        }}
+        onBlur={() => setDraft(null)}
+        onWheel={(e) => e.currentTarget.blur()}
+        placeholder="0"
+        className="text-right font-mono font-bold outline-none rounded"
+        style={{ width: 56, background: '#1e2535', border: '1px solid #2a3347', color: '#fbbf24', fontSize: 12, padding: '1px 4px' }}
+      />
+      {suffix}
+    </span>
+  );
+}
+
 /** The "TROLLEY DIMENSIONS" frame — shows the full Height/Width/Depth
  * calculation chain (source measurement → deduction → final value) with
  * nothing hidden, per the user's explicit "do not hide the deductions"
@@ -473,7 +663,16 @@ function TrolleyDimensionsFrame({ iShape, clearSegments, updateIShapeConfig }: {
         <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#b45309' }}>Height</p>
         <div style={rowStyle}><span style={labelStyle}>Total Kitchen Height {manualTag}</span><span style={valueStyle}>{Math.round(iShape.height)} mm</span></div>
         <div style={rowStyle}><span style={labelStyle}>Pani Patti Height {manualTag}</span><span style={valueStyle}>− {Math.round(iShape.paniPattiHeight)} mm</span></div>
-        <div style={rowStyle}><span style={labelStyle}>Gap</span><span style={valueStyle}>− 10 mm</span></div>
+        <div style={rowStyle}>
+          <span style={labelStyle}>Floor Ceiling Patti {manualTag}</span>
+          <span style={valueStyle}>
+            −{' '}
+            <InlineNumEdit
+              value={iShape.floorCeilingPattiHeight}
+              onChange={(v) => updateIShapeConfig({ floorCeilingPattiHeight: v })}
+            />
+          </span>
+        </div>
         <div style={rowStyle}><span style={labelStyle}>Trolley Height Clearance</span><span style={valueStyle}>− 30 mm</span></div>
         <div style={{ ...rowStyle, marginTop: 2, paddingTop: 4, borderTop: '1px dashed #2a3347' }}>
           <span style={{ ...labelStyle, color: '#e2e8f0', fontWeight: 700 }}>Final Trolley Height {autoTag}</span>
@@ -519,8 +718,25 @@ function TrolleyDimensionsFrame({ iShape, clearSegments, updateIShapeConfig }: {
           </div>
         </div>
         <div style={{ ...rowStyle, marginTop: 2, paddingTop: 4, borderTop: '1px dashed #2a3347' }}>
-          <span style={{ ...labelStyle, color: '#e2e8f0', fontWeight: 700 }}>Final Trolley Depth {autoTag}</span>
-          <span style={{ ...valueStyle, color: '#fbbf24', fontWeight: 700 }}>{Math.round(dims.finalDepth)} mm</span>
+          <span style={{ ...labelStyle, color: '#e2e8f0', fontWeight: 700 }}>
+            Final Trolley Depth {iShape.trolleyDepthOverride !== null ? manualTag : autoTag}
+          </span>
+          <span style={{ ...valueStyle, color: '#fbbf24', fontWeight: 700, display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+            <InlineNumEdit
+              value={Math.round(dims.finalDepth)}
+              onChange={(v) => updateIShapeConfig({ trolleyDepthOverride: v })}
+            />
+            {iShape.trolleyDepthOverride !== null && (
+              <button
+                onClick={() => updateIShapeConfig({ trolleyDepthOverride: null })}
+                className="text-xs font-bold"
+                style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                title="Reset to calculated value"
+              >
+                reset
+              </button>
+            )}
+          </span>
         </div>
         {!dims.depthValid && dims.depthInvalidReason && <p className="text-xs" style={{ color: '#f87171' }}>⚠ {dims.depthInvalidReason}</p>}
       </div>
@@ -644,61 +860,22 @@ function MeasurementsTab({ onDone }: { onDone: () => void }) {
 }
 
 // ─── Drawing tab — just the drawing, nothing else ──────────────────────────────
-
-type GenericDrawTab = 'plan' | 'elev-a' | 'elev-b';
+//
+// I-Shape is the only Kitchen shape a user can ever actually pick (Step1
+// disables L-Shape/U-Shape/Parallel as "Soon"), so the Drawing tab always
+// renders the I-Shape/Kadappa drawing. The old generic Plan/Elevation A/B
+// views (no Kadappa awareness — used the old freeform cabinet-module
+// list) were a leftover fallback for those unreachable shapes and could
+// surface by mistake whenever `model.kitchen.type` held a stale/demo
+// value other than 'straight'. Removed per the user's explicit report of
+// the old drawing popping up on Kitchen click.
 
 function DrawingTab() {
-  const { model, geo, selectedModuleId, setSelectedModuleId } = useApp();
-  const isIShape = model.kitchen.type === 'straight';
-  const [genericTab, setGenericTab] = useState<GenericDrawTab>('elev-a');
-
-  if (isIShape) {
-    return (
-      <div className="flex-1 overflow-auto p-3" style={{ background: '#e8eaf0' }}>
-        <div className="rounded-xl shadow-2xl p-4" style={{ background: '#fff' }}>
-          <IShapeKitchenDrawing iShape={model.kitchen.iShape} />
-        </div>
-      </div>
-    );
-  }
-
-  // Other shapes stay on the old generic Plan/Elevation views (no
-  // I-Shape/Kadappa awareness), still with their own small view switcher,
-  // but without the Measure/Evidence/AI/Cabinet-Modules chrome.
-  const tabs: { id: GenericDrawTab; label: string }[] = [
-    { id: 'plan', label: 'PLAN' },
-    { id: 'elev-a', label: 'ELEVATION A' },
-    { id: 'elev-b', label: 'ELEVATION B' },
-  ];
+  const { model } = useApp();
   return (
-    <div className="flex flex-col h-full" style={{ background: '#1a1f2e' }}>
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b" style={{ background: '#131920', borderColor: '#243045' }}>
-        {tabs.map((tab) => (
-          <button key={tab.id} onClick={() => setGenericTab(tab.id)}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold font-mono tracking-widest transition-all"
-            style={{
-              background: genericTab === tab.id ? '#1d4ed8' : 'transparent',
-              color: genericTab === tab.id ? '#fff' : '#3d4f6a',
-            }}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div className="flex-1 overflow-hidden p-3" style={{ background: '#e8eaf0' }}>
-        <div className="w-full h-full rounded-xl overflow-hidden shadow-2xl" style={{ background: '#fff' }}>
-          {genericTab === 'plan' && (
-            <PlanView geo={geo} projectId={model.project.projectId}
-              selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
-          )}
-          {genericTab === 'elev-a' && (
-            <ElevationA geo={geo} projectId={model.project.projectId}
-              selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
-          )}
-          {genericTab === 'elev-b' && (
-            <ElevationB geo={geo} projectId={model.project.projectId}
-              selectedModuleId={selectedModuleId} onSelectModule={setSelectedModuleId} />
-          )}
-        </div>
+    <div className="flex-1 overflow-auto p-3" style={{ background: '#e8eaf0' }}>
+      <div className="rounded-xl shadow-2xl p-4" style={{ background: '#fff' }}>
+        <IShapeKitchenDrawing iShape={model.kitchen.iShape} />
       </div>
     </div>
   );

@@ -61,6 +61,11 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
   const W = n(dims.W);
   const inp: SimpleWardrobeInputs = {
     W, H: n(dims.H), D: n(dims.D),
+    // 0 = no Door field entered for this product (e.g. Sliding Wardrobe,
+    // which has its own different sliding-panel concept) — draws no door
+    // lines at all, rather than silently assuming 2 doors.
+    doorCount: n(dims.doorCount) || 0,
+    doorWidthMm: n(dims.doorWidthMm) || 0,
     dressing: dressing ?? DEFAULT_DRESSING,
     topPanel: topPanel ?? DEFAULT_TOP_PANEL,
     loft: loft ?? DEFAULT_LOFT,

@@ -1,19 +1,19 @@
 import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engine/types';
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
+import { loftOneDoorWidth } from '../../engine/loftDoorEngine';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Loft Box — matches the user's own reference sketch: one box (Height x
 // Width), Depth as the "/" diagonal leader, optionally divided into N equal
-// shutters per the exact deduction formula from the spec:
-//   totalDeduction = shutterCount * 2
-//   usableWidth = loftWidth - totalDeduction
-//   shutterWidth = usableWidth / shutterCount
-// (2mm per shutter accounts for the gap between shutters — never rounded
-// early; only the DISPLAYED value is rounded, the internal geometry keeps
-// full precision so N shutters always sum back to exactly the Loft Box's
-// own real width). A Top Panel (Left/Right) is an optional bold marker
-// line at the box's own top corner, per the reference sketch.
+// shutters. Per the user's explicit instruction, this now uses the SAME
+// shared Loft door-width engine as the Wardrobe's own Loft add-on
+// (src/engine/loftDoorEngine.ts's loftOneDoorWidth) instead of a separate,
+// duplicate formula — one reusable calculation for every product with a
+// Loft, never a second copy of the same math. (The two were always
+// numerically identical: (width − count×2) / count — this just removes the
+// duplicate implementation.) A Top Panel (Left/Right) is an optional bold
+// marker line at the box's own top corner, per the reference sketch.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type TopPanelSide = 'left' | 'right';
@@ -47,12 +47,9 @@ function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number) 
   return { x2: cornerX + insetX, y2: cornerY + insetY };
 }
 
-/** Real, unrounded shutter width — the exact formula from the spec. */
+/** Real, unrounded shutter width — now delegates to the shared Loft door-width engine (loftDoorEngine.ts's loftOneDoorWidth), same formula every other Loft product uses. Kept under this name so every call site in this file stays unchanged. */
 export function loftShutterWidth(loftWidth: number, shutterCount: number): number {
-  const count = Math.max(1, Math.round(shutterCount) || 1);
-  const totalDeduction = count * 2;
-  const usableWidth = loftWidth - totalDeduction;
-  return usableWidth / count;
+  return loftOneDoorWidth(loftWidth, shutterCount);
 }
 
 export function loftBoxCutlist(inp: LoftBoxInputs): LoftBoxCutRow[] {

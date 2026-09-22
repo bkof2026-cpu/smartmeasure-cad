@@ -105,11 +105,12 @@ const AppContext = createContext<AppContextValue | null>(null);
 const STORAGE_KEY = 'smartmeasure-project';
 const RULES_KEY = 'smartmeasure-rules';
 const VERSION_KEY = 'smartmeasure-version';
-// Bumped for the Trolley Dimension Calculation frame — iShape now requires
-// depth, depthDeduction, trolleyHeightOverride/WidthOverride/DepthOverride
-// — wipes stale storage so an old saved project doesn't render with
-// undefined values feeding the H×W×D formulas.
-const STORAGE_VERSION = '9';
+// Bumped for the Fix Patti feature — iShape now requires
+// fixPattiPosition/fixPattiLeftHeight/fixPattiLeftWidth/
+// fixPattiRightHeight/fixPattiRightWidth — wipes stale storage so an old
+// saved project doesn't render with undefined values feeding the Fix
+// Patti drawing.
+const STORAGE_VERSION = '12';
 
 function clearStorage() {
   try {

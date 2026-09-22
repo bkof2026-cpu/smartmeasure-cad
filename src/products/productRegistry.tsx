@@ -2,6 +2,8 @@ import React from 'react';
 import type { ProductTemplate, CutlistRow, ProductId } from './productTypes';
 import { SimpleBedDrawing } from './bed/SimpleBedDrawing';
 import { simpleBedCutlist } from './bed/simpleBedGeometry';
+import { ChildrenBedDrawing } from './bed/ChildrenBedDrawing';
+import { childrenBedCutlist, childrenBedInputsFromDims } from './bed/childrenBedGeometry';
 // Old Side Table (Front/Plan/Side, drawer-front) and Loft Cabinet
 // (box-count) engines are no longer wired to any live product entry —
 // replaced by "Separate Side Table" (Mirror + Base Storage) and "Loft Box"
@@ -904,8 +906,21 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // BedTechnicalDrawing.tsx) is kept, unused, for a future "fabrication
     // detail" mode — nothing was deleted, this product entry just no
     // longer wires to it. See src/products/bed/simpleBedGeometry.ts.
-    demoDimensions: { W: 1800, L: 2000, H: 436, hasHeadboard: 1, headboardH: 900 },
+    demoDimensions: {
+      bedType: 'Bed', W: 1800, L: 2000, H: 436, hasHeadboard: 1, headboardH: 900,
+      // Children Bed fields — always present in measurementFields (Dining
+      // Table's dual-type precedent), ignored by the resolver unless
+      // bedType === 'Children Bed'. Demo values give a fully worked example
+      // the moment a user switches type, matching every other product's
+      // demoDimensions convention. Center Table/LST/RST are NOT here — per
+      // the user's explicit direction they're optional "+" addon cards
+      // (PRODUCT_ADDONS['bed']: children-bed-center-table/lst/rst), not
+      // plain measurementFields, same as the plain Bed's own LST/RST above.
+      bedA_W: 1200, bedA_L: 1900, bedA_H: 400, bedA_hasHeadboard: 1, bedA_headboardH: 800,
+      bedB_W: 1200, bedB_L: 1900, bedB_H: 400, bedB_hasHeadboard: 1, bedB_headboardH: 800,
+    },
     measurementFields: [
+      { key: 'bedType', label: 'Bed Measurement Type', unit: 'select', defaultValue: 'Bed', options: ['Bed', 'Children Bed'] },
       { key: 'W', label: 'Bed Width', unit: 'mm', defaultValue: 1800, min: 900, max: 2400 },
       { key: 'L', label: 'Bed Length', unit: 'mm', defaultValue: 2000, min: 1800, max: 2400 },
       { key: 'H', label: 'Bed Height', unit: 'mm', defaultValue: 436, min: 250, max: 600 },
@@ -913,9 +928,32 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       // existing behaviour doesn't change unless the user turns it off).
       { key: 'hasHeadboard', label: 'Add Headboard', unit: 'bool', defaultValue: 1 },
       { key: 'headboardH', label: 'Headboard Height', unit: 'mm', defaultValue: 900, min: 400, max: 1500 },
+      // ── Children Bed fields (bedType === 'Children Bed' only; hidden from
+      // the panel otherwise via ProductFlow.tsx's groups filter) ──
+      // Bed A and Bed B are each independent, mandatory (always exactly 2
+      // beds) — same fields/defaults as the simple Bed above, just
+      // namespaced, and shown always-expanded like the plain Bed's own
+      // fields (never behind a "+", since neither is optional). Changing
+      // one never affects the other (resolveChildrenBedPlan calls
+      // resolveSimpleBedPlan twice, fully separately).
+      { key: 'bedA_W', label: 'Bed A — Width', unit: 'mm', defaultValue: 1200, min: 900, max: 2400 },
+      { key: 'bedA_L', label: 'Bed A — Length', unit: 'mm', defaultValue: 1900, min: 1800, max: 2400 },
+      { key: 'bedA_H', label: 'Bed A — Height', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
+      { key: 'bedA_hasHeadboard', label: 'Bed A — Add Headboard', unit: 'bool', defaultValue: 1 },
+      { key: 'bedA_headboardH', label: 'Bed A — Headboard Height', unit: 'mm', defaultValue: 800, min: 400, max: 1500 },
+      { key: 'bedB_W', label: 'Bed B — Width', unit: 'mm', defaultValue: 1200, min: 900, max: 2400 },
+      { key: 'bedB_L', label: 'Bed B — Length', unit: 'mm', defaultValue: 1900, min: 1800, max: 2400 },
+      { key: 'bedB_H', label: 'Bed B — Height', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
+      { key: 'bedB_hasHeadboard', label: 'Bed B — Add Headboard', unit: 'bool', defaultValue: 1 },
+      { key: 'bedB_headboardH', label: 'Bed B — Headboard Height', unit: 'mm', defaultValue: 800, min: 400, max: 1500 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
+      const isChildrenBed = String(dims.bedType ?? 'Bed') === 'Children Bed';
+      if (isChildrenBed) {
+        const cutRows = childrenBedCutlist(childrenBedInputsFromDims(dims));
+        return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+      }
       const cutRows = simpleBedCutlist({
         W: n(dims.W), L: n(dims.L), H: n(dims.H),
         headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900,
@@ -925,7 +963,9 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
-    DrawingComponent: (props) => <SimpleBedDrawing dims={props.dims} />,
+    DrawingComponent: (props) => String(props.dims.bedType ?? 'Bed') === 'Children Bed'
+      ? <ChildrenBedDrawing dims={props.dims} />
+      : <SimpleBedDrawing dims={props.dims} />,
   },
 
   // ── OPENABLE WARDROBE ─────────────────────────────────────────────────────────
@@ -943,11 +983,17 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // WardrobeTechnicalDrawing.tsx) is kept intact for a future
     // "fabrication detail" mode — nothing deleted, this entry and
     // ProductFlow.tsx's design-selection gate just no longer require it.
-    demoDimensions: { W: 2290, H: 2090, D: 600, totalWidth: 0, totalHeight: 0 },
+    demoDimensions: { W: 2290, H: 2090, D: 600, doorCount: 2, doorWidthMm: 1120, totalWidth: 0, totalHeight: 0 },
     measurementFields: [
       { key: 'W', label: 'Wardrobe Width', unit: 'mm', defaultValue: 2290, min: 900, max: 3600 },
       { key: 'H', label: 'Wardrobe Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
       { key: 'D', label: 'Wardrobe Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
+      // Door — Number of Doors + each Door's own Width (both entered);
+      // Door Height is never entered here — it's always the formula value
+      // (Wardrobe Height − 36mm − 70mm skirting), computed and drawn by
+      // simpleWardrobeGeometry.ts's wardrobeDoorHeight().
+      { key: 'doorCount', label: 'Number of Doors', unit: 'count', defaultValue: 2, min: 1, max: 8, step: 1 },
+      { key: 'doorWidthMm', label: 'Door Width', unit: 'mm', defaultValue: 1120, min: 200, max: 1800 },
       // Separate, directly-entered overall envelope — shown on the drawing
       // exactly as typed, never derived/recomputed from Wardrobe Width/
       // Height or any add-on. 0 = not entered, outer line stays hidden.
@@ -958,6 +1004,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     computeCutlist: (dims) => {
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
+        doorCount: n(dims.doorCount) || 2, doorWidthMm: n(dims.doorWidthMm) || 0,
         dressing: { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 },
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
@@ -997,6 +1044,9 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     computeCutlist: (dims) => {
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
+        // Sliding Wardrobe doesn't use the Door field (a different
+        // sliding-panel concept, not vertical hinged doors) — 0 draws none.
+        doorCount: 0, doorWidthMm: 0,
         dressing: { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 },
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },

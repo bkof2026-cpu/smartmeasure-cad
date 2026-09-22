@@ -20,6 +20,21 @@ import { resolveStudyTablePlan, studyTableCutlist, type StudyTableInputs } from 
 // Measurements panel keeps showing the plain entered Height unchanged.
 export const WARDROBE_SKIRTING_HEIGHT_MM = 70;
 
+// Wardrobe Door — a main-measurement field (Number of Doors + each Door's
+// own Width, entered directly), not an optional add-on: every wardrobe has
+// doors, shown as plain vertical divider lines splitting the wardrobe
+// carcass into equal panels, per the user's own reference sketch (a single
+// vertical line down the middle for 2 doors). Door WIDTH is manually
+// entered (the user's own real per-door measurement); Door HEIGHT is
+// always derived — never entered — via the user's explicit formula:
+//   Door Height = Wardrobe Height − 36mm (frame/shutter-gap allowance)
+//                − 70mm (the same WARDROBE_SKIRTING_HEIGHT_MM strip)
+export const WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM = 36;
+
+export function wardrobeDoorHeight(wardrobeHeightMm: number): number {
+  return Math.max(0, wardrobeHeightMm - WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM - WARDROBE_SKIRTING_HEIGHT_MM);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Simplified Wardrobe model — same real site-measurement workflow as the
 // simplified Bed (src/products/bed/simpleBedGeometry.ts), applied to the
@@ -200,6 +215,8 @@ export interface SimpleWardrobeInputs {
   W: number; // wardrobe width
   H: number; // wardrobe height
   D: number; // wardrobe depth — shown as a "/" diagonal leader, never a straight arrow
+  doorCount: number; // Number of Doors (entered) — the wardrobe carcass is split into this many equal vertical panels
+  doorWidthMm: number; // each Door's own Width (entered manually — NOT derived from doorCount/W)
   dressing: WardrobeDressingInput;
   topPanel: WardrobeTopPanelInput;
   loft: WardrobeLoftInput;
@@ -253,6 +270,13 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
   const rows: SimpleWardrobeCutRow[] = [
     { component: 'Wardrobe', width: inp.W, height: inp.H, qty: 1, remark: `Width x Height (entered) | Depth = ${Math.round(inp.D)}mm (entered, shown as the / leader)` },
   ];
+  if (inp.doorCount > 0) {
+    const doorH = wardrobeDoorHeight(inp.H);
+    rows.push({
+      component: `Door (x${inp.doorCount})`, width: inp.doorWidthMm, height: doorH, qty: inp.doorCount,
+      remark: `Width entered | Height = Wardrobe Height(${Math.round(inp.H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`,
+    });
+  }
   if (inp.dressing.enabled) {
     const sideLabel = inp.dressing.side === 'both' ? 'Left + Right' : inp.dressing.side === 'left' ? 'Left' : 'Right';
     const qty = inp.dressing.side === 'both' ? 2 : 1;
@@ -879,6 +903,50 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // Total-H arrow (also on the right) is then tiered one step further out.
   const rightDimX = wardrobeX + W + dressR + topPanelR;
   dimReqs.push({ axis: 'v', x1: rightDimX, y1: wardrobeY, x2: rightDimX, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(H)} (H)`, source: { formula: 'Wardrobe Height (entered, includes the 70mm skirting)', constants: [] } });
+
+  // Wardrobe Doors — plain vertical divider lines splitting the carcass
+  // into `doorCount` equal panels (per the user's own reference sketch: a
+  // single vertical line for 2 doors, never a boxed/bordered sub-component
+  // like the Loft's own doors). Door WIDTH is the entered doorWidthMm
+  // (a real per-door measurement, not derived); Door HEIGHT is always the
+  // formula value (never entered) — shown with the SAME straight dimension-
+  // arrow convention as the Wardrobe's own W/H above, on the first door
+  // panel only (every door shares the same H/W, so one set of arrows is
+  // enough — matches the reference, which only calls out one panel).
+  // doorCount <= 0 means this product doesn't use the Door field at all
+  // (e.g. Sliding Wardrobe, which never passes doorCount) — draw nothing
+  // rather than assuming a default door split.
+  const doorCount = Math.round(inp.doorCount) || 0;
+  const doorH = wardrobeDoorHeight(H);
+  const doorW = Math.max(1, inp.doorWidthMm || 0);
+  if (doorCount > 0) {
+    const doorPanelW = W / doorCount;
+    // Divider lines at each internal boundary (doorCount − 1 lines) —
+    // never at the outer edges, which are already the wardrobe's own box.
+    for (let i = 1; i < doorCount; i++) {
+      const dx = wardrobeX + doorPanelW * i;
+      lines.push({ x1: dx, y1: wardrobeY, x2: dx, y2: wardrobeY + bodyH, color: '#1e3a8a', strokeWidth: 1.4 });
+    }
+    // Door Height — a real dimension arrow on the wardrobe's own LEFT edge
+    // (the right edge is already used by the Wardrobe's own Height above),
+    // measuring the formula-derived door height, anchored at the floor
+    // line (doors sit above the skirting, matching the formula's own
+    // "− 70mm skirting" deduction).
+    dimReqs.push({
+      axis: 'v', x1: wardrobeX - 24, y1: wardrobeY + bodyH - doorH, x2: wardrobeX - 24, y2: wardrobeY + bodyH, edge: 'left',
+      componentIds: ['wardrobe'], label: `${Math.round(doorH)} (Door H)`,
+      source: { formula: `Door Height = Wardrobe Height(${Math.round(H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`, constants: [] },
+    });
+    // Door Width — a real dimension arrow along the wardrobe's own TOP
+    // edge, spanning the first door panel only (entered value, independent
+    // of doorPanelW — the divider lines split the box evenly for the
+    // drawing, but the door's own real Width is whatever was entered).
+    dimReqs.push({
+      axis: 'h', x1: wardrobeX, y1: wardrobeY, x2: wardrobeX + doorW, y2: wardrobeY, edge: 'top',
+      componentIds: ['wardrobe'], label: `${Math.round(doorW)} (Door W)`,
+      source: { formula: 'Door Width (entered) — same for every door', constants: [] },
+    });
+  }
 
   // Skirting drawn further below, AFTER Dressing/Side Panel are resolved —
   // it spans the full composite floor line (Dressing + Wardrobe + Side

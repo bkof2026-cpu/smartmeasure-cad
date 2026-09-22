@@ -73,8 +73,18 @@ export interface FieldColorGroup {
 
 export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   bed: [
+    { label: 'Bed Measurement Type', color: '#e2e8f0', keys: ['bedType'] },
     { label: 'Bed', color: '#3b82f6', keys: ['W', 'L', 'H'] },
     { label: 'Headboard', color: '#f59e0b', keys: ['hasHeadboard', 'headboardH'] },
+    // Children Bed (bedType === 'Children Bed' only) — Bed A/Bed B are
+    // each fully independent (own W/L/H/headboard), matching the plain
+    // Bed's own fields above one-for-one, just namespaced. Shown
+    // always-expanded (same treatment as the plain Bed group above) since
+    // both beds are mandatory, never optional — Center Table/LST/RST are
+    // the optional "extras" and live as PRODUCT_ADDONS "+" cards instead
+    // (see below), not plain fields here.
+    { label: 'Bed A', color: '#22c55e', keys: ['bedA_W', 'bedA_L', 'bedA_H', 'bedA_hasHeadboard', 'bedA_headboardH'] },
+    { label: 'Bed B', color: '#0891b2', keys: ['bedB_W', 'bedB_L', 'bedB_H', 'bedB_hasHeadboard', 'bedB_headboardH'] },
   ],
   'separate-side-table': [
     // #111827 (near-black, matching the Mirror's own drawing outline
@@ -91,6 +101,10 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   ],
   'openable-wardrobe': [
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
+    // Door — Number of Doors + each Door's own Width (both entered); Door
+    // Height is never a field here, it's always the formula value
+    // (Wardrobe Height − 36mm − 70mm skirting), shown only on the drawing.
+    { label: 'Door', color: '#7c3aed', keys: ['doorCount', 'doorWidthMm'] },
     // Directly-entered overall envelope — never recomputed FROM the
     // Wardrobe's own W/H (that direction still holds), but now used AS a
     // source for Top Panel Width / Loft Height / Loft Door Count when
@@ -202,6 +216,47 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'side', label: 'Mounted On', defaultValue: 0, min: 0, max: 1, options: ['Left Side Table (LST)', 'Right Side Table (RST)'] },
         { key: 'H', label: 'Height', defaultValue: 150, min: 50, max: 400 },
         { key: 'light', label: 'Add Profile Light', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
+      ],
+    },
+    // ── Children Bed only (bedType === 'Children Bed') — Center Table/LST/
+    // RST are genuinely optional extras (unlike Bed A/Bed B, which are
+    // mandatory and shown as plain always-expanded fields above), so they
+    // get their own "+" addon cards, per the user's explicit direction.
+    // Distinct ids from the plain Bed's own 'side-table-left'/
+    // 'side-table-right' above (never reused) since ProductFlow.tsx shows
+    // only one set or the other depending on Bed Measurement Type.
+    {
+      id: 'children-bed-center-table',
+      label: 'Center Table (CT)',
+      icon: '🛋️',
+      description: 'Sits between Bed A and Bed B — own Height × Width × Depth',
+      placement: 'composite',
+      fields: [
+        { key: 'H', label: 'Height', defaultValue: 500, min: 200, max: 900 },
+        { key: 'W', label: 'Width', defaultValue: 500, min: 200, max: 1200 },
+        { key: 'D', label: 'Depth', defaultValue: 450, min: 200, max: 900 },
+      ],
+    },
+    {
+      id: 'children-bed-lst',
+      label: 'LST (left of Bed A)',
+      icon: '🪑',
+      description: 'Attaches outside Bed A’s own left edge — own Width × Depth',
+      placement: 'composite',
+      fields: [
+        { key: 'W', label: 'Width', defaultValue: 560, min: 300, max: 900 },
+        { key: 'D', label: 'Depth', defaultValue: 460, min: 300, max: 700 },
+      ],
+    },
+    {
+      id: 'children-bed-rst',
+      label: 'RST (right of Bed B)',
+      icon: '🪑',
+      description: 'Attaches outside Bed B’s own right edge — own Width × Depth',
+      placement: 'composite',
+      fields: [
+        { key: 'W', label: 'Width', defaultValue: 560, min: 300, max: 900 },
+        { key: 'D', label: 'Depth', defaultValue: 460, min: 300, max: 700 },
       ],
     },
   ],
