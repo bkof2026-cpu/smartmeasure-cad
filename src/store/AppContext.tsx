@@ -55,6 +55,15 @@ interface AppContextValue {
   // object, so the generic updateKitchenConfig partial-merge can't reach
   // it directly).
   updateIShapeConfig: (patch: Partial<KitchenProjectModel['kitchen']['iShape']>) => void;
+  // L-Shape Kitchen — merges into kitchen.lShape's own top-level fields
+  // (kitchenHeight/kitchenDepth/paniPattiHeight/wallBPosition/corner),
+  // same pattern as updateIShapeConfig above.
+  updateLShapeConfig: (patch: Partial<KitchenProjectModel['kitchen']['lShape']>) => void;
+  // L-Shape Kitchen — merges into ONE of kitchen.lShape.wallA/wallB
+  // specifically, per the same "Wall A/Wall B are independently editable,
+  // never cross-contaminate" rule as every other L-Shape field
+  // (LSHAPE_KITCHEN_PLAN.md §5/§13).
+  updateLShapeWallConfig: (wall: 'A' | 'B', patch: Partial<KitchenProjectModel['kitchen']['lShape']['wallA']>) => void;
 
   // Openings
   addOpening: (o: Opening) => void;
@@ -203,6 +212,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateIShapeConfig = useCallback((patch: Partial<KitchenProjectModel['kitchen']['iShape']>) => {
     setModel((prev) => ({ ...prev, kitchen: { ...prev.kitchen, iShape: { ...prev.kitchen.iShape, ...patch } } }));
+  }, []);
+
+  const updateLShapeConfig = useCallback((patch: Partial<KitchenProjectModel['kitchen']['lShape']>) => {
+    setModel((prev) => ({ ...prev, kitchen: { ...prev.kitchen, lShape: { ...prev.kitchen.lShape, ...patch } } }));
+  }, []);
+
+  const updateLShapeWallConfig = useCallback((wall: 'A' | 'B', patch: Partial<KitchenProjectModel['kitchen']['lShape']['wallA']>) => {
+    setModel((prev) => {
+      const key = wall === 'A' ? 'wallA' : 'wallB';
+      return {
+        ...prev,
+        kitchen: {
+          ...prev.kitchen,
+          lShape: { ...prev.kitchen.lShape, [key]: { ...prev.kitchen.lShape[key], ...patch } },
+        },
+      };
+    });
   }, []);
 
   const updateWall = useCallback((id: string, length: number) => {
@@ -383,7 +409,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         model, geo, rules, screen, selectedModuleId,
         setScreen, setSelectedModuleId,
-        updateProject, setKitchenType, updateKitchenConfig, updateIShapeConfig, updateWall, setCeilingHeight,
+        updateProject, setKitchenType, updateKitchenConfig, updateIShapeConfig, updateLShapeConfig, updateLShapeWallConfig, updateWall, setCeilingHeight,
         addOpening, updateOpening, removeOpening,
         addModule, updateModule, removeModule,
         addEvidence,

@@ -47,7 +47,15 @@ export interface SkirtingDetails {
 
 export type WallSideKadappaOption = 'None' | 'Left' | 'Right' | 'Both';
 
-export interface IShapeKitchenConfig {
+// KitchenWallConfig is the real interface — it describes ONE kitchen wall's
+// complete configuration (Kadappa, Clear Width, Trolley, Trolley Panel,
+// Side Section Doors, Fix Patti, Pani Patti). IShapeKitchenConfig is kept
+// as an exact type alias so every existing import site (the geometry
+// engine, KitchenFlow.tsx, trolleyDimensions.ts, etc.) keeps compiling
+// unchanged — I-Shape Kitchen IS just a single KitchenWallConfig, drawn
+// alone. L-Shape Kitchen (see LShapeKitchenConfig below) reuses this same
+// interface twice, once per wall — see LSHAPE_KITCHEN_PLAN.md.
+export interface KitchenWallConfig {
   /** Total Kitchen Height (mm) — also the default Height for every
    * Kadappa (Wall Side and Inner Side alike). */
   height: number;
@@ -178,6 +186,51 @@ export interface IShapeKitchenConfig {
   fixPattiRightWidth: number;
 }
 
+/** I-Shape Kitchen IS just a single KitchenWallConfig, drawn alone — see
+ * the comment above KitchenWallConfig. Kept as its own name since every
+ * existing import site already spells it this way. */
+export type IShapeKitchenConfig = KitchenWallConfig;
+
+// ─── L-Shape Kitchen — Wall A + Wall B + shared corner ────────────────────────
+// See LSHAPE_KITCHEN_PLAN.md for the full design. L-Shape reuses
+// KitchenWallConfig wholesale for both walls (§2.3 of the plan — Wall A and
+// Wall B must expose IDENTICAL functionality, independently editable), and
+// factors Kitchen Height/Depth/Pani Patti Height out as shared, common-to-
+// both-walls values (§15 Open Question 1, resolved: option (a)) rather than
+// duplicating them per wall.
+
+export type WallBPosition = 'left' | 'right';
+
+export interface LShapeCornerConfig {
+  /** Per LSHAPE_KITCHEN_PLAN.md §0.1: the Corner Fix Patti is its own
+   * distinct, optional concept — NEVER a Wall-Side Kadappa, never part of
+   * either wall's own fixPatti fields, never counted in either wall's
+   * Total Width. Resolved exclusively by the dedicated corner engine. */
+  fixPattiEnabled: boolean;
+  fixPattiWidth: number;
+  fixPattiHeight: number;
+}
+
+export interface LShapeKitchenConfig {
+  /** Common to both walls (§3 of the original spec / §15 Q1 of the plan) —
+   * copied into each wall's own KitchenWallConfig.height/.depth/
+   * .paniPattiHeight right before resolveKitchenWall is called for it, so
+   * the wall resolver itself never needs to know these are shared. */
+  kitchenHeight: number;
+  kitchenDepth: number;
+  paniPattiHeight: number;
+
+  wallA: KitchenWallConfig;
+  wallB: KitchenWallConfig;
+
+  /** Which physical end of Wall A the shared corner (and therefore Wall B)
+   * sits at. Fully user-editable; switching this must never reset either
+   * wall's own measurements (LSHAPE_KITCHEN_PLAN.md §13). */
+  wallBPosition: WallBPosition;
+
+  corner: LShapeCornerConfig;
+}
+
 export interface KitchenConfig {
   type: KitchenType;
   walls: Wall[];
@@ -195,6 +248,8 @@ export interface KitchenConfig {
   cornerUnitRequired: boolean;
   /** Only meaningful when type === 'straight' (I-Shape Kitchen). */
   iShape: IShapeKitchenConfig;
+  /** Only meaningful when type === 'l-shape'. */
+  lShape: LShapeKitchenConfig;
 }
 
 export interface Opening {

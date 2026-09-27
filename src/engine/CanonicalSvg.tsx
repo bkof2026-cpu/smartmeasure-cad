@@ -160,6 +160,34 @@ function DimensionLineView({ d, ox, oy, scale, onSelect, plainLabels }: { d: Dim
   );
 }
 
+interface LabelRect { x: number; y: number; w: number; h: number; }
+
+function rectsOverlap(a: LabelRect, b: LabelRect, margin = 0): boolean {
+  return a.x < b.x + b.w + margin && b.x < a.x + a.w + margin && a.y < b.y + b.h + margin && b.y < a.y + a.h + margin;
+}
+
+/** A DimensionLine's own rendered label footprint, in SCREEN px — mirrors
+ * DimensionLineView's own label placement exactly (see toPx/off there), so
+ * an AnnotationLine label never gets nudged to a spot that still lands on
+ * top of a dimension's own text. */
+function dimensionLabelScreenRect(d: DimensionLine, ox: number, oy: number, scale: number): LabelRect {
+  const p = toPx(d, ox, oy, scale);
+  const off = (d.tier + 1) * DIM_TIER_STEP_PX;
+  const fs = 8;
+  const lw = d.label.length * fs * 0.62 + 6;
+  const lh = fs * 1.4;
+  if (d.axis === 'h') {
+    const y = d.edge === 'top' ? Math.min(p.y1, p.y2) - off : Math.max(p.y1, p.y2) + off;
+    const mx = (p.x1 + p.x2) / 2;
+    return { x: mx - lw / 2, y: y - lh / 2, w: lw, h: lh };
+  }
+  const x = d.edge === 'left' ? Math.min(p.x1, p.x2) - off : Math.max(p.x1, p.x2) + off;
+  const my = (p.y1 + p.y2) / 2;
+  // Vertical dimension labels render rotated -90°, so their SCREEN footprint
+  // is actually tall/narrow (swap w/h from the unrotated text metrics).
+  return { x: x - lh / 2, y: my - lw / 2, w: lh, h: lw };
+}
+
 interface RenderProps {
   worldWidth: number;
   worldHeight: number;
@@ -436,65 +464,153 @@ export function TechnicalDrawingSvg({
           );
         });
       })()}
-      {lines.map((l, i) => {
-        const px1 = ox + l.x1 * scale, py1 = oy + l.y1 * scale;
-        const px2 = ox + l.x2 * scale, py2 = oy + l.y2 * scale;
-        // Diagonal leader labels (Depth "/" or "\" callouts, and anything
-        // else drawn via AnnotationLine) must read PARALLEL to their own
-        // line, at whatever angle that line actually has — never forced
-        // horizontal. Centered on the line's own midpoint (not its
-        // endpoint), offset only perpendicular to it (the -1.5 in y,
-        // applied before rotation) so the text reads as riding directly on
-        // the line — real CAD dimension-text convention — rather than
-        // floating a visible gap above it (the previous -4 read as
-        // disconnected from the line on the smaller/shorter diagonals many
-        // products use).
-        // labelAtStart anchors the caption at the line's own (x1,y1) end
-        // instead of its midpoint — for a long leader whose label should
-        // sit right at the arrow's starting point, not float in the middle.
-        const mx = l.labelAtStart ? px1 : (px1 + px2) / 2;
-        const my = l.labelAtStart ? py1 : (py1 + py2) / 2;
-        let angleDeg = (Math.atan2(py2 - py1, px2 - px1) * 180) / Math.PI;
-        // Never let the label render upside-down — CAD dimension text stays
-        // readable left-to-right / bottom-to-top, so angles past vertical
-        // get flipped 180° rather than literally matching the line's
-        // direction vector.
-        if (angleDeg > 90) angleDeg -= 180;
-        if (angleDeg < -90) angleDeg += 180;
-        return (
-          <g key={i}>
-            <line
-              x1={px1} y1={py1} x2={px2} y2={py2}
-              stroke={l.color ?? '#94a3b8'} strokeWidth={l.strokeWidth ?? 0.8} strokeDasharray={l.dashed ? '3 2' : undefined}
-              markerStart={l.arrowAtStart ? 'url(#canon-arrow)' : undefined}
-              markerEnd={l.arrowAtEnd ? 'url(#canon-arrow)' : undefined}
-            />
-            {l.label && (
-              <g transform={`rotate(${angleDeg} ${mx} ${my})`}>
-                {/* Backing behind the label so it stays readable where a
-                    line crosses behind it. plainDimLabels: a thin white
-                    text-halo (bare CAD look); otherwise a subtle white
-                    plate. */}
-                {!plainDimLabels && (
-                  <rect
-                    x={mx - (l.label.length * 8 * 0.62 + 4) / 2} y={my - 1.5 - 8 * 0.72}
-                    width={l.label.length * 8 * 0.62 + 4} height={8 * 1.15}
-                    fill="white" opacity={0.85}
-                  />
-                )}
-                {plainDimLabels && (
-                  <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fontWeight={700} fill="none" stroke="white" strokeWidth={2.6}>
+      {(() => {
+        // Labeled AnnotationLines (Depth diagonals, Pani Patti text, plain
+        // width/height callouts, ...) previously rendered at a fixed
+        // computed position with NO collision avoidance at all — unlike
+        // DimensionLines, which already get a full tiering pass
+        // (collisionEngine.ts). In a composite drawing merging several
+        // independently-laid-out regions (e.g. an L-Shape Kitchen's Wall A
+        // + Wall B, each contributing their own Depth diagonal and Pani
+        // Patti label near the shared corner), two such labels can end up
+        // landing on top of each other or on top of a dimension's own
+        // label with nothing to push them apart. This pass gives every
+        // labeled line the same "start at its preferred spot, nudge along
+        // its own perpendicular direction until clear" treatment NoteBox
+        // placement already gets, checked against every DimensionLine
+        // label already on the canvas AND every other AnnotationLine label
+        // placed so far in this same pass — all in SCREEN px, since that's
+        // the space labels actually collide in.
+        const dimLabelRects = dimensions.filter((d) => d.label).map((d) => dimensionLabelScreenRect(d, ox, oy, scale));
+        const placedLineLabelRects: LabelRect[] = [];
+        const FONT_PX = 8;
+        const NUDGE_STEP_PX = 11; // ~ one label-height step per attempt
+        const MAX_NUDGE_STEPS = 8;
+
+        return lines.map((l, i) => {
+          const px1 = ox + l.x1 * scale, py1 = oy + l.y1 * scale;
+          const px2 = ox + l.x2 * scale, py2 = oy + l.y2 * scale;
+          // Diagonal leader labels (Depth "/" or "\" callouts, and anything
+          // else drawn via AnnotationLine) must read PARALLEL to their own
+          // line, at whatever angle that line actually has — never forced
+          // horizontal. Centered on the line's own midpoint (not its
+          // endpoint) by default; labelAtStart anchors it at (x1,y1)
+          // instead, for a long leader whose caption should sit right at
+          // the arrow's starting point rather than float mid-line.
+          const baseMx = l.labelAtStart ? px1 : (px1 + px2) / 2;
+          const baseMy = l.labelAtStart ? py1 : (py1 + py2) / 2;
+          let angleDeg = (Math.atan2(py2 - py1, px2 - px1) * 180) / Math.PI;
+          // Never let the label render upside-down — CAD dimension text
+          // stays readable left-to-right / bottom-to-top, so angles past
+          // vertical get flipped 180° rather than literally matching the
+          // line's direction vector.
+          if (angleDeg > 90) angleDeg -= 180;
+          if (angleDeg < -90) angleDeg += 180;
+
+          let mx = baseMx, my = baseMy;
+          if (l.label) {
+            const lw = l.label.length * FONT_PX * 0.62 + 4;
+            const lh = FONT_PX * 1.15;
+            // Perpendicular unit vector to this line's own direction — the
+            // ONE axis a nudge may move along, so the label always stays
+            // riding on/near its own line (never drifts sideways along it,
+            // which would visually detach it from what it's labeling).
+            const angleRad = (angleDeg * Math.PI) / 180;
+            const perpX = -Math.sin(angleRad), perpY = Math.cos(angleRad);
+            const rectAt = (cx: number, cy: number): LabelRect => {
+              // Conservative axis-aligned box around the (possibly
+              // rotated) label — big enough to cover it at any angle up to
+              // ±90°, which is all `angleDeg` above ever produces.
+              const halfDiag = Math.sqrt(lw * lw + lh * lh) / 2;
+              return { x: cx - halfDiag, y: cy - halfDiag, w: halfDiag * 2, h: halfDiag * 2 };
+            };
+            const collidesAt = (cx: number, cy: number) => {
+              const candidate = rectAt(cx, cy);
+              return dimLabelRects.some((r) => rectsOverlap(candidate, r, 2)) ||
+                placedLineLabelRects.some((r) => rectsOverlap(candidate, r, 2));
+            };
+
+            let found = false;
+            // Pass 1: nudge along the line's own perpendicular axis only —
+            // the common case (a label crowds only the thing right next to
+            // its own line), and keeps the label visually riding along that
+            // line whenever it's enough to clear the crowding.
+            for (let step = 0; step <= MAX_NUDGE_STEPS && !found; step++) {
+              const cx = baseMx + perpX * NUDGE_STEP_PX * step;
+              const cy = baseMy + perpY * NUDGE_STEP_PX * step;
+              if (!collidesAt(cx, cy)) { mx = cx; my = cy; found = true; }
+            }
+            // Pass 2: a single-axis nudge cannot help when the thing this
+            // label collides with sits along a DIFFERENT axis entirely —
+            // e.g. a Depth diagonal anchored at the exact same corner point
+            // as a vertical Total-Height DimensionLine: nudging along the
+            // diagonal's own ~45° perpendicular never actually moves clear
+            // of a label sitting further up/down that unrelated vertical
+            // line. Falls back to a full 8-directional ring search (same
+            // technique placeNoteBoxes already uses in noteBoxPlacement.ts)
+            // radiating outward from the label's own true preferred spot,
+            // so it can escape in whichever direction is actually free.
+            if (!found) {
+              const RING_DIRS: { dx: number; dy: number }[] = [
+                { dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+                { dx: 1, dy: 1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 }, { dx: -1, dy: -1 },
+              ];
+              const RING_STEP_PX = 14;
+              const MAX_RING_STEPS = 10;
+              outer: for (let ring = 1; ring <= MAX_RING_STEPS && !found; ring++) {
+                for (const dir of RING_DIRS) {
+                  const cx = baseMx + dir.dx * RING_STEP_PX * ring;
+                  const cy = baseMy + dir.dy * RING_STEP_PX * ring;
+                  if (!collidesAt(cx, cy)) { mx = cx; my = cy; found = true; break outer; }
+                }
+              }
+            }
+            if (!found) { mx = baseMx; my = baseMy; } // give up gracefully at the original spot rather than an arbitrary far-flung one
+            placedLineLabelRects.push(rectAt(mx, my));
+          }
+
+          return (
+            <g key={i}>
+              <line
+                x1={px1} y1={py1} x2={px2} y2={py2}
+                stroke={l.color ?? '#94a3b8'} strokeWidth={l.strokeWidth ?? 0.8} strokeDasharray={l.dashed ? '3 2' : undefined}
+                markerStart={l.arrowAtStart ? 'url(#canon-arrow)' : undefined}
+                markerEnd={l.arrowAtEnd ? 'url(#canon-arrow)' : undefined}
+              />
+              {l.label && (
+                <g transform={`rotate(${angleDeg} ${mx} ${my})`}>
+                  {/* A short connector back to the line's own midpoint
+                      whenever the label was nudged away from it, so it
+                      still reads as belonging to this specific line rather
+                      than floating unexplained nearby. */}
+                  {(mx !== baseMx || my !== baseMy) && (
+                    <line x1={baseMx} y1={baseMy} x2={mx} y2={my} stroke={l.color ?? '#94a3b8'} strokeWidth={0.5} strokeDasharray="1.5 1.5" opacity={0.6} />
+                  )}
+                  {/* Backing behind the label so it stays readable where a
+                      line crosses behind it. plainDimLabels: a thin white
+                      text-halo (bare CAD look); otherwise a subtle white
+                      plate. */}
+                  {!plainDimLabels && (
+                    <rect
+                      x={mx - (l.label.length * 8 * 0.62 + 4) / 2} y={my - 1.5 - 8 * 0.72}
+                      width={l.label.length * 8 * 0.62 + 4} height={8 * 1.15}
+                      fill="white" opacity={0.85}
+                    />
+                  )}
+                  {plainDimLabels && (
+                    <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fontWeight={700} fill="none" stroke="white" strokeWidth={2.6}>
+                      {l.label}
+                    </text>
+                  )}
+                  <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}>
                     {l.label}
                   </text>
-                )}
-                <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}>
-                  {l.label}
-                </text>
-              </g>
-            )}
-          </g>
-        );
-      })}
+                </g>
+              )}
+            </g>
+          );
+        });
+      })()}
       {dimensions.map((d) => (
         <DimensionLineView key={d.id} d={d} ox={ox} oy={oy} scale={scale} onSelect={onSelectDimension} plainLabels={plainDimLabels} />
       ))}

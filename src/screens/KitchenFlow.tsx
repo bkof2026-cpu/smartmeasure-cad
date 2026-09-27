@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../store/AppContext';
 import { IShapeKitchenDrawing } from '../products/kitchen/IShapeKitchenDrawing';
-import type { WallSideKadappaOption } from '../store/types';
+import { LShapeKitchenDrawing } from '../products/kitchen/LShapeKitchenDrawing';
+import type { KitchenWallConfig, WallSideKadappaOption } from '../store/types';
 import { TROLLEY_TEMPLATES } from '../products/kitchen/trolleyTemplates';
 import { buildKadappaSequence, buildClearSegments, resolveTrolleySectionId } from '../products/kitchen/iShapeKitchenGeometry';
 import { calculateTrolleyDimensions } from '../products/kitchen/trolleyDimensions';
 import { calculateSideSectionDoors } from '../products/kitchen/sideSectionDoorCalc';
+import { logDrawingEvent } from '../auth/authClient';
+import { mountOffscreenSvgs } from '../pdf/mountOffscreen';
+import { generateAndDownloadSingleProductPdf } from '../pdf/pdfEngine';
+import { MyStatsPanel } from './ProductFlow';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The whole Kitchen product lives on ONE screen now — a simple
@@ -20,7 +25,7 @@ import { calculateSideSectionDoors } from '../products/kitchen/sideSectionDoorCa
 // Kitchen shape, not just I-Shape.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type KitchenTab = 'measurements' | 'drawing';
+type KitchenTab = 'measurements' | 'drawing' | 'evidence' | 'pdf' | 'history' | 'my-stats';
 
 const TOTAL_STEPS = 3;
 const STEP_LABELS = ['Kitchen Type', 'Trolley', 'Features'];
@@ -137,7 +142,7 @@ function Step1({ onNext }: { onNext: () => void }) {
   const { model, setKitchenType } = useApp();
   const types = [
     { id: 'straight', label: 'I-Shape Kitchen', active: true },
-    { id: 'l-shape', label: 'L-Shape Kitchen', active: false },
+    { id: 'l-shape', label: 'L-Shape Kitchen', active: true },
     { id: 'u-shape', label: 'U-Shape Kitchen', active: false },
     { id: 'parallel', label: 'Parallel Kitchen', active: false },
   ] as const;
@@ -214,10 +219,18 @@ function WidthSumHint({ iShape, sequence, clearSegments }: {
   );
 }
 
-function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () => void }) {
-  const { model, updateIShapeConfig } = useApp();
-  const iShape = model.kitchen.iShape;
-
+/**
+ * The full "measurements + Kadappa layout + Trolley Section/Dimensions +
+ * Side Section Doors + Fix Patti" form for ONE kitchen wall — extracted so
+ * both I-Shape (a single wall) and L-Shape (Wall A and Wall B, each an
+ * independent instance of this exact same form) can reuse it verbatim
+ * (LSHAPE_KITCHEN_PLAN.md §10.2: "a prop extraction, not a rewrite of the
+ * form bodies"). `iShape` here is a plain KitchenWallConfig — the prop name
+ * is kept for continuity with every existing sub-component's own prop type. */
+function WallFeaturesForm({ iShape, updateIShapeConfig }: {
+  iShape: KitchenWallConfig;
+  updateIShapeConfig: (patch: Partial<KitchenWallConfig>) => void;
+}) {
   const wallSideOptions: WallSideKadappaOption[] = ['None', 'Left', 'Right', 'Both'];
   const sequence = buildKadappaSequence(iShape);
   const clearSegments = buildClearSegments(iShape, sequence);
@@ -278,10 +291,8 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
   }));
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <p className="text-sm" style={{ color: '#64748b' }}>Kitchen measurements and Kadappa layout</p>
-
-      <div className="grid grid-cols-3 gap-2">
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <NumInput
           label="Total Kitchen Height"
           value={iShape.height}
@@ -400,7 +411,18 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
       {iShape.trolleyTemplateId && (
         <TrolleyDimensionsFrame iShape={iShape} clearSegments={clearSegments} updateIShapeConfig={updateIShapeConfig} />
       )}
+    </>
+  );
+}
 
+/** I-Shape's own Step 3 — a single WallFeaturesForm bound straight to
+ * model.kitchen.iShape, plus the wizard's own Back/Finish navigation. */
+function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () => void }) {
+  const { model, updateIShapeConfig } = useApp();
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      <p className="text-sm" style={{ color: '#64748b' }}>Kitchen measurements and Kadappa layout</p>
+      <WallFeaturesForm iShape={model.kitchen.iShape} updateIShapeConfig={updateIShapeConfig} />
       <div className="flex gap-3 mt-2">
         <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
         <button onClick={onFinish} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>View Drawing →</button>
@@ -754,9 +776,15 @@ function TrolleyDimensionsFrame({ iShape, clearSegments, updateIShapeConfig }: {
 
 // ─── Step 2: Trolley Type ──────────────────────────────────────────────────────
 
-function Step2Trolley({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { model, updateIShapeConfig } = useApp();
-  const iShape = model.kitchen.iShape;
+/** Trolley Type selector for ONE kitchen wall — extracted (same pattern as
+ * WallFeaturesForm above) so L-Shape's Wall A / Wall B each get their own
+ * independent Trolley Type choice via this exact same form
+ * (LSHAPE_KITCHEN_PLAN.md §10.2/§11: each wall's Trolley selection is fully
+ * independent, reusing the same 9-template registry unmodified). */
+function WallTrolleyTypeForm({ iShape, updateIShapeConfig }: {
+  iShape: KitchenWallConfig;
+  updateIShapeConfig: (patch: Partial<KitchenWallConfig>) => void;
+}) {
   const templates = Object.values(TROLLEY_TEMPLATES);
   const selected = iShape.trolleyTemplateId ? TROLLEY_TEMPLATES[iShape.trolleyTemplateId] ?? null : null;
 
@@ -767,9 +795,7 @@ function Step2Trolley({ onNext, onBack }: { onNext: () => void; onBack: () => vo
   };
 
   return (
-    <div className="flex flex-col gap-2 p-6">
-      <p className="text-sm mb-2" style={{ color: '#64748b' }}>Select the Trolley Type for this kitchen</p>
-
+    <>
       <div className="flex flex-col gap-2">
         <button
           onClick={() => selectTemplate(null)}
@@ -831,10 +857,158 @@ function Step2Trolley({ onNext, onBack }: { onNext: () => void; onBack: () => vo
           You'll choose which Kitchen section the Trolley goes in on the next step (Features).
         </p>
       )}
+    </>
+  );
+}
 
+/** I-Shape's own Step 2 — a single WallTrolleyTypeForm bound straight to
+ * model.kitchen.iShape, plus the wizard's own Back/Next navigation. */
+function Step2Trolley({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+  const { model, updateIShapeConfig } = useApp();
+  return (
+    <div className="flex flex-col gap-2 p-6">
+      <p className="text-sm mb-2" style={{ color: '#64748b' }}>Select the Trolley Type for this kitchen</p>
+      <WallTrolleyTypeForm iShape={model.kitchen.iShape} updateIShapeConfig={updateIShapeConfig} />
       <div className="flex gap-3 mt-4">
         <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
         <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── L-Shape wizard steps — Wall A / Wall B tabs over the SAME forms ───────────
+//
+// Per LSHAPE_KITCHEN_PLAN.md §10.2: a small Wall A / Wall B tab selector
+// sits above the exact same WallTrolleyTypeForm/WallFeaturesForm I-Shape
+// uses, parametrized to read/write model.kitchen.lShape.wallA or .wallB
+// depending on which tab is active. Wall A and Wall B are fully
+// independent — switching tabs never resets the other wall's values, since
+// each tab is just choosing which half of the model the SAME form is bound
+// to (updateLShapeWallConfig always targets exactly one of them).
+
+function WallTabSelector({ active, onChange }: { active: 'A' | 'B'; onChange: (w: 'A' | 'B') => void }) {
+  return (
+    <div className="flex gap-2 mb-2">
+      {(['A', 'B'] as const).map((w) => (
+        <button
+          key={w}
+          onClick={() => onChange(w)}
+          className="flex-1 py-2.5 rounded-lg font-bold text-sm transition-all"
+          style={{
+            background: active === w ? '#1d4ed8' : '#161b27',
+            color: active === w ? '#fff' : '#64748b',
+            border: `1.5px solid ${active === w ? '#3b82f6' : '#2a3347'}`,
+          }}
+        >
+          Wall {w}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LShapeStep2Trolley({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+  const { model, updateLShapeWallConfig } = useApp();
+  const [activeWall, setActiveWall] = useState<'A' | 'B'>('A');
+  const lShape = model.kitchen.lShape;
+  const wallConfig = activeWall === 'A' ? lShape.wallA : lShape.wallB;
+  return (
+    <div className="flex flex-col gap-2 p-6">
+      <p className="text-sm mb-2" style={{ color: '#64748b' }}>Select the Trolley Type for each wall — independently</p>
+      <WallTabSelector active={activeWall} onChange={setActiveWall} />
+      <WallTrolleyTypeForm
+        iShape={wallConfig}
+        updateIShapeConfig={(patch) => updateLShapeWallConfig(activeWall, patch)}
+      />
+      <div className="flex gap-3 mt-4">
+        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
+        <button onClick={onNext} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#3b82f6', color: '#fff' }}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
+/** Wall B Position — Left/Right selector, plus the optional Corner Fix
+ * Patti frame (LSHAPE_KITCHEN_PLAN.md §0.1: a real physical panel at the
+ * shared corner, independent of and never conflated with a normal Wall A/
+ * Wall B Fix Patti). Shown once, above the Wall A/B tabs, since both are
+ * whole-kitchen (not per-wall) settings. */
+function LShapeCornerFrame() {
+  const { model, updateLShapeConfig } = useApp();
+  const lShape = model.kitchen.lShape;
+  return (
+    <>
+      <div className="h-px" style={{ background: '#2a3347' }} />
+      <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#94a3b8' }}>Wall B Position</p>
+      <div className="flex gap-2">
+        {(['left', 'right'] as const).map((pos) => (
+          <WallSideOptionButton
+            key={pos}
+            label={pos === 'left' ? 'Left' : 'Right'}
+            selected={lShape.wallBPosition === pos}
+            onClick={() => updateLShapeConfig({ wallBPosition: pos })}
+          />
+        ))}
+      </div>
+
+      <div className="h-px mt-2" style={{ background: '#2a3347' }} />
+      <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#16a34a' }}>Corner Fix Patti</p>
+      <div className="flex gap-2">
+        <WallSideOptionButton label="None" selected={!lShape.corner.fixPattiEnabled} onClick={() => updateLShapeConfig({ corner: { ...lShape.corner, fixPattiEnabled: false } })} />
+        <WallSideOptionButton label="Yes" selected={lShape.corner.fixPattiEnabled} onClick={() => updateLShapeConfig({ corner: { ...lShape.corner, fixPattiEnabled: true } })} />
+      </div>
+      {lShape.corner.fixPattiEnabled && (
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          <NumInput
+            label="Corner Fix Patti Height"
+            value={lShape.corner.fixPattiHeight || lShape.kitchenHeight}
+            onChange={(v) => updateLShapeConfig({ corner: { ...lShape.corner, fixPattiHeight: v } })}
+          />
+          <NumInput
+            label="Corner Fix Patti Width"
+            value={lShape.corner.fixPattiWidth || 40}
+            onChange={(v) => updateLShapeConfig({ corner: { ...lShape.corner, fixPattiWidth: v } })}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function LShapeStep3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () => void }) {
+  const { model, updateLShapeConfig, updateLShapeWallConfig } = useApp();
+  const [activeWall, setActiveWall] = useState<'A' | 'B'>('A');
+  const lShape = model.kitchen.lShape;
+  const wallConfig = activeWall === 'A' ? lShape.wallA : lShape.wallB;
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      <p className="text-sm" style={{ color: '#64748b' }}>Kitchen measurements shared by both walls</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <NumInput
+          label="Total Kitchen Height"
+          value={lShape.kitchenHeight}
+          onChange={(v) => updateLShapeConfig({ kitchenHeight: Math.max(0, v - TOTAL_KITCHEN_HEIGHT_DEDUCTION_MM) })}
+          note={lShape.kitchenHeight > 0 ? `Height −${TOTAL_KITCHEN_HEIGHT_DEDUCTION_MM}mm applied — entered value became ${Math.round(lShape.kitchenHeight)}mm.` : undefined}
+          required
+        />
+        <NumInput label="Total Kitchen Depth" value={lShape.kitchenDepth} onChange={(v) => updateLShapeConfig({ kitchenDepth: v })} />
+        <NumInput label="Pani Patti Height" value={lShape.paniPattiHeight} onChange={(v) => updateLShapeConfig({ paniPattiHeight: v })} />
+      </div>
+
+      <LShapeCornerFrame />
+
+      <div className="h-px" style={{ background: '#2a3347' }} />
+      <p className="text-sm" style={{ color: '#64748b' }}>Wall A / Wall B measurements and Kadappa layout — fully independent</p>
+      <WallTabSelector active={activeWall} onChange={setActiveWall} />
+      <WallFeaturesForm
+        iShape={wallConfig}
+        updateIShapeConfig={(patch) => updateLShapeWallConfig(activeWall, patch)}
+      />
+
+      <div className="flex gap-3 mt-2">
+        <button onClick={onBack} className="flex-1 py-4 rounded-xl font-bold border" style={{ background: 'transparent', border: '2px solid #2a3347', color: '#94a3b8' }}>← Back</button>
+        <button onClick={onFinish} className="flex-1 py-4 rounded-xl font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>View Drawing →</button>
       </div>
     </div>
   );
@@ -848,34 +1022,258 @@ function MeasurementsTab({ onDone }: { onDone: () => void }) {
   const goNext = () => { completeStep(step); setStep(step + 1); };
   const goBack = () => setStep(Math.max(1, step - 1));
   const finish = () => { completeStep(step); onDone(); };
+  const isLShape = model.kitchen.type === 'l-shape';
 
   return (
     <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#0d1117' }}>
       <StepHeader step={step} total={TOTAL_STEPS} />
       {step === 1 && <Step1 onNext={goNext} />}
-      {step === 2 && <Step2Trolley onNext={goNext} onBack={goBack} />}
-      {step === 3 && <Step3Features onFinish={finish} onBack={goBack} />}
+      {step === 2 && (isLShape
+        ? <LShapeStep2Trolley onNext={goNext} onBack={goBack} />
+        : <Step2Trolley onNext={goNext} onBack={goBack} />)}
+      {step === 3 && (isLShape
+        ? <LShapeStep3Features onFinish={finish} onBack={goBack} />
+        : <Step3Features onFinish={finish} onBack={goBack} />)}
     </div>
   );
 }
 
 // ─── Drawing tab — just the drawing, nothing else ──────────────────────────────
 //
-// I-Shape is the only Kitchen shape a user can ever actually pick (Step1
-// disables L-Shape/U-Shape/Parallel as "Soon"), so the Drawing tab always
-// renders the I-Shape/Kadappa drawing. The old generic Plan/Elevation A/B
-// views (no Kadappa awareness — used the old freeform cabinet-module
-// list) were a leftover fallback for those unreachable shapes and could
-// surface by mistake whenever `model.kitchen.type` held a stale/demo
-// value other than 'straight'. Removed per the user's explicit report of
-// the old drawing popping up on Kitchen click.
+// I-Shape and L-Shape are the only Kitchen shapes a user can actually pick
+// (Step1 still disables U-Shape/Parallel as "Soon"). The old generic
+// Plan/Elevation A/B views (no Kadappa awareness — used the old freeform
+// cabinet-module list) were a leftover fallback for unreachable shapes and
+// could surface by mistake whenever `model.kitchen.type` held a stale/demo
+// value; removed per the user's explicit report of the old drawing popping
+// up on Kitchen click. Any type other than 'l-shape' still falls back to
+// I-Shape's own drawing, matching that original fallback behavior.
 
 function DrawingTab() {
   const { model } = useApp();
   return (
     <div className="flex-1 overflow-auto p-3" style={{ background: '#e8eaf0' }}>
       <div className="rounded-xl shadow-2xl p-4" style={{ background: '#fff' }}>
-        <IShapeKitchenDrawing iShape={model.kitchen.iShape} />
+        {model.kitchen.type === 'l-shape'
+          ? <LShapeKitchenDrawing lShape={model.kitchen.lShape} />
+          : <IShapeKitchenDrawing iShape={model.kitchen.iShape} />}
+      </div>
+    </div>
+  );
+}
+
+// A single stable measurementId for Kitchen's own Evidence Note/History
+// snapshot — mirrors ProductFlow.tsx's own `measurementId === selectedId`
+// convention (there, selectedId is the active ProductId string) so both
+// screens' Evidence Notes live in the exact same model.evidence array
+// without ever colliding with a real ProductId.
+const KITCHEN_MEASUREMENT_ID = 'kitchen';
+const KITCHEN_PRODUCT_NAME = 'Kitchen';
+
+// ─── Evidence tab — same free-text note convention every other product uses ────
+// Reuses AppContext's setEvidenceNote directly (a plain measurementId+text
+// store write, no product-specific coupling) — this note is included at the
+// bottom of the downloaded Kitchen PDF, same as every other product's.
+
+function EvidenceTab() {
+  const { model, setEvidenceNote } = useApp();
+  const [draft, setDraft] = useState('');
+
+  useEffect(() => {
+    const existing = model.evidence.find((item) => item.measurementId === KITCHEN_MEASUREMENT_ID && item.type === 'note');
+    setDraft(existing?.caption ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setEvidenceNote(KITCHEN_MEASUREMENT_ID, draft), 500);
+    return () => window.clearTimeout(timer);
+  }, [draft, setEvidenceNote]);
+
+  return (
+    <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
+      <div className="max-w-3xl rounded-xl border p-5" style={{ background: '#111827', borderColor: '#243045' }}>
+        <div className="mb-4">
+          <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>Evidence</div>
+          <div className="text-xs" style={{ color: '#64748b' }}>{KITCHEN_PRODUCT_NAME} · {model.project.projectId} · {model.employeeName || 'Employee'}</div>
+        </div>
+        <label className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Evidence Note</label>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="e.g. Site condition is good. Kitchen wall measurement taken after checking the existing structure."
+          rows={5}
+          className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
+          style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }}
+        />
+        <div className="mt-2 text-[10px]" style={{ color: '#475569' }}>
+          Saved automatically with this measurement — included at the bottom-right of the downloaded PDF.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PDF tab — real .pdf export via the SAME engine every other product uses ───
+// Downloads exactly what the Drawing tab currently shows (I-Shape or
+// L-Shape, whichever is active) through mountOffscreenSvgs +
+// generateAndDownloadSingleProductPdf — the identical pipeline
+// ProductFlow.tsx's handleDownloadPDF uses, so Kitchen's PDF is a real
+// vector .pdf, not a second, different export path.
+
+function PdfTab() {
+  const { model, updateProject } = useApp();
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const clientMissing = !model.project.clientName.trim();
+
+  const handleDownload = async () => {
+    if (clientMissing) { setPdfError('Client Name is required before a PDF can be generated.'); return; }
+    setPdfError(null);
+    setPdfBusy(true);
+    try {
+      const drawingElement = model.kitchen.type === 'l-shape'
+        ? <LShapeKitchenDrawing lShape={model.kitchen.lShape} />
+        : <IShapeKitchenDrawing iShape={model.kitchen.iShape} />;
+      const { svgs, cleanup } = await mountOffscreenSvgs([drawingElement]);
+      const svgEl = svgs[0];
+      if (!svgEl) { setPdfError('Unable to render the Kitchen drawing for PDF export.'); cleanup(); return; }
+
+      const evidenceNote = model.evidence.find((item) => item.measurementId === KITCHEN_MEASUREMENT_ID && item.type === 'note')?.caption;
+      const result = await generateAndDownloadSingleProductPdf(
+        KITCHEN_PRODUCT_NAME,
+        [{ label: model.kitchen.type === 'l-shape' ? 'L-Shape' : 'I-Shape', svgEl }],
+        [], // Kitchen has no per-component cutlist table yet — drawing-only PDF, same as any product with computeCutlist returning [].
+        {
+          projectId: model.project.projectId,
+          clientName: model.project.clientName,
+          employeeName: model.employeeName || '',
+          products: [KITCHEN_PRODUCT_NAME],
+        },
+        evidenceNote,
+      );
+      cleanup();
+      if (!result.ok) { setPdfError(result.error ?? 'Unable to generate PDF.'); return; }
+      logDrawingEvent({
+        productCategory: 'Kitchen',
+        productName: KITCHEN_PRODUCT_NAME,
+        projectId: model.project.projectId,
+        clientName: model.project.clientName,
+        pdfGenerated: true,
+        measurements: model.kitchen.type === 'l-shape' ? model.kitchen.lShape : model.kitchen.iShape,
+      });
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
+      <div className="max-w-3xl rounded-xl border p-5" style={{ background: '#111827', borderColor: '#243045' }}>
+        <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>Project Details</div>
+        <div className="mt-1 text-xs" style={{ color: '#64748b' }}>The same live drawing shown in Drawing will be included.</div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Project ID</label>
+            <input
+              value={model.project.projectId}
+              onChange={(e) => updateProject({ projectId: e.target.value })}
+              placeholder="Enter Project ID"
+              className="rounded-lg px-3 py-2 text-sm font-mono outline-none"
+              style={{ background: '#0f172a', color: '#e2e8f0', border: '1px solid #243045' }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide" style={{ color: clientMissing ? '#f87171' : '#64748b' }}>Client Name *</label>
+            <input
+              value={model.project.clientName}
+              onChange={(e) => { updateProject({ clientName: e.target.value }); if (e.target.value.trim()) setPdfError(null); }}
+              placeholder="Enter Client Name"
+              className="rounded-lg px-3 py-2 text-sm outline-none"
+              style={{ background: '#0f172a', color: '#e2e8f0', border: `1px solid ${clientMissing ? '#7f1d1d' : '#243045'}` }}
+            />
+            {clientMissing && <span className="text-[10px]" style={{ color: '#f87171' }}>❌ Client Name is required.</span>}
+          </div>
+
+          <div className="rounded-lg px-3 py-2" style={{ background: '#0f172a', border: '1px solid #243045' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Employee</div>
+            {model.employeeName ? (
+              <div className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>{model.employeeName}</div>
+            ) : (
+              <div className="text-sm font-semibold" style={{ color: '#f87171' }}>⚠ Employee session not found.</div>
+            )}
+          </div>
+
+          <div className="rounded-lg px-3 py-2" style={{ background: '#0f172a', border: '1px solid #243045' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>Product</div>
+            <div className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>🍳 {KITCHEN_PRODUCT_NAME} ({model.kitchen.type === 'l-shape' ? 'L-Shape' : 'I-Shape'})</div>
+          </div>
+        </div>
+
+        {pdfError && (
+          <div className="mt-4 rounded-lg border px-3 py-2 text-xs" style={{ background: '#3b0d0d', color: '#fca5a5', borderColor: '#7f1d1d' }}>
+            ⚠ {pdfError}
+          </div>
+        )}
+
+        <div className="mt-5">
+          <button onClick={handleDownload} disabled={pdfBusy} className="rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60" style={{ background: '#1d4ed8', color: '#fff' }}>
+            {pdfBusy ? '⏳ Generating…' : '⬇ Download Kitchen Drawing PDF'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── History tab — 10-day recall, same store data every other product uses ─────
+// Reads model.measurementHistory directly (populated by saveMeasurementSnapshot,
+// which nothing in KitchenFlow currently calls — see the Measurements tab's
+// own periodic-save effect added below) and restores a snapshot straight
+// into the active Kitchen config on Recover.
+
+function HistoryTab() {
+  const { model, updateIShapeConfig, updateLShapeConfig } = useApp();
+  const recentHistory = (model.measurementHistory ?? []).filter((entry) => {
+    if (entry.productId !== KITCHEN_MEASUREMENT_ID) return false;
+    const diff = Date.now() - new Date(entry.timestamp).getTime();
+    return diff <= 10 * 24 * 60 * 60 * 1000;
+  });
+
+  const recover = (entry: typeof recentHistory[number]) => {
+    // dims is a plain Record<string, number|string> snapshot of whichever
+    // shape's config was active when it was saved — restored back into
+    // that same shape's config (never guessed/merged across shapes).
+    if (model.kitchen.type === 'l-shape') {
+      updateLShapeConfig(entry.dims as never);
+    } else {
+      updateIShapeConfig(entry.dims as never);
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
+      <div className="max-w-3xl rounded-xl border p-5" style={{ background: '#111827', borderColor: '#243045' }}>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#60a5fa' }}>10-Day History</div>
+          <span className="text-xs" style={{ color: '#64748b' }}>{recentHistory.length} record(s)</span>
+        </div>
+        <div className="flex flex-col gap-2">
+          {recentHistory.map((entry) => (
+            <div key={entry.id} className="flex items-center gap-3 rounded-lg border p-3" style={{ background: '#0f172a', borderColor: '#243045' }}>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold" style={{ color: '#e2e8f0' }}>{entry.productName}</div>
+                <div className="text-xs" style={{ color: '#64748b' }}>{entry.projectId} · {entry.employeeName} · {new Date(entry.timestamp).toLocaleString('en-IN')}</div>
+              </div>
+              <button onClick={() => recover(entry)} className="rounded-lg px-3 py-2 text-xs font-bold" style={{ background: '#1d4ed8', color: '#fff' }}>Recover</button>
+            </div>
+          ))}
+          {recentHistory.length === 0 && (
+            <div className="rounded-lg border px-4 py-4 text-sm" style={{ borderColor: '#243045', color: '#64748b' }}>No Kitchen measurements saved in the last 10 days.</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -883,8 +1281,14 @@ function DrawingTab() {
 
 // ─── Main Kitchen screen ────────────────────────────────────────────────────────
 
+const KITCHEN_TAB_LABELS: Record<KitchenTab, string> = {
+  measurements: 'Measurements', drawing: 'Drawing', evidence: 'Evidence',
+  pdf: 'PDF', history: 'History', 'my-stats': 'My Stats',
+};
+const KITCHEN_TABS: KitchenTab[] = ['measurements', 'drawing', 'evidence', 'pdf', 'history', 'my-stats'];
+
 export const KitchenFlow: React.FC = () => {
-  const { model } = useApp();
+  const { model, saveMeasurementSnapshot } = useApp();
   // Starts on Measurements whenever a project's own wizard step hasn't
   // been fully completed yet (currentStep <= TOTAL_STEPS); once finished,
   // opens straight on the Drawing — same "resume where it makes sense"
@@ -894,23 +1298,56 @@ export const KitchenFlow: React.FC = () => {
     (model.currentStep || 1) > TOTAL_STEPS ? 'drawing' : 'measurements',
   );
 
+  // Periodic snapshot save — same 500ms-debounced pattern ProductFlow.tsx
+  // uses for every other product, so Kitchen's own History tab has real
+  // data to show and My Stats/the KPI dashboard see Kitchen activity too.
+  // Snapshots whichever shape's config is currently active; never both at
+  // once (only one is ever "the" Kitchen config for a given project).
+  useEffect(() => {
+    const activeConfig = model.kitchen.type === 'l-shape' ? model.kitchen.lShape : model.kitchen.iShape;
+    const timer = window.setTimeout(() => {
+      saveMeasurementSnapshot({
+        productId: KITCHEN_MEASUREMENT_ID,
+        productName: KITCHEN_PRODUCT_NAME,
+        projectId: model.project.projectId,
+        employeeName: model.employeeName || 'Employee',
+        dims: activeConfig as unknown as Record<string, number | string>,
+        notes: `${KITCHEN_PRODUCT_NAME} measurement capture (${model.kitchen.type === 'l-shape' ? 'L-Shape' : 'I-Shape'})`,
+      });
+      logDrawingEvent({
+        productCategory: 'Kitchen',
+        productName: KITCHEN_PRODUCT_NAME,
+        projectId: model.project.projectId,
+        clientName: model.project.clientName,
+        pdfGenerated: false,
+        measurements: activeConfig,
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model.kitchen.type, model.kitchen.iShape, model.kitchen.lShape, model.project.projectId, model.employeeName, model.project.clientName]);
+
   return (
     <div className="flex flex-col h-full" style={{ background: '#0d1117' }}>
-      <div className="flex border-b" style={{ borderColor: '#243045', background: '#131920' }}>
-        {(['measurements', 'drawing'] as KitchenTab[]).map((t) => (
+      <div className="flex border-b overflow-x-auto" style={{ borderColor: '#243045', background: '#131920' }}>
+        {KITCHEN_TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className="flex-1 py-3 text-xs font-bold tracking-widest uppercase"
+            className="flex-1 py-3 px-2 text-xs font-bold tracking-widest uppercase whitespace-nowrap flex-shrink-0"
             style={{
               color: tab === t ? '#60a5fa' : '#3d4f6a',
               borderBottom: tab === t ? '2px solid #3b82f6' : '2px solid transparent',
             }}>
-            {t === 'measurements' ? 'Measurements' : 'Drawing'}
+            {KITCHEN_TAB_LABELS[t]}
           </button>
         ))}
       </div>
       <div className="flex-1 overflow-hidden flex flex-col">
         {tab === 'measurements' && <MeasurementsTab onDone={() => setTab('drawing')} />}
         {tab === 'drawing' && <DrawingTab />}
+        {tab === 'evidence' && <EvidenceTab />}
+        {tab === 'pdf' && <PdfTab />}
+        {tab === 'history' && <HistoryTab />}
+        {tab === 'my-stats' && <MyStatsPanel />}
       </div>
     </div>
   );

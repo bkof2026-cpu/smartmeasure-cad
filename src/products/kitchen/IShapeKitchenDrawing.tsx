@@ -5,10 +5,21 @@ import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 import type { IShapeKitchenConfig } from '../../store/types';
 
-const I_SHAPE_COMPONENT_COLORS: Record<string, ComponentStyle> = {
+// Exported so LShapeKitchenDrawing.tsx can reuse the exact same
+// component-type -> style map — L-Shape draws the same component TYPES per
+// wall (KITCHEN_BODY, PANI_PATTI, KADAPPA_LINE, TROLLEY_*, SIDE_SECTION_DOOR,
+// FIX_PATTI, ...), so a second copy of this map would only risk drifting
+// out of sync with this one.
+export const I_SHAPE_COMPONENT_COLORS: Record<string, ComponentStyle> = {
   KITCHEN_BODY:         { fill: '#ffffff', stroke: '#111827', strokeWidth: 2 },
   PANI_PATTI:           { fill: '#f5f3ff', stroke: '#7c3aed', strokeWidth: 2 },
-  KADAPPA_BOX:          { fill: '#e0f2fe', stroke: '#0284c7', strokeWidth: 1.6 },
+  // Kadappa — a THICK VERTICAL LINE MARKER, not a complete bordered/filled
+  // box, per the user's explicit correction (kitchenWallGeometry.ts draws
+  // it at a small fixed thickness centered within its own reserved width).
+  // Solid dark fill, same "real physical marker" convention as
+  // TROLLEY_INNER_PIPE, so it reads as a genuine structural divider rather
+  // than a measured cabinet component.
+  KADAPPA_LINE:         { fill: '#0284c7', stroke: '#075985', strokeWidth: 0.6 },
   TROLLEY_OUTER:        { fill: '#fef3c7', stroke: '#b45309', strokeWidth: 1.6 },
   TROLLEY_INNER_DETAIL: { fill: '#fff7ed', stroke: '#b45309', strokeWidth: 1.1 },
   // Unfilled outline (transparent) so it never occludes the real template
@@ -76,6 +87,13 @@ export const IShapeKitchenDrawing: React.FC<Props> = ({ iShape }) => {
         onSelectComponent={setSelected}
         onSelectDimension={setSelected}
         selectedComponentId={selected && 'type' in selected ? selected.id : null}
+        // Kitchen's own main row + separate Inner Trolley detail below it
+        // makes for a taller, denser drawing than most single-component
+        // products — a bigger internal viewport buys back the resolution
+        // dimension-tier spacing needs so labels never compress into each
+        // other (see the matching comment in LShapeKitchenDrawing.tsx).
+        maxVw={1600}
+        maxVh={1800}
       />
       <DrawingInspector selected={selected} issues={drawing.issues} formulaStatus={drawing.formulaStatus} />
     </div>

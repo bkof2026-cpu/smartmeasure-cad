@@ -1,6 +1,57 @@
-import type { KitchenProjectModel } from '../store/types';
+import type { KitchenProjectModel, KitchenWallConfig, LShapeKitchenConfig } from '../store/types';
 
 // ⚠️ DEMO DATA — All values are illustrative only. Not actual company standards.
+
+/** A blank KitchenWallConfig — every numeric field zeroed, every toggle at
+ * its "nothing configured yet" default. Used as the starting point for
+ * both a fresh I-Shape kitchen and each wall of a fresh L-Shape kitchen, so
+ * the two shapes' defaults can never drift apart. */
+function emptyKitchenWallConfig(): KitchenWallConfig {
+  return {
+    height: 0,
+    width: 0,
+    depth: 0,
+    paniPattiHeight: 0,
+    wallSideKadappa: 'None',
+    leftWallKadappaWidth: 0,
+    rightWallKadappaWidth: 0,
+    hasInnerKadappa: false,
+    innerKadappaCount: 2,
+    innerKadappaWidths: [],
+    clearWidths: [],
+    trolleySectionId: null,
+    trolleyTemplateId: null,
+    spoValues: {},
+    floorCeilingPattiHeight: 10,
+    depthDeduction: 20,
+    trolleyHeightOverride: null,
+    trolleyWidthOverride: null,
+    trolleyDepthOverride: null,
+    leftSideDoorCountOverride: null,
+    rightSideDoorCountOverride: null,
+    fixPattiPosition: 'none',
+    fixPattiLeftHeight: 0,
+    fixPattiLeftWidth: 40,
+    fixPattiRightHeight: 0,
+    fixPattiRightWidth: 40,
+  };
+}
+
+/** A blank LShapeKitchenConfig — both walls start from
+ * emptyKitchenWallConfig(), Wall B Position defaults to 'right' per
+ * LSHAPE_KITCHEN_PLAN.md §15 (matches the reference sketch; fully
+ * user-editable), Corner Fix Patti starts disabled (never invented). */
+export function emptyLShapeKitchenConfig(): LShapeKitchenConfig {
+  return {
+    kitchenHeight: 0,
+    kitchenDepth: 0,
+    paniPattiHeight: 0,
+    wallA: emptyKitchenWallConfig(),
+    wallB: emptyKitchenWallConfig(),
+    wallBPosition: 'right',
+    corner: { fixPattiEnabled: false, fixPattiWidth: 40, fixPattiHeight: 0 },
+  };
+}
 
 // ── Arc. Rutuja Joshi · Best Kitchennet · Nashik · imported from client PDF ──
 export const DEMO_PROJECT: KitchenProjectModel = {
@@ -88,6 +139,12 @@ export const DEMO_PROJECT: KitchenProjectModel = {
       fixPattiRightHeight: 2200,
       fixPattiRightWidth: 40,
     },
+    // This demo project's own active shape is 'l-shape' (see kitchen.type
+    // above) but its real Wall A/Wall B measurements haven't been entered
+    // into the new LShapeKitchenConfig model yet (this demo predates that
+    // feature) — starts blank rather than guessing values, same as every
+    // other KitchenConfig carrying an unused shape's config.
+    lShape: emptyLShapeKitchenConfig(),
   },
   openings: [
     {
@@ -222,34 +279,8 @@ export function createNewProject(): KitchenProjectModel {
       openBoxRequired: false,
       tallUnitRequired: false,
       cornerUnitRequired: false,
-      iShape: {
-        height: 0,
-        width: 0,
-        depth: 0,
-        paniPattiHeight: 0,
-        wallSideKadappa: 'None',
-        leftWallKadappaWidth: 0,
-        rightWallKadappaWidth: 0,
-        hasInnerKadappa: false,
-        innerKadappaCount: 2,
-        innerKadappaWidths: [],
-        clearWidths: [],
-        trolleySectionId: null,
-        trolleyTemplateId: null,
-        spoValues: {},
-        floorCeilingPattiHeight: 10,
-        depthDeduction: 20,
-        trolleyHeightOverride: null,
-        trolleyWidthOverride: null,
-        trolleyDepthOverride: null,
-        leftSideDoorCountOverride: null,
-        rightSideDoorCountOverride: null,
-        fixPattiPosition: 'none',
-        fixPattiLeftHeight: 0,
-        fixPattiLeftWidth: 40,
-        fixPattiRightHeight: 0,
-        fixPattiRightWidth: 40,
-      },
+      iShape: emptyKitchenWallConfig(),
+      lShape: emptyLShapeKitchenConfig(),
     },
     openings: [],
     modules: [],

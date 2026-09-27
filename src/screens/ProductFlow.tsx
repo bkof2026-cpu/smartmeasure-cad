@@ -575,7 +575,10 @@ function WardrobeWithLoftFront({ wardW, wardH, sections, loftH, loftD, thk, isSl
 // parameter) — see api/profile/my-stats.ts. This panel just renders it.
 type StatsRange = 'month' | 'all';
 
-function MyStatsPanel() {
+// Exported so KitchenFlow.tsx can reuse this exact panel (self-contained —
+// no product-specific props) rather than duplicating the My Stats UI in a
+// second place.
+export function MyStatsPanel() {
   const [range, setRange] = useState<StatsRange>('month');
   const [stats, setStats] = useState<MyStats | null>(null);
   const [loading, setLoading] = useState(true);
