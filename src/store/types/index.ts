@@ -170,6 +170,12 @@ export interface KitchenWallConfig {
   leftSideDoorCountOverride: number | null;
   /** Manual override for the Right side section's door count — null = auto-recommended. */
   rightSideDoorCountOverride: number | null;
+  /** Manual override for an INNER (between-two-Kadappa, non-Trolley) Clear
+   * Segment's door count, keyed by that segment's own index — absent/
+   * undefined = auto-recommended. A plain map (not two fixed left/right
+   * fields) because a kitchen can have any number of inner sections
+   * depending on how many Kadappa are configured. */
+  innerSideDoorCountOverrides: Record<number, number>;
 
   // ─── Fix Patti (src/products/kitchen/fixPattiCalc.ts) ────────────────────
   // A real vertical panel attached to the OUTSIDE of the kitchen box, on

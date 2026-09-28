@@ -212,7 +212,17 @@ export interface WardrobeAdjacentLoftInput {
 }
 
 export interface SimpleWardrobeInputs {
-  W: number; // wardrobe width
+  // Entered Wardrobe Width — per the user's explicit correction, when Side
+  // Dressing is enabled its own Width comes OUT of this entered value
+  // rather than being added on top of it: the entered W is the real
+  // on-site measurement of the full span (Wardrobe + Dressing together),
+  // so the wardrobe CARCASS itself is drawn/calculated at
+  // `W − (Dressing Width × number of active Dressing sides)` — see
+  // wardrobeCarcassWidth() below, the single place this deduction happens.
+  // Every other add-on (Top Panel, Storage, Open Box, Study Table, Loft)
+  // is UNAFFECTED — they still sit beside the (now smaller) carcass exactly
+  // as before, additively.
+  W: number; // wardrobe width (entered — see carcass-width note above)
   H: number; // wardrobe height
   D: number; // wardrobe depth — shown as a "/" diagonal leader, never a straight arrow
   doorCount: number; // Number of Doors (entered) — the wardrobe carcass is split into this many equal vertical panels
@@ -267,8 +277,13 @@ export function simpleWardrobeTitle(inp: SimpleWardrobeInputs): string {
 
 /** Same data used for both the screen and the PDF — single source of truth. */
 export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobeCutRow[] {
+  const carcassW = wardrobeCarcassWidth(inp.W, inp.dressing);
+  const dressingSides = inp.dressing.enabled ? (inp.dressing.side === 'both' ? 2 : 1) : 0;
+  const carcassWidthRemark = dressingSides > 0
+    ? `Width = Entered Width(${Math.round(inp.W)}) − Dressing Width(${Math.round(inp.dressing.widthMm)}) × ${dressingSides} side(s) = ${Math.round(carcassW)}mm | Height (entered) | Depth = ${Math.round(inp.D)}mm (entered, shown as the / leader)`
+    : `Width x Height (entered) | Depth = ${Math.round(inp.D)}mm (entered, shown as the / leader)`;
   const rows: SimpleWardrobeCutRow[] = [
-    { component: 'Wardrobe', width: inp.W, height: inp.H, qty: 1, remark: `Width x Height (entered) | Depth = ${Math.round(inp.D)}mm (entered, shown as the / leader)` },
+    { component: 'Wardrobe', width: carcassW, height: inp.H, qty: 1, remark: carcassWidthRemark },
   ];
   if (inp.doorCount > 0) {
     const doorH = wardrobeDoorHeight(inp.H);
@@ -408,6 +423,22 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
 const DIAG = '#cc2200';
 
 /**
+ * The Wardrobe carcass's own drawn/calculated Width — the entered Width
+ * minus active Side Dressing width(s), per the user's explicit correction:
+ * "if side dressing present then it comes under the wardrobe size" (e.g.
+ * Wardrobe Width 2000, Dressing Width 200 -> carcass = 1800). Deducted ONCE
+ * per active Dressing side (side: 'both' deducts twice — confirmed with the
+ * user), never below 1mm. This is the ONLY place this deduction happens —
+ * every caller that needs the wardrobe's own drawn/door-divider width goes
+ * through this function rather than reading inp.W directly.
+ */
+export function wardrobeCarcassWidth(enteredW: number, dressing: WardrobeDressingInput): number {
+  if (!dressing.enabled) return enteredW;
+  const sides = dressing.side === 'both' ? 2 : 1;
+  return Math.max(1, enteredW - dressing.widthMm * sides);
+}
+
+/**
  * A short "/" or "\" diagonal drawn INSIDE a component's own corner, rather
  * than hovering small and outside it — per the user's explicit direction
  * (matches the same helper in src/products/bed/simpleBedGeometry.ts).
@@ -426,7 +457,12 @@ function insideDiagonal(cornerX: number, cornerY: number, w: number, h: number, 
 }
 
 export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDrawing {
-  const { W, H, D, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, adjacentLoft, totalWidthMm, totalHeightMm } = inp;
+  const { H, D, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, adjacentLoft, totalWidthMm, totalHeightMm } = inp;
+  // Wardrobe carcass Width — the entered Width minus active Dressing
+  // width(s); see wardrobeCarcassWidth()'s own doc comment. Every use of
+  // "W" below this line means the carcass's own drawn/calculated width,
+  // never the raw entered value.
+  const W = wardrobeCarcassWidth(inp.W, dressing);
   const dressL = dressing.enabled && dressing.side !== 'right' ? dressing.widthMm : 0;
   const dressR = dressing.enabled && dressing.side !== 'left' ? dressing.widthMm : 0;
   // Top Panel (a.k.a. Side Panel) — per the user's explicit composite
@@ -895,7 +931,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     lines.push({ x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeDiag.x2, y2: wardrobeDiag.y2, color: DIAG, label: `${Math.round(D)} (D)` });
   }
 
-  dimReqs.push({ axis: 'h', x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: ['wardrobe'], label: `${Math.round(W)} (W)`, source: { formula: 'Wardrobe Width (entered)', constants: [] } });
+  dimReqs.push({ axis: 'h', x1: wardrobeX, y1: wardrobeY + bodyH, x2: wardrobeX + W, y2: wardrobeY + bodyH, edge: 'bottom', componentIds: ['wardrobe'], label: `${Math.round(W)} (W)`, source: { formula: dressing.enabled ? `Wardrobe Width = Entered Width(${Math.round(inp.W)}) − Dressing Width(${Math.round(dressing.widthMm)}) × ${dressing.side === 'both' ? 2 : 1} side(s) = ${Math.round(W)}mm` : 'Wardrobe Width (entered)', constants: [] } });
   // Wardrobe Height arrow — placed on the OUTER right edge of the whole
   // composite (past any right-side Dressing / Top Panel), never on the
   // wardrobe/dressing seam where it would collide with the Dressing's own
@@ -927,13 +963,20 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       const dx = wardrobeX + doorPanelW * i;
       lines.push({ x1: dx, y1: wardrobeY, x2: dx, y2: wardrobeY + bodyH, color: '#1e3a8a', strokeWidth: 1.4 });
     }
-    // Door Height — a real dimension arrow on the wardrobe's own LEFT edge
-    // (the right edge is already used by the Wardrobe's own Height above),
-    // measuring the formula-derived door height, anchored at the floor
-    // line (doors sit above the skirting, matching the formula's own
-    // "− 70mm skirting" deduction).
+    // Door Height — a real dimension arrow measuring the formula-derived
+    // door height, anchored at the floor line (doors sit above the
+    // skirting, matching the formula's own "− 70mm skirting" deduction).
+    // Sits OUTSIDE whatever occupies the wardrobe's own left side (Top
+    // Panel / Dressing / attached Study Table, via leftExtra) rather than a
+    // flat 24px left of the wardrobe carcass alone — previously this always
+    // used wardrobeX-24 regardless of leftExtra, which put the dimension
+    // line INSIDE the Dressing/Top Panel box whenever one was present
+    // (leftExtra >= 24), per the user's explicit report ("do not show the
+    // separate attached dressing height" — the line was never meant to be
+    // Dressing's own height at all, it was Door Height bleeding through
+    // Dressing's box because of this stale offset).
     dimReqs.push({
-      axis: 'v', x1: wardrobeX - 24, y1: wardrobeY + bodyH - doorH, x2: wardrobeX - 24, y2: wardrobeY + bodyH, edge: 'left',
+      axis: 'v', x1: wardrobeX - leftExtra - 24, y1: wardrobeY + bodyH - doorH, x2: wardrobeX - leftExtra - 24, y2: wardrobeY + bodyH, edge: 'left',
       componentIds: ['wardrobe'], label: `${Math.round(doorH)} (Door H)`,
       source: { formula: `Door Height = Wardrobe Height(${Math.round(H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`, constants: [] },
     });

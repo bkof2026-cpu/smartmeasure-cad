@@ -91,7 +91,7 @@ function GrainPattern() {
 function DimensionLineView({ d, ox, oy, scale, onSelect, plainLabels }: { d: DimensionLine; ox: number; oy: number; scale: number; onSelect?: (d: DimensionLine) => void; plainLabels?: boolean }) {
   const p = toPx(d, ox, oy, scale);
   const off = (d.tier + 1) * DIM_TIER_STEP_PX;
-  const fs = 8;
+  const fs = 10;
   const lw = d.label.length * fs * 0.62 + 6;
 
   // Falls back to the shared dimension red when a product hasn't set a
@@ -173,7 +173,7 @@ function rectsOverlap(a: LabelRect, b: LabelRect, margin = 0): boolean {
 function dimensionLabelScreenRect(d: DimensionLine, ox: number, oy: number, scale: number): LabelRect {
   const p = toPx(d, ox, oy, scale);
   const off = (d.tier + 1) * DIM_TIER_STEP_PX;
-  const fs = 8;
+  const fs = 10;
   const lw = d.label.length * fs * 0.62 + 6;
   const lh = fs * 1.4;
   if (d.axis === 'h') {
@@ -483,7 +483,7 @@ export function TechnicalDrawingSvg({
         // the space labels actually collide in.
         const dimLabelRects = dimensions.filter((d) => d.label).map((d) => dimensionLabelScreenRect(d, ox, oy, scale));
         const placedLineLabelRects: LabelRect[] = [];
-        const FONT_PX = 8;
+        const FONT_PX = 10;
         const NUDGE_STEP_PX = 11; // ~ one label-height step per attempt
         const MAX_NUDGE_STEPS = 8;
 
@@ -592,17 +592,17 @@ export function TechnicalDrawingSvg({
                       plate. */}
                   {!plainDimLabels && (
                     <rect
-                      x={mx - (l.label.length * 8 * 0.62 + 4) / 2} y={my - 1.5 - 8 * 0.72}
-                      width={l.label.length * 8 * 0.62 + 4} height={8 * 1.15}
+                      x={mx - (l.label.length * FONT_PX * 0.62 + 4) / 2} y={my - 1.5 - FONT_PX * 0.72}
+                      width={l.label.length * FONT_PX * 0.62 + 4} height={FONT_PX * 1.15}
                       fill="white" opacity={0.85}
                     />
                   )}
                   {plainDimLabels && (
-                    <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fontWeight={700} fill="none" stroke="white" strokeWidth={2.6}>
+                    <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={FONT_PX} fontFamily="'JetBrains Mono',monospace" fontWeight={700} fill="none" stroke="white" strokeWidth={2.6}>
                       {l.label}
                     </text>
                   )}
-                  <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={8} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}>
+                  <text x={mx} y={my - 1.5} textAnchor="middle" fontSize={FONT_PX} fontFamily="'JetBrains Mono',monospace" fill={l.color ?? DIM_COLOR} fontWeight={700}>
                     {l.label}
                   </text>
                 </g>

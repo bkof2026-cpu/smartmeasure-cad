@@ -110,6 +110,13 @@ function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>,
     side: PS_SIDE_OPTS[(addonDims['profile-shutter']?.side) ?? 0] ?? 'left',
     heightMm: (addonDims['profile-shutter']?.H) ?? 150,
     light: ((addonDims['profile-shutter']?.light) ?? 0) === 1,
+    // Own Width/Depth — only actually used by the geometry engine when the
+    // mounted side's table isn't enabled (per the user's explicit
+    // correction that a side table is no longer compulsory for Dressing);
+    // when the table IS enabled these are ignored in favor of its real
+    // Width/Depth, same as before this feature.
+    widthMm: (addonDims['profile-shutter']?.W) ?? 560,
+    depthMm: (addonDims['profile-shutter']?.D) ?? 460,
   };
   return { lst, rst, profileShutter };
 }
@@ -199,12 +206,15 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   };
 
   // Room/Total Width — entered directly (see productRegistry.tsx's
-  // 'totalWidth' field); falls back to the composite Wardrobe+Dressing
-  // width when not entered (0), same "defaults to the composite when not
-  // overridden" convention the Wardrobe drawing's own outer dimension
-  // line already used before this feature.
+  // 'totalWidth' field); falls back to the entered Wardrobe Width when not
+  // entered (0). Per the user's explicit correction, the entered Wardrobe
+  // Width now ALREADY represents the full Wardrobe+Dressing span (Dressing
+  // Width comes OUT of the wardrobe carcass rather than being added on top
+  // of it — see wardrobeCarcassWidth() in simpleWardrobeGeometry.ts), so
+  // the composite fallback is simply the entered Width itself, not
+  // Width + Dressing (which would double-count Dressing's own span).
   const enteredTotalW = n(dims.totalWidth ?? 0);
-  const totalWidthForCalc = enteredTotalW > 0 ? enteredTotalW : wardrobeW + dressingTotalW;
+  const totalWidthForCalc = enteredTotalW > 0 ? enteredTotalW : wardrobeW;
 
   // Loft Height — resolved FIRST (before the Top Panel default below),
   // because the Top Panel formula is conditional on whether Fix Patti's
@@ -232,19 +242,23 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   // per the user's explicit correction (Dressing Width is NOT part of this
   // deduction — Dressing already sits between the Wardrobe and the Top
   // Panel, so the Top Panel just fills whatever remains of the wall beyond
-  // the Wardrobe):
+  // the Wardrobe+Dressing):
   //   IF Fix Patti height >= Loft height:
-  //     Top Panel Width = Total Room Width − Wardrobe Width − Fix Patti Width
-  //     (e.g. 3000 − 2000 − 80 = 920)
+  //     Top Panel Width = Total Room Width − Wardrobe Carcass Width − Dressing Width − Fix Patti Width
   //   ELSE:
-  //     Top Panel Width = Total Room Width − Wardrobe Width
-  //     (e.g. 3000 − 2000 = 1000)
+  //     Top Panel Width = Total Room Width − Wardrobe Carcass Width − Dressing Width
+  // Uses the Wardrobe's own CARCASS width (entered Width minus Dressing,
+  // per wardrobeCarcassWidth()) plus Dressing's own width separately, since
+  // the entered Width no longer represents the carcass alone — using the
+  // raw entered Width here would double-count Dressing's span and under-
+  // allocate the Top Panel by exactly Dressing's width.
   // Only seeds the DISPLAYED default before the user touches the field; a
   // real stored value wins.
+  const wardrobeCarcassW = Math.max(1, wardrobeW - dressingTotalW);
   const topPanelSubtractsFixPatti = fixPattiMaxH > 0 && fixPattiMaxH >= resolvedLoftHeight;
   const topPanelWidthDefault = Math.max(
     0,
-    totalWidthForCalc - wardrobeW
+    totalWidthForCalc - wardrobeCarcassW - dressingTotalW
       - (topPanelSubtractsFixPatti ? fixPattiTotalW : 0),
   );
   const topPanel: WardrobeTopPanelInput = {
@@ -254,12 +268,23 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     depthMm: (addonDims['top-panel']?.D) ?? 600,
   };
 
-  // Loft Width = Total Room Width − Fix Patti (Left+Right) − Khacha
+  // Loft Total Width — the Loft's OWN separate measurement field (per the
+  // user's explicit correction), independent of the Wardrobe's own 'Total
+  // Width' field (which still only drives the outer room-width dimension
+  // line and the Top Panel default). Falls back to totalWidthForCalc (the
+  // Wardrobe's own Total Width / composite width) as a sensible starting
+  // point only until the user actually types a value into this field —
+  // once set, a real stored value always wins, same override convention
+  // as every other computed-default addon field.
+  const loftTotalWidthDefault = totalWidthForCalc;
+  const loftTotalW = (addonDims['loft']?.totalW) ?? loftTotalWidthDefault;
+
+  // Loft Width = Loft Total Width − Fix Patti (Left+Right) − Khacha
   // (Left+Right). Wardrobe/Dressing/Top Panel Width are NEVER part of
   // this deduction (they sit below the Loft, not beside it). loft.widthMm
   // is therefore already the final USABLE Loft Door Width — Door Count /
   // One Door Width / the drawing all use it directly.
-  const usableW = usableLoftDoorWidthWithKhacha(totalWidthForCalc, fixPatti, khacha);
+  const usableW = usableLoftDoorWidthWithKhacha(loftTotalW, fixPatti, khacha);
   const doorCountDefault = recommendLoftDoorCount(usableW).doorCount;
 
   const loft: WardrobeLoftInput = {
@@ -392,7 +417,7 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     khacha: alKhacha,
   };
 
-  return { dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft };
+  return { dressing, topPanel, loft, loftTotalWidthDefault, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft };
 }
 
 function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
@@ -432,6 +457,38 @@ function freshSession(product: ProductTemplate): ProductSessionData {
   return { dims: { ...product.demoDimensions }, selectedAddons: new Set(), addonDims: {}, status: 'not-started' };
 }
 
+// ─── Multi-quantity instances ───────────────────────────────────────────────
+// A client can need more than one of the same product (e.g. 2 Beds, 2
+// Wardrobes) — each instance gets its OWN full measurement form/session,
+// entirely independent of the others (per the user's explicit direction:
+// "if one client have 2 bed and 2 wardrobe then i can select multiple
+// quantity of one product"). Every place that used to key off a bare
+// ProductId (multiSelectIds, productSessions, evidence notes, PDF items,
+// drawing-event logs) now keys off an InstanceKey instead — a product can
+// appear more than once, each occurrence a fully distinct key. `selectedId`
+// itself stays a plain ProductId (it only ever needs to say "which
+// product's registry entry/measurement fields are these") while a separate
+// `selectedInstance` index says which of that product's instances is the
+// one currently open on screen.
+export type InstanceKey = string; // `${ProductId}::${instance}`
+
+export function instanceKey(id: ProductId, instance: number): InstanceKey {
+  return `${id}::${instance}`;
+}
+
+export function parseInstanceKey(key: InstanceKey): { id: ProductId; instance: number } {
+  const sep = key.lastIndexOf('::');
+  return { id: key.slice(0, sep) as ProductId, instance: Number(key.slice(sep + 2)) || 0 };
+}
+
+/** A product instance's own display name — plain product name for the
+ * first (and, usually, only) instance, "Name #2"/"Name #3" for later ones,
+ * so two Beds read as distinct rows/PDF sections rather than two identical
+ * "Bed" entries with no way to tell them apart. */
+export function instanceLabel(productName: string, instance: number): string {
+  return instance === 0 ? productName : `${productName} #${instance + 1}`;
+}
+
 /**
  * The real drawing element AND that product's own CRITICAL validation
  * issues, built from one saved session — not from whichever product is
@@ -446,7 +503,7 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
   if (product.id === 'bed') {
     const { lst, rst, profileShutter } = deriveBedAddonInputs(product.id, selectedAddons, addonDims);
     const headboardEnabled = Number(dims.hasHeadboard ?? 1) === 1;
-    const drawing = resolveSimpleBedPlan({ W: n(dims.W ?? 0), L: n(dims.L ?? 0), H: n(dims.H ?? 0), headboardEnabled, headboardH: n(dims.headboardH ?? 0) || 900, lst, rst, profileShutter });
+    const drawing = resolveSimpleBedPlan({ W: n(dims.W ?? 0), L: n(dims.L ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), headboardEnabled, headboardH: n(dims.headboardH ?? 0) || 900, lst, rst, profileShutter });
     return {
       element: <SimpleBedDrawing dims={dims} lst={lst} rst={rst} profileShutter={profileShutter} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
@@ -769,27 +826,34 @@ export const ProductFlow: React.FC = () => {
   // real, clamped coordinates before the next paint, so this default is
   // never actually seen.
   const [historyPanelStyle, setHistoryPanelStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999 });
-  // Multi-product PDF: pick several products at once and download one PDF
-  // with every selected product's diagram laid out on the same page(s) —
-  // separate from the single-product selectedId above, which still drives
-  // the Measure/Drawing/Evidence workspace as normal.
-  const [multiSelectIds, setMultiSelectIds] = useState<Set<ProductId>>(() => new Set());
+  // Multi-product PDF: pick several products (and, now, several instances
+  // of the SAME product — see the InstanceKey comment above) at once and
+  // download one PDF with every selected instance's diagram laid out on
+  // the same page(s) — separate from the single-product selectedId above,
+  // which still drives the Measure/Drawing/Evidence workspace as normal.
+  const [multiSelectIds, setMultiSelectIds] = useState<Set<InstanceKey>>(() => new Set());
   const [showMultiPanel, setShowMultiPanel] = useState(false);
-  // Combined PDF's per-product Evidence Note picker (PDF tab, multi-product
-  // case only) — which ticked product's note is currently being edited.
+  // Combined PDF's per-instance Evidence Note picker (PDF tab, multi-product
+  // case only) — which ticked instance's note is currently being edited.
   // Reuses the exact same setEvidenceNote/model.evidence store as the
-  // single-product Evidence tab, just picked by product here instead of by
+  // single-product Evidence tab, just picked by instance here instead of by
   // whichever product happens to be open.
-  const [combinedNoteProductId, setCombinedNoteProductId] = useState<ProductId | null>(null);
+  const [combinedNoteProductId, setCombinedNoteProductId] = useState<InstanceKey | null>(null);
   const [combinedNoteDraft, setCombinedNoteDraft] = useState('');
-  // One entry per product ever visited or ticked — each product's own
-  // measurements/add-ons/status, entirely isolated from every other
-  // product's (never mixed), restored exactly when its product is reopened.
-  const [productSessions, setProductSessions] = useState<Partial<Record<ProductId, ProductSessionData>>>({});
+  // One entry per product INSTANCE ever visited or ticked — each instance's
+  // own measurements/add-ons/status, entirely isolated from every other
+  // instance's (never mixed, even two instances of the same product),
+  // restored exactly when that instance is reopened.
+  const [productSessions, setProductSessions] = useState<Partial<Record<InstanceKey, ProductSessionData>>>({});
   const [completeErrors, setCompleteErrors] = useState<string[] | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>('measure');
   const [wardrobeDesign, setWardrobeDesign] = useState<WardrobeDesign | null>(null);
   const [previousProductId, setPreviousProductId] = useState<ProductId>('bed');
+  // Which instance (0-based) of the currently-open product (selectedId) is
+  // on screen — 0 unless the user is on a Bed #2/Wardrobe #2/etc. Combined
+  // with selectedId via instanceKey() to get the real productSessions/
+  // multiSelectIds key everywhere below.
+  const [selectedInstance, setSelectedInstance] = useState(0);
   // Evidence Note — one persistent free-text note per product/measurement
   // (replaces the old per-photo caption + tag + photo/video upload, per the
   // user's explicit instruction: the Evidence page is now just this note,
@@ -847,45 +911,53 @@ export const ProductFlow: React.FC = () => {
       ? Number(dims.H) || staticDefault
       : staticDefault;
 
-  // Marks the CURRENTLY active product in-progress the moment its
+  // The real key into productSessions/multiSelectIds for whatever is
+  // currently open — combines selectedId (which product TYPE) with
+  // selectedInstance (which occurrence of it, for multi-quantity products).
+  const selectedKey = instanceKey(selectedId, selectedInstance);
+
+  // Marks the CURRENTLY active product instance in-progress the moment its
   // measurements/add-ons are first touched — never merely because its
   // measurement form was opened (that stays "not started" until edited).
   const markInProgress = useCallback(() => {
     setProductSessions((prev) => {
-      const cur = prev[selectedId];
+      const cur = prev[selectedKey];
       if (cur && cur.status !== 'not-started') return prev;
       if (!product) return prev;
-      return { ...prev, [selectedId]: cur ? { ...cur, status: 'in-progress' } : { ...freshSession(product), status: 'in-progress' } };
+      return { ...prev, [selectedKey]: cur ? { ...cur, status: 'in-progress' } : { ...freshSession(product), status: 'in-progress' } };
     });
-  }, [selectedId, product]);
+  }, [selectedKey, product]);
 
-  // The one place selectedId ever changes — saves the product being left
-  // (its live dims/add-ons, exactly as they stand) into its own session
-  // entry, then restores whichever session the next product already has
-  // (or a fresh one, seeded from its own demo dimensions, if this is the
-  // first time it's been opened this session). No product's data is ever
-  // read into another's, and nothing is lost switching back and forth.
-  const switchToProduct = useCallback((nextId: ProductId) => {
-    if (nextId === selectedId) return;
+  // The one place selectedId/selectedInstance ever change — saves the
+  // instance being left (its live dims/add-ons, exactly as they stand)
+  // into its own session entry, then restores whichever session the next
+  // instance already has (or a fresh one, seeded from its own demo
+  // dimensions, if this is the first time it's been opened this session).
+  // No instance's data is ever read into another's, and nothing is lost
+  // switching back and forth — including between two instances of the SAME
+  // product (e.g. Bed #1 <-> Bed #2).
+  const switchToProduct = useCallback((nextId: ProductId, nextInstance: number = 0) => {
+    const nextKey = instanceKey(nextId, nextInstance);
+    if (nextKey === selectedKey) return;
     if (nextId === 'openable-wardrobe' || nextId === 'sliding-wardrobe') {
       setPreviousProductId(selectedId);
     }
     setWardrobeDesign(null);
     const nextProduct = getProduct(nextId);
     if (!nextProduct) return;
-    // nextId's own entry is never touched by anything that could have run
+    // nextKey's own entry is never touched by anything that could have run
     // just before this (e.g. handleMarkComplete only ever writes the
-    // OUTGOING product's own entry), so reading it from the closure here is
-    // safe — but the outgoing product's STATUS must come from the
+    // OUTGOING instance's own entry), so reading it from the closure here is
+    // safe — but the outgoing instance's STATUS must come from the
     // functional updater's own `prev`, not this closure, since
     // handleMarkComplete calling switchToProduct immediately after marking
-    // the outgoing product "completed" would otherwise have that fresh
+    // the outgoing instance "completed" would otherwise have that fresh
     // status clobbered by a stale "in-progress" read from before it landed.
-    const nextSession = productSessions[nextId] ?? freshSession(nextProduct);
+    const nextSession = productSessions[nextKey] ?? freshSession(nextProduct);
     setProductSessions((prev) => ({
       ...prev,
-      [selectedId]: { dims, selectedAddons, addonDims, status: prev[selectedId]?.status ?? 'not-started' },
-      [nextId]: nextSession,
+      [selectedKey]: { dims, selectedAddons, addonDims, status: prev[selectedKey]?.status ?? 'not-started' },
+      [nextKey]: nextSession,
     }));
     setDims(nextSession.dims);
     setSelectedAddons(nextSession.selectedAddons);
@@ -893,8 +965,9 @@ export const ProductFlow: React.FC = () => {
     setActiveView(nextProduct.views[0]);
     setActiveWorkspace('measure');
     setCompleteErrors(null);
+    setSelectedInstance(nextInstance);
     setSelectedId(nextId);
-  }, [selectedId, dims, selectedAddons, addonDims, productSessions]);
+  }, [selectedId, selectedKey, dims, selectedAddons, addonDims, productSessions]);
 
   const handleDimChange = useCallback((key: string, val: number | string) => {
     setDims((prev) => {
@@ -1122,7 +1195,7 @@ export const ProductFlow: React.FC = () => {
   const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
   const { centerTable: childrenBedCenterTable, lst: childrenBedLST, rst: childrenBedRST } = deriveChildrenBedAddonInputs(selectedId, dims, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
-  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
+  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftTotalWidthDefault: wardrobeLoftTotalWidthDefault, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
   // Live-computed defaults for the Wardrobe's own auto-calculated-but-
   // editable fields (Top Panel Width, Loft Height, Loft Door Count) — the
   // generic "Add Extra Items" field renderer below falls back to a plain
@@ -1133,7 +1206,7 @@ export const ProductFlow: React.FC = () => {
   // as before.
   const wardrobeComputedAddonDefaults: Record<string, Record<string, number>> = isWardrobe ? {
     'top-panel': { W: wardrobeTopPanel.widthMm },
-    loft: { H: wardrobeLoft.heightMm, doors: wardrobeLoft.doorCount },
+    loft: { totalW: wardrobeLoftTotalWidthDefault, H: wardrobeLoft.heightMm, doors: wardrobeLoft.doorCount },
     // Storage's own Depth (defaults to Wardrobe Depth) and Door Count
     // (auto-recommended from Storage Width alone, spec §29) — same "live
     // computed default, still editable, never overwrites a real user
@@ -1207,7 +1280,7 @@ export const ProductFlow: React.FC = () => {
       const cutlist: PdfCutRow[] = selectedId === 'bed' && String(dims.bedType ?? 'Bed') === 'Children Bed'
         ? childrenBedCutlist(childrenBedInputsFromDims(dims, childrenBedCenterTable, childrenBedLST, childrenBedRST)).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : selectedId === 'bed'
-        ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), D: n(dims.D), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
         ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doorCount: n(dims.doorCount ?? 0), doorWidthMm: n(dims.doorWidthMm ?? 0), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
@@ -1244,47 +1317,99 @@ export const ProductFlow: React.FC = () => {
     }
   };
 
-  // Ticking a product seeds its session immediately (so the Todo list shows
-  // it as "Not Started" with its own real demo dims right away) rather than
-  // waiting until it's first opened.
+  // Ticking a product seeds instance #0's session immediately (so the Todo
+  // list shows it as "Not Started" with its own real demo dims right away)
+  // rather than waiting until it's first opened.
   const toggleMultiSelect = useCallback((id: ProductId) => {
+    const key = instanceKey(id, 0);
     setMultiSelectIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(key)) {
+        // Unticking removes EVERY instance of this product, not just #0 —
+        // ticking the box again always starts clean from a single instance.
+        for (const k of next) { if (parseInstanceKey(k).id === id) next.delete(k); }
+      } else {
+        next.add(key);
+      }
       return next;
     });
     setProductSessions((prev) => {
-      if (prev[id]) return prev;
+      if (prev[key]) return prev;
       const p = getProduct(id);
-      return p ? { ...prev, [id]: freshSession(p) } : prev;
+      return p ? { ...prev, [key]: freshSession(p) } : prev;
     });
   }, []);
 
-  // Selected products, in the order they were TICKED — not registry order.
-  // A JS Set iterates in insertion order, so mapping over multiSelectIds
-  // directly (rather than filtering PRODUCT_REGISTRY) preserves "user
-  // selected Bed, then Wardrobe, then Shoe Rack" exactly, and this same
-  // order then drives the PDF page's product list and the combined PDF's
-  // section order, per the user's explicit requirement that they match.
-  const todoProducts = [...multiSelectIds].map((id) => getProduct(id)).filter((p): p is ProductTemplate => !!p);
-  const statusOf = (id: ProductId): ProductTodoStatus => (id === selectedId ? (productSessions[id]?.status ?? 'not-started') : (productSessions[id]?.status ?? 'not-started'));
-  const completedCount = todoProducts.filter((p) => statusOf(p.id) === 'completed').length;
-  const allCompleted = todoProducts.length > 0 && completedCount === todoProducts.length;
-  const activeTodoIndex = todoProducts.findIndex((p) => p.id === selectedId);
+  // Sets how many instances of one product are included — adds fresh
+  // trailing instances (1, 2, ...) or drops trailing ones, never touching
+  // instance #0's own existing session/data. Quantity is always >= 1 while
+  // the product itself stays ticked; dropping to 0 via the stepper unticks
+  // the whole product (same as toggleMultiSelect's own uncheck).
+  const setProductQuantity = useCallback((id: ProductId, qty: number) => {
+    const q = Math.max(1, Math.round(qty) || 1);
+    setMultiSelectIds((prev) => {
+      const next = new Set(prev);
+      for (let i = 0; i < q; i++) next.add(instanceKey(id, i));
+      // Drop any existing instance at or beyond the new quantity.
+      for (const k of next) {
+        const parsed = parseInstanceKey(k);
+        if (parsed.id === id && parsed.instance >= q) next.delete(k);
+      }
+      return next;
+    });
+    setProductSessions((prev) => {
+      const p = getProduct(id);
+      if (!p) return prev;
+      const additions: Record<InstanceKey, ProductSessionData> = {};
+      for (let i = 0; i < q; i++) {
+        const k = instanceKey(id, i);
+        if (!prev[k]) additions[k] = freshSession(p);
+      }
+      return Object.keys(additions).length ? { ...prev, ...additions } : prev;
+    });
+  }, []);
+
+  /** How many instances of a product are currently ticked (0 = not selected at all). */
+  const quantityOf = (id: ProductId): number => {
+    let count = 0;
+    for (const k of multiSelectIds) { if (parseInstanceKey(k).id === id) count++; }
+    return count;
+  };
+
+  // Selected product instances, in the order they were TICKED (and, within
+  // one product, by instance index) — not registry order. A JS Set
+  // iterates in insertion order, so mapping over multiSelectIds directly
+  // (rather than filtering PRODUCT_REGISTRY) preserves "user selected Bed,
+  // then Wardrobe, then Shoe Rack" exactly, and this same order then drives
+  // the PDF page's product list and the combined PDF's section order, per
+  // the user's explicit requirement that they match.
+  interface TodoInstance { key: InstanceKey; id: ProductId; instance: number; product: ProductTemplate }
+  const todoInstances: TodoInstance[] = [...multiSelectIds]
+    .map((key) => {
+      const { id, instance } = parseInstanceKey(key);
+      const p = getProduct(id);
+      return p ? { key, id, instance, product: p } : null;
+    })
+    .filter((t): t is TodoInstance => !!t)
+    .sort((a, b) => a.instance - b.instance);
+  const statusOf = (key: InstanceKey): ProductTodoStatus => productSessions[key]?.status ?? 'not-started';
+  const completedCount = todoInstances.filter((t) => statusOf(t.key) === 'completed').length;
+  const allCompleted = todoInstances.length > 0 && completedCount === todoInstances.length;
+  const activeTodoIndex = todoInstances.findIndex((t) => t.key === selectedKey);
 
   const gotoAdjacentProduct = useCallback((dir: 1 | -1) => {
-    const idx = todoProducts.findIndex((p) => p.id === selectedId);
+    const idx = todoInstances.findIndex((t) => t.key === selectedKey);
     if (idx === -1) return;
     const nextIdx = idx + dir;
-    if (nextIdx < 0 || nextIdx >= todoProducts.length) return;
-    switchToProduct(todoProducts[nextIdx].id);
+    if (nextIdx < 0 || nextIdx >= todoInstances.length) return;
+    switchToProduct(todoInstances[nextIdx].id, todoInstances[nextIdx].instance);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todoProducts, selectedId, switchToProduct]);
+  }, [todoInstances, selectedKey, switchToProduct]);
 
-  // A product is only completable once its own real drawing resolves with
-  // no CRITICAL validation issue — never merely because the form was
+  // An instance is only completable once its own real drawing resolves
+  // with no CRITICAL validation issue — never merely because the form was
   // opened. On success, auto-advances to the next not-yet-completed
-  // selected product (looping back to the first one if the rest of the
+  // selected instance (looping back to the first one if the rest of the
   // list, in order, is already done).
   const handleMarkComplete = useCallback(() => {
     if (!product) return;
@@ -1295,13 +1420,13 @@ export const ProductFlow: React.FC = () => {
       return;
     }
     setCompleteErrors(null);
-    setProductSessions((prev) => ({ ...prev, [selectedId]: { ...session, status: 'completed' } }));
-    const idx = todoProducts.findIndex((p) => p.id === selectedId);
-    const rest = [...todoProducts.slice(idx + 1), ...todoProducts.slice(0, idx)];
-    const next = rest.find((p) => (p.id === selectedId ? 'completed' : productSessions[p.id]?.status ?? 'not-started') !== 'completed');
-    if (next) switchToProduct(next.id);
+    setProductSessions((prev) => ({ ...prev, [selectedKey]: { ...session, status: 'completed' } }));
+    const idx = todoInstances.findIndex((t) => t.key === selectedKey);
+    const rest = [...todoInstances.slice(idx + 1), ...todoInstances.slice(0, idx)];
+    const next = rest.find((t) => (t.key === selectedKey ? 'completed' : productSessions[t.key]?.status ?? 'not-started') !== 'completed');
+    if (next) switchToProduct(next.id, next.instance);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, dims, selectedAddons, addonDims, selectedId, todoProducts, productSessions, switchToProduct]);
+  }, [product, dims, selectedAddons, addonDims, selectedKey, todoInstances, productSessions, switchToProduct]);
 
   const handleDownloadCombinedPDF = async () => {
     // Step 1 of the required validation order: Client Name, before doing
@@ -1316,29 +1441,29 @@ export const ProductFlow: React.FC = () => {
     }
     setPdfBusy(true);
     try {
-      // The product currently on screen may have unsaved live edits that
+      // The instance currently on screen may have unsaved live edits that
       // haven't been written back into productSessions yet (that only
       // happens on switch) — fold them in here so the PDF always reflects
-      // exactly what's on screen right now for the active product too.
-      const liveSessions: Partial<Record<ProductId, ProductSessionData>> = {
+      // exactly what's on screen right now for the active instance too.
+      const liveSessions: Partial<Record<InstanceKey, ProductSessionData>> = {
         ...productSessions,
-        [selectedId]: { dims, selectedAddons, addonDims, status: productSessions[selectedId]?.status ?? 'not-started' },
+        [selectedKey]: { dims, selectedAddons, addonDims, status: productSessions[selectedKey]?.status ?? 'not-started' },
       };
-      const elements = todoProducts.map((p) => {
-        const session = liveSessions[p.id] ?? freshSession(p);
-        return elementAndIssuesForSession(p, session).element;
+      const elements = todoInstances.map((t) => {
+        const session = liveSessions[t.key] ?? freshSession(t.product);
+        return elementAndIssuesForSession(t.product, session).element;
       });
       const { svgs, cleanup } = await mountOffscreenSvgs(elements);
-      const items: PdfDrawingItem[] = todoProducts
-        .map((p, i): PdfDrawingItem | null => {
-          const session = liveSessions[p.id] ?? freshSession(p);
+      const items: PdfDrawingItem[] = todoInstances
+        .map((t, i): PdfDrawingItem | null => {
+          const session = liveSessions[t.key] ?? freshSession(t.product);
           const svgEl = svgs[i];
           if (!svgEl) return null;
-          // Each product's own note, picked via the PDF tab's per-product
-          // picker above — never another product's, since it's looked up
-          // by this exact product's id.
-          const evidenceNote = model.evidence.find((item) => item.measurementId === p.id && item.type === 'note')?.caption;
-          return { id: p.id, name: p.name, caption: captionForSession(p, session.dims), roomCategory: p.roomCategory, svgEl, evidenceNote };
+          // Each instance's own note, picked via the PDF tab's per-instance
+          // picker above — never another instance's, since it's looked up
+          // by this exact instance's key.
+          const evidenceNote = model.evidence.find((item) => item.measurementId === t.key && item.type === 'note')?.caption;
+          return { id: t.key, name: instanceLabel(t.product.name, t.instance), caption: captionForSession(t.product, session.dims), roomCategory: t.product.roomCategory, svgEl, evidenceNote };
         })
         .filter((it): it is PdfDrawingItem => it !== null);
 
@@ -1346,18 +1471,19 @@ export const ProductFlow: React.FC = () => {
         projectId: model.project.projectId,
         clientName: model.project.clientName,
         employeeName: model.employeeName,
-        products: todoProducts.map((p) => p.name),
+        products: todoInstances.map((t) => instanceLabel(t.product.name, t.instance)),
       });
       cleanup();
       if (!result.ok) {
         setPdfError(result.error ?? 'Unable to generate Combined PDF.');
         return;
       }
-      // One drawing event per product included in the combined PDF — each
+      // One drawing event per instance included in the combined PDF — each
       // still gets its own row (same as generating them individually would),
       // so the dashboard's per-product counts are accurate either way.
-      for (const p of todoProducts) {
-        const session = liveSessions[p.id] ?? freshSession(p);
+      for (const t of todoInstances) {
+        const session = liveSessions[t.key] ?? freshSession(t.product);
+        const p = t.product;
         logDrawingEvent({
           productCategory: p.roomCategory ?? 'Uncategorized',
           productName: p.name,
@@ -1459,13 +1585,18 @@ export const ProductFlow: React.FC = () => {
           {/* One dropdown does both jobs: click a row to open that product
               (same as the old <select>), tick its checkbox to include it in
               a combined multi-product PDF — no second "multi-product"
-              control, per the user's explicit direction. Width is capped
-              against the viewport (not a fixed 320px) so it can never
-              extend past a narrow phone's right edge. */}
+              control, per the user's explicit direction. A ticked product's
+              own +/- stepper sets how many independent instances of it are
+              included (e.g. "Bed x2") — each instance gets its own full
+              measurement form/drawing, per the user's explicit direction
+              that quantity means separate real measurements, not one
+              shared value multiplied. Width is capped against the viewport
+              (not a fixed 320px) so it can never extend past a narrow
+              phone's right edge. */}
           {showMultiPanel && (
-            <div className="absolute left-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border p-3 z-20" style={{ background: '#111827', borderColor: '#243045' }}>
+            <div className="absolute left-0 top-full mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border p-3 z-20" style={{ background: '#111827', borderColor: '#243045' }}>
               <div className="mb-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>
-                Click a product to open it · tick to include in a combined PDF
+                Click a product to open it · tick to include in a combined PDF · set quantity for multiple units
               </div>
               <div className="max-h-80 overflow-auto flex flex-col gap-1 mb-3">
                 {groupProductsByRoomCategory(PRODUCT_REGISTRY).map(({ category, products }) => (
@@ -1477,39 +1608,73 @@ export const ProductFlow: React.FC = () => {
                       <div className="px-2 py-1.5 text-xs italic" style={{ color: '#475569' }}>No products available yet</div>
                     ) : (
                       products.map((p) => {
-                        const checked = multiSelectIds.has(p.id);
+                        const qty = quantityOf(p.id);
+                        const checked = qty > 0;
                         const active = p.id === selectedId;
-                        const status = statusOf(p.id);
-                        const statusIcon = status === 'completed' ? '✓' : status === 'in-progress' ? '●' : '○';
-                        const statusColor = status === 'completed' ? '#4ade80' : status === 'in-progress' ? '#fbbf24' : '#475569';
                         return (
                           <div
                             key={p.id}
-                            className="flex items-center gap-2 rounded-lg px-2 py-1.5"
+                            className="flex flex-col rounded-lg px-2 py-1.5"
                             style={{ background: active ? '#1d3a5f' : checked ? '#1e1b4b' : '#0f172a' }}
                           >
-                            {/* The visible box stays 16px (unchanged theme), but
-                                its tap target is padded out toward the ~44px
-                                comfortable-touch minimum — a bare 16px checkbox
-                                is genuinely hard to hit accurately on a phone. */}
-                            <label className="flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32, margin: -6 }}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleMultiSelect(p.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-4 h-4"
-                              />
-                            </label>
-                            <button
-                              onClick={() => { switchToProduct(p.id); setShowMultiPanel(false); }}
-                              className="flex-1 flex items-center gap-2 text-left py-1"
-                            >
-                              <span className="text-base flex-shrink-0">{p.icon}</span>
-                              <span className="text-sm" style={{ color: '#e2e8f0' }}>{p.name}</span>
-                              {checked && <span className="text-xs ml-auto flex-shrink-0" style={{ color: statusColor }}>{statusIcon}</span>}
-                              {active && <span className="text-[10px]" style={{ color: '#60a5fa' }}>open</span>}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {/* The visible box stays 16px (unchanged theme), but
+                                  its tap target is padded out toward the ~44px
+                                  comfortable-touch minimum — a bare 16px checkbox
+                                  is genuinely hard to hit accurately on a phone. */}
+                              <label className="flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32, margin: -6 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleMultiSelect(p.id)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-4 h-4"
+                                />
+                              </label>
+                              <button
+                                onClick={() => { switchToProduct(p.id, 0); setShowMultiPanel(false); }}
+                                className="flex-1 flex items-center gap-2 text-left py-1 min-w-0"
+                              >
+                                <span className="text-base flex-shrink-0">{p.icon}</span>
+                                <span className="text-sm truncate" style={{ color: '#e2e8f0' }}>{p.name}</span>
+                                {active && <span className="text-[10px] flex-shrink-0" style={{ color: '#60a5fa' }}>open</span>}
+                              </button>
+                              {checked && (
+                                <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => setProductQuantity(p.id, qty - 1)}
+                                    className="w-6 h-6 rounded flex items-center justify-center text-sm font-bold"
+                                    style={{ background: '#1e293b', color: '#e2e8f0' }}
+                                  >−</button>
+                                  <span className="text-xs font-mono w-4 text-center" style={{ color: '#e2e8f0' }}>{qty}</span>
+                                  <button
+                                    onClick={() => setProductQuantity(p.id, qty + 1)}
+                                    className="w-6 h-6 rounded flex items-center justify-center text-sm font-bold"
+                                    style={{ background: '#1e293b', color: '#e2e8f0' }}
+                                  >+</button>
+                                </div>
+                              )}
+                            </div>
+                            {checked && qty > 1 && (
+                              <div className="flex flex-wrap gap-1 mt-1 ml-8">
+                                {Array.from({ length: qty }, (_, i) => {
+                                  const key = instanceKey(p.id, i);
+                                  const status = statusOf(key);
+                                  const statusColor = status === 'completed' ? '#4ade80' : status === 'in-progress' ? '#fbbf24' : '#475569';
+                                  const isActive = key === selectedKey;
+                                  return (
+                                    <button
+                                      key={key}
+                                      onClick={() => { switchToProduct(p.id, i); setShowMultiPanel(false); }}
+                                      className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                                      style={{ background: isActive ? '#2563eb' : '#1e293b', color: isActive ? '#fff' : statusColor }}
+                                    >
+                                      {instanceLabel(p.name, i)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })
@@ -1522,7 +1687,7 @@ export const ProductFlow: React.FC = () => {
                   <div className="text-[10px] mb-2" style={{ color: '#475569' }}>
                     {allCompleted
                       ? 'Every ticked product is completed — the PDF uses each one’s real entered measurements.'
-                      : `Uses each product's own real entered measurements as they stand now (${completedCount}/${todoProducts.length} marked complete) — untouched products fall back to standard/demo values.`}
+                      : `Uses each product's own real entered measurements as they stand now (${completedCount}/${todoInstances.length} marked complete) — untouched products fall back to standard/demo values.`}
                   </div>
                   <button
                     onClick={handleDownloadCombinedPDF}
@@ -1608,32 +1773,32 @@ export const ProductFlow: React.FC = () => {
       {/* Multi-product Todo/progress bar — only appears once 2+ products are
           ticked; a single product (or none ticked) behaves exactly like the
           plain single-product workflow, unchanged. */}
-      {todoProducts.length > 1 && (
+      {todoInstances.length > 1 && (
         <div className="flex items-center gap-3 px-5 py-2 flex-shrink-0 flex-wrap" style={{ background: '#0b0f17', borderBottom: '1px solid #1e293b' }}>
           <span className="text-xs font-bold uppercase tracking-wide flex-shrink-0" style={{ color: '#64748b' }}>
-            Product {activeTodoIndex + 1} of {todoProducts.length}
+            Product {activeTodoIndex + 1} of {todoInstances.length}
           </span>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {todoProducts.map((p) => {
-              const status = statusOf(p.id);
+            {todoInstances.map((t) => {
+              const status = statusOf(t.key);
               const icon = status === 'completed' ? '✓' : status === 'in-progress' ? '●' : '○';
               const color = status === 'completed' ? '#4ade80' : status === 'in-progress' ? '#fbbf24' : '#475569';
-              const active = p.id === selectedId;
+              const active = t.key === selectedKey;
               return (
                 <button
-                  key={p.id}
-                  onClick={() => switchToProduct(p.id)}
+                  key={t.key}
+                  onClick={() => switchToProduct(t.id, t.instance)}
                   className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold"
                   style={{ background: active ? '#1d3a5f' : '#1e293b', color: active ? '#e2e8f0' : '#94a3b8', border: active ? '1px solid #3b82f6' : '1px solid transparent' }}
                 >
                   <span style={{ color }}>{icon}</span>
-                  <span>{p.icon} {p.name}</span>
+                  <span>{t.product.icon} {instanceLabel(t.product.name, t.instance)}</span>
                 </button>
               );
             })}
           </div>
           <span className="text-xs font-mono flex-shrink-0" style={{ color: allCompleted ? '#4ade80' : '#64748b' }}>
-            {allCompleted ? '✓ All products completed' : `${completedCount} / ${todoProducts.length} completed`}
+            {allCompleted ? '✓ All products completed' : `${completedCount} / ${todoInstances.length} completed`}
           </span>
           <div className="ml-auto flex items-center gap-2 flex-shrink-0">
             <button
@@ -1645,7 +1810,7 @@ export const ProductFlow: React.FC = () => {
               ← Previous
             </button>
             {allCompleted ? (
-              // Every ticked product is done — the natural next click right
+              // Every ticked instance is done — the natural next click right
               // here is the combined PDF, not another "Mark Complete" (there
               // is nothing left to complete). The dropdown panel still has
               // the same button too, but this is the one a user actually
@@ -1658,7 +1823,7 @@ export const ProductFlow: React.FC = () => {
                 className="px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-60"
                 style={{ background: '#16a34a', color: '#fff' }}
               >
-                {pdfBusy ? '⏳ Generating…' : `✓ Download Combined PDF (${todoProducts.length})`}
+                {pdfBusy ? '⏳ Generating…' : `✓ Download Combined PDF (${todoInstances.length})`}
               </button>
             ) : (
               <button
@@ -1666,7 +1831,7 @@ export const ProductFlow: React.FC = () => {
                 className="px-3 py-1.5 rounded-lg text-xs font-bold"
                 style={{ background: '#16a34a', color: '#fff' }}
               >
-                ✓ Mark Complete{activeTodoIndex < todoProducts.length - 1 ? ' & Next →' : ''}
+                ✓ Mark Complete{activeTodoIndex < todoInstances.length - 1 ? ' & Next →' : ''}
               </button>
             )}
           </div>
@@ -1914,7 +2079,13 @@ export const ProductFlow: React.FC = () => {
                       if (!f.sideOf) return true;
                       const groupKey = f.groupKey ?? soleGroupKey;
                       const activeSides = groupKey ? activeSidesByKey[groupKey] : undefined;
-                      return activeSides ? activeSides[f.sideOf] : true;
+                      if (activeSides) return activeSides[f.sideOf];
+                      // Dressing's own W/D fields are rendered by its own
+                      // special-case block below (which also shows the
+                      // "auto-fetched"/"no side table" context next to
+                      // them) — never duplicated via the generic field list.
+                      if (addon.id === 'profile-shutter' && (f.key === 'W' || f.key === 'D')) return false;
+                      return true;
                     });
                     return (
                       <div key={addon.id} className="rounded-xl overflow-hidden"
@@ -2006,24 +2177,59 @@ export const ProductFlow: React.FC = () => {
                             {addon.id === 'profile-shutter' && (() => {
                               const onLeft = (adDims['side'] ?? 0) === 0;
                               const target = onLeft ? bedLST : bedRST;
+                              // A side table is no longer compulsory for
+                              // Dressing (per the user's explicit
+                              // correction) — when the mounted side's table
+                              // isn't enabled, Width/Depth become real
+                              // editable fields (own addon dims, W/D) instead
+                              // of a read-only "enable the table" warning;
+                              // Dressing still renders in the exact same
+                              // position/size convention either way.
+                              if (!target.enabled) {
+                                return (
+                                  <div className="flex flex-col gap-2 mt-2">
+                                    <div className="flex flex-col gap-0.5">
+                                      <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width (mm)</label>
+                                      <div className="flex gap-1">
+                                        <MeasurementNumberInput
+                                          value={Number(adDims['W'] ?? 560)}
+                                          onCommit={(val) => handleAddonDimChange(addon.id, 'W', val)}
+                                          min={280} max={900} step={1}
+                                          className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                          style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
+                                        />
+                                        <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                      </div>
+                                      <span className="text-xs" style={{ color: '#334155' }}>No {onLeft ? 'Left' : 'Right'} Side Table added — entered directly</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                      <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Depth (mm)</label>
+                                      <div className="flex gap-1">
+                                        <MeasurementNumberInput
+                                          value={Number(adDims['D'] ?? 460)}
+                                          onCommit={(val) => handleAddonDimChange(addon.id, 'D', val)}
+                                          min={280} max={700} step={1}
+                                          className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                          style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
+                                        />
+                                        <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
                               return (
                                 <div className="flex flex-col gap-0.5 mt-2">
                                   <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width (mm)</label>
                                   <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
                                     {Math.round(target.widthMm)} mm
                                   </div>
-                                  <span className="text-xs" style={{ color: target.enabled ? '#334155' : '#f59e0b' }}>
-                                    {target.enabled
-                                      ? `Auto-fetched from ${onLeft ? 'LST' : 'RST'} Width`
-                                      : `⚠ ${onLeft ? 'Left' : 'Right'} Side Table isn't added yet — enable it too`}
-                                  </span>
+                                  <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from {onLeft ? 'LST' : 'RST'} Width</span>
                                   <label className="text-xs font-semibold mt-1" style={{ color: '#a78bfa' }}>Depth (mm)</label>
                                   <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
                                     {Math.round(target.depthMm)} mm
                                   </div>
-                                  <span className="text-xs" style={{ color: target.enabled ? '#334155' : '#f59e0b' }}>
-                                    {target.enabled ? `Auto-fetched from ${onLeft ? 'LST' : 'RST'} Depth` : ' '}
-                                  </span>
+                                  <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from {onLeft ? 'LST' : 'RST'} Depth</span>
                                 </div>
                               );
                             })()}
@@ -2162,7 +2368,7 @@ export const ProductFlow: React.FC = () => {
 
 
       {activeWorkspace === 'pdf' && (() => {
-        const hasMultiple = todoProducts.length > 1;
+        const hasMultiple = todoInstances.length > 1;
         const clientMissing = !model.project.clientName.trim();
         return (
           <div className="flex-1 overflow-auto p-5" style={{ background: '#0d1117' }}>
@@ -2215,10 +2421,10 @@ export const ProductFlow: React.FC = () => {
                   <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#64748b' }}>{hasMultiple ? 'Products' : 'Product'}</div>
                   {hasMultiple ? (
                     <div className="mt-0.5 flex flex-col gap-0.5">
-                      {todoProducts.map((p, i) => (
-                        <div key={p.id} className="text-sm font-semibold flex items-center gap-1.5" style={{ color: '#e2e8f0' }}>
-                          <span style={{ color: statusOf(p.id) === 'completed' ? '#4ade80' : '#475569' }}>{statusOf(p.id) === 'completed' ? '✓' : `${i + 1}.`}</span>
-                          {p.icon} {p.name}
+                      {todoInstances.map((t, i) => (
+                        <div key={t.key} className="text-sm font-semibold flex items-center gap-1.5" style={{ color: '#e2e8f0' }}>
+                          <span style={{ color: statusOf(t.key) === 'completed' ? '#4ade80' : '#475569' }}>{statusOf(t.key) === 'completed' ? '✓' : `${i + 1}.`}</span>
+                          {t.product.icon} {instanceLabel(t.product.name, t.instance)}
                         </div>
                       ))}
                     </div>
@@ -2238,15 +2444,15 @@ export const ProductFlow: React.FC = () => {
                   </div>
                   <select
                     value={combinedNoteProductId ?? ''}
-                    onChange={(e) => setCombinedNoteProductId((e.target.value || null) as ProductId | null)}
+                    onChange={(e) => setCombinedNoteProductId((e.target.value || null) as InstanceKey | null)}
                     className="mt-2 w-full rounded-lg px-3 py-2 text-sm outline-none"
                     style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }}
                   >
                     <option value="">Select a product…</option>
-                    {todoProducts.map((p) => {
-                      const hasNote = model.evidence.some((item) => item.measurementId === p.id && item.type === 'note' && item.caption.trim());
+                    {todoInstances.map((t) => {
+                      const hasNote = model.evidence.some((item) => item.measurementId === t.key && item.type === 'note' && item.caption.trim());
                       return (
-                        <option key={p.id} value={p.id}>{p.icon} {p.name}{hasNote ? ' — note added' : ''}</option>
+                        <option key={t.key} value={t.key}>{t.product.icon} {instanceLabel(t.product.name, t.instance)}{hasNote ? ' — note added' : ''}</option>
                       );
                     })}
                   </select>
@@ -2254,7 +2460,7 @@ export const ProductFlow: React.FC = () => {
                     <textarea
                       value={combinedNoteDraft}
                       onChange={(e) => setCombinedNoteDraft(e.target.value)}
-                      placeholder={`e.g. Site condition is good for ${getProduct(combinedNoteProductId)?.name ?? 'this product'}...`}
+                      placeholder={`e.g. Site condition is good for ${getProduct(parseInstanceKey(combinedNoteProductId).id)?.name ?? 'this product'}...`}
                       rows={3}
                       className="mt-2 w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
                       style={{ background: '#1e2535', border: '1px solid #2a3347', color: '#e2e8f0' }}
@@ -2282,13 +2488,13 @@ export const ProductFlow: React.FC = () => {
                 </button>
                 {hasMultiple && (
                   <button onClick={handleDownloadCombinedPDF} disabled={pdfBusy} className="rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60" style={{ background: allCompleted ? '#16a34a' : '#4338ca', color: '#fff' }}>
-                    {pdfBusy ? '⏳ Generating…' : allCompleted ? `✓ Download Combined PDF (${todoProducts.length})` : `⬇ Download Draft PDF (${todoProducts.length})`}
+                    {pdfBusy ? '⏳ Generating…' : allCompleted ? `✓ Download Combined PDF (${todoInstances.length})` : `⬇ Download Draft PDF (${todoInstances.length})`}
                   </button>
                 )}
               </div>
               {hasMultiple && !allCompleted && (
                 <div className="mt-2 text-[10px]" style={{ color: '#64748b' }}>
-                  ⚠ {todoProducts.length - completedCount} product{todoProducts.length - completedCount === 1 ? '' : 's'} not yet completed — Combined PDF above uses each product's current entered measurements as a draft; complete every product in the Todo bar for the final version.
+                  ⚠ {todoInstances.length - completedCount} product{todoInstances.length - completedCount === 1 ? '' : 's'} not yet completed — Combined PDF above uses each product's current entered measurements as a draft; complete every product in the Todo bar for the final version.
                 </div>
               )}
             </div>

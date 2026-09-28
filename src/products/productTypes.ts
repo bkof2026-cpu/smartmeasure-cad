@@ -21,7 +21,8 @@ export type ProductId =
   | 'door'
   | 'sofa-cum-bed'
   | 'kitchen-cabinet'
-  | 'kitchen-loft';
+  | 'kitchen-loft'
+  | 'kitchen-open-box';
 
 /**
  * The user-facing room grouping from the Product Categories spec — purely

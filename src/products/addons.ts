@@ -74,7 +74,7 @@ export interface FieldColorGroup {
 export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   bed: [
     { label: 'Bed Measurement Type', color: '#e2e8f0', keys: ['bedType'] },
-    { label: 'Bed', color: '#3b82f6', keys: ['W', 'L', 'H'] },
+    { label: 'Bed', color: '#3b82f6', keys: ['W', 'L', 'H', 'D'] },
     { label: 'Headboard', color: '#f59e0b', keys: ['hasHeadboard', 'headboardH'] },
     // Children Bed (bedType === 'Children Bed' only) — Bed A/Bed B are
     // each fully independent (own W/L/H/headboard), matching the plain
@@ -83,8 +83,8 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
     // both beds are mandatory, never optional — Center Table/LST/RST are
     // the optional "extras" and live as PRODUCT_ADDONS "+" cards instead
     // (see below), not plain fields here.
-    { label: 'Bed A', color: '#22c55e', keys: ['bedA_W', 'bedA_L', 'bedA_H', 'bedA_hasHeadboard', 'bedA_headboardH'] },
-    { label: 'Bed B', color: '#0891b2', keys: ['bedB_W', 'bedB_L', 'bedB_H', 'bedB_hasHeadboard', 'bedB_headboardH'] },
+    { label: 'Bed A', color: '#22c55e', keys: ['bedA_W', 'bedA_L', 'bedA_H', 'bedA_D', 'bedA_hasHeadboard', 'bedA_headboardH'] },
+    { label: 'Bed B', color: '#0891b2', keys: ['bedB_W', 'bedB_L', 'bedB_H', 'bedB_D', 'bedB_hasHeadboard', 'bedB_headboardH'] },
   ],
   'separate-side-table': [
     // #111827 (near-black, matching the Mirror's own drawing outline
@@ -210,12 +210,19 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'profile-shutter',
       label: 'Dressing',
       icon: '💡',
-      description: 'Light shutter box mounted above a side table — Width and Depth both auto-fetched from that table',
+      description: 'Light shutter box — Width/Depth auto-fetched from the side table on that side if one is added, otherwise entered directly (a side table is not required)',
       placement: 'composite',
       fields: [
-        { key: 'side', label: 'Mounted On', defaultValue: 0, min: 0, max: 1, options: ['Left Side Table (LST)', 'Right Side Table (RST)'] },
+        { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 1, options: ['Left Side', 'Right Side'] },
         { key: 'H', label: 'Height', defaultValue: 150, min: 50, max: 400 },
         { key: 'light', label: 'Add Profile Light', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
+        // W/D are only actually used by the geometry engine when the
+        // mounted side's table isn't enabled — ProductFlow.tsx renders
+        // them as real inputs in that case (see its own profile-shutter
+        // special-case block) instead of via this generic field list, so
+        // they're declared here for schema/defaults completeness only.
+        { key: 'W', label: 'Width (if no side table)', defaultValue: 560, min: 280, max: 900 },
+        { key: 'D', label: 'Depth (if no side table)', defaultValue: 460, min: 280, max: 700 },
       ],
     },
     // ── Children Bed only (bedType === 'Children Bed') — Center Table/LST/
@@ -302,14 +309,23 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'loft',
       label: 'Loft Above Wardrobe',
       icon: '📦',
-      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box. Height and Door Count are calculated automatically but stay editable.',
+      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box. Total Width, Height and Door Count are calculated automatically but stay editable.',
       placement: 'composite',
       fields: [
         { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
-        // H/doors defaults below are only the static fallback shown before
-        // a real computed recommendation exists — ProductFlow.tsx overrides
-        // the displayed default live (Loft Height = Total Height − Wardrobe
-        // Height − 10mm; Door Count = the loftDoorEngine recommendation).
+        // totalW is the Loft's OWN Total Width — a separate field from the
+        // Wardrobe's own 'Total Width' measurement field (which still only
+        // drives the outer room-width dimension line and the Top Panel
+        // default), per the user's explicit correction: the Loft's door
+        // count/width formula reads THIS field, not the shared one, so the
+        // two can be set independently. H/doors defaults below are only
+        // the static fallback shown before a real computed recommendation
+        // exists — ProductFlow.tsx overrides the displayed default live
+        // (totalW defaults to the Wardrobe's own Total Width/composite
+        // width until the user types a value here; Loft Height = Total
+        // Height − Wardrobe Height − 10mm; Door Count = the loftDoorEngine
+        // recommendation from THIS field, minus Fix Patti/Khacha).
+        { key: 'totalW', label: 'Loft Total Width', defaultValue: 2290, min: 600, max: 6000 },
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
@@ -480,10 +496,13 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'loft',
       label: 'Loft Above Wardrobe',
       icon: '📦',
-      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box. Height and Door Count are calculated automatically but stay editable.',
+      description: 'Storage loft mounted above the wardrobe — Only Door or a full Box. Total Width, Height and Door Count are calculated automatically but stay editable.',
       placement: 'composite',
       fields: [
         { key: 'mode', label: 'Loft Type', defaultValue: 0, min: 0, max: 1, options: ['Only Door', 'Box'] },
+        // See openable-wardrobe's own 'loft' addon above for the full
+        // rationale — same separate-field convention, same fallback rules.
+        { key: 'totalW', label: 'Loft Total Width', defaultValue: 2290, min: 600, max: 6000 },
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },

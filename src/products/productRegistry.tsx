@@ -907,7 +907,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // detail" mode — nothing was deleted, this product entry just no
     // longer wires to it. See src/products/bed/simpleBedGeometry.ts.
     demoDimensions: {
-      bedType: 'Bed', W: 1800, L: 2000, H: 436, hasHeadboard: 1, headboardH: 900,
+      bedType: 'Bed', W: 1800, L: 2000, H: 436, D: 200, hasHeadboard: 1, headboardH: 900,
       // Children Bed fields — always present in measurementFields (Dining
       // Table's dual-type precedent), ignored by the resolver unless
       // bedType === 'Children Bed'. Demo values give a fully worked example
@@ -916,14 +916,15 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       // the user's explicit direction they're optional "+" addon cards
       // (PRODUCT_ADDONS['bed']: children-bed-center-table/lst/rst), not
       // plain measurementFields, same as the plain Bed's own LST/RST above.
-      bedA_W: 1200, bedA_L: 1900, bedA_H: 400, bedA_hasHeadboard: 1, bedA_headboardH: 800,
-      bedB_W: 1200, bedB_L: 1900, bedB_H: 400, bedB_hasHeadboard: 1, bedB_headboardH: 800,
+      bedA_W: 1200, bedA_L: 1900, bedA_H: 400, bedA_D: 200, bedA_hasHeadboard: 1, bedA_headboardH: 800,
+      bedB_W: 1200, bedB_L: 1900, bedB_H: 400, bedB_D: 200, bedB_hasHeadboard: 1, bedB_headboardH: 800,
     },
     measurementFields: [
       { key: 'bedType', label: 'Bed Measurement Type', unit: 'select', defaultValue: 'Bed', options: ['Bed', 'Children Bed'] },
       { key: 'W', label: 'Bed Width', unit: 'mm', defaultValue: 1800, min: 900, max: 2400 },
       { key: 'L', label: 'Bed Length', unit: 'mm', defaultValue: 2000, min: 1800, max: 2400 },
       { key: 'H', label: 'Bed Height', unit: 'mm', defaultValue: 436, min: 250, max: 600 },
+      { key: 'D', label: 'Bed Depth', unit: 'mm', defaultValue: 200, min: 50, max: 400 },
       // Headboard is optional — shown only when selected (default on, so
       // existing behaviour doesn't change unless the user turns it off).
       { key: 'hasHeadboard', label: 'Add Headboard', unit: 'bool', defaultValue: 1 },
@@ -939,11 +940,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       { key: 'bedA_W', label: 'Bed A — Width', unit: 'mm', defaultValue: 1200, min: 900, max: 2400 },
       { key: 'bedA_L', label: 'Bed A — Length', unit: 'mm', defaultValue: 1900, min: 1800, max: 2400 },
       { key: 'bedA_H', label: 'Bed A — Height', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
+      { key: 'bedA_D', label: 'Bed A — Depth', unit: 'mm', defaultValue: 200, min: 50, max: 400 },
       { key: 'bedA_hasHeadboard', label: 'Bed A — Add Headboard', unit: 'bool', defaultValue: 1 },
       { key: 'bedA_headboardH', label: 'Bed A — Headboard Height', unit: 'mm', defaultValue: 800, min: 400, max: 1500 },
       { key: 'bedB_W', label: 'Bed B — Width', unit: 'mm', defaultValue: 1200, min: 900, max: 2400 },
       { key: 'bedB_L', label: 'Bed B — Length', unit: 'mm', defaultValue: 1900, min: 1800, max: 2400 },
       { key: 'bedB_H', label: 'Bed B — Height', unit: 'mm', defaultValue: 400, min: 250, max: 600 },
+      { key: 'bedB_D', label: 'Bed B — Depth', unit: 'mm', defaultValue: 200, min: 50, max: 400 },
       { key: 'bedB_hasHeadboard', label: 'Bed B — Add Headboard', unit: 'bool', defaultValue: 1 },
       { key: 'bedB_headboardH', label: 'Bed B — Headboard Height', unit: 'mm', defaultValue: 800, min: 400, max: 1500 },
     ],
@@ -955,11 +958,11 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
         return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
       }
       const cutRows = simpleBedCutlist({
-        W: n(dims.W), L: n(dims.L), H: n(dims.H),
+        W: n(dims.W), L: n(dims.L), H: n(dims.H), D: n(dims.D),
         headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900,
         lst: { enabled: false, depthMm: 460, widthMm: 560, drawerCount: 0 },
         rst: { enabled: false, depthMm: 460, widthMm: 560, drawerCount: 0 },
-        profileShutter: { enabled: false, side: 'left', heightMm: 150, light: false },
+        profileShutter: { enabled: false, side: 'left', heightMm: 150, light: false, widthMm: 560, depthMm: 460 },
       });
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
@@ -1581,6 +1584,43 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
     DrawingComponent: (props) => <KitchenCabinetDrawing dims={props.dims} />,
+  },
+
+  // ── KITCHEN OPEN BOX ─────────────────────────────────────────────────────────
+  // A standalone Kitchen-category product per the user's explicit request:
+  // a single plain box drawn from Height/Width/Depth alone, with those
+  // three values shown on the drawing — same real labeled-box + Depth-
+  // diagonal shape already shared by Sofa/Center Table/T.V./Sofa-cum-Bed,
+  // so this reuses that module rather than a near-duplicate file. Distinct
+  // from Kitchen Cabinet's own OPTIONAL "Add Open Box" sub-component
+  // (kitchenCabinetGeometry.ts) — that one only ever appears attached below
+  // a Kitchen Cabinet; this is its own independent product a user can
+  // select on its own.
+  {
+    id: 'kitchen-open-box',
+    name: 'Open Box',
+    icon: '📭',
+    category: 'furniture',
+    roomCategory: 'Kitchen',
+    isFormulaVerified: true,
+    demoDimensions: { H: 300, W: 600, D: 350 },
+    measurementFields: [
+      { key: 'H', label: 'Height', unit: 'mm', defaultValue: 300, min: 100, max: 1200 },
+      { key: 'W', label: 'Width', unit: 'mm', defaultValue: 600, min: 100, max: 3000 },
+      { key: 'D', label: 'Depth', unit: 'mm', defaultValue: 350, min: 100, max: 900 },
+    ],
+    views: ['plan'],
+    computeCutlist: (dims) => {
+      const cfg: LabeledBoxConfig = { productType: 'kitchen-open-box', boxLabel: 'OPEN BOX', title: 'OPEN BOX', color: '#3b82f6' };
+      const cutRows = labeledBoxCutlist({ primary: n(dims.W), secondary: n(dims.H), depth: n(dims.D), primaryLabel: 'W', secondaryLabel: 'H' }, cfg);
+      return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
+    },
+    DrawingComponent: (props) => (
+      <LabeledBoxDrawing
+        inp={{ primary: n(props.dims.W), secondary: n(props.dims.H), depth: n(props.dims.D), primaryLabel: 'W', secondaryLabel: 'H' }}
+        cfg={{ productType: 'kitchen-open-box', boxLabel: 'OPEN BOX', title: 'OPEN BOX', color: '#3b82f6' }}
+      />
+    ),
   },
 
   // ── STUDY TABLE ───────────────────────────────────────────────────────────────

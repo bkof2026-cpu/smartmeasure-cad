@@ -5,7 +5,7 @@ import type { KitchenWallConfig } from '../../store/types';
 import { getTrolleyTemplate, calculateNormalColumnWidth } from './trolleyTemplates';
 import { calculateTrolleyDimensions } from './trolleyDimensions';
 import { calculateTrolleyPanels } from './trolleyPanelCalc';
-import { calculateSideSectionDoors } from './sideSectionDoorCalc';
+import { calculateSideSectionDoors, calculateInnerSectionDoors } from './sideSectionDoorCalc';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Kitchen Wall Engine — the reusable "resolve ONE wall's full layout" core
@@ -745,30 +745,39 @@ export function resolveKitchenWall(
     });
 
     // Side Section Doors — the plain cabinet door(s) filling this section,
-    // ONLY for the two OUTER sections (against the actual room wall —
-    // seg.fromLetter === null for the left one, seg.toLetter === null for
-    // the right one), and never for the section the Trolley itself
-    // occupies (that section's own content is the Trolley Panel drawn
-    // above, not a plain door). Per the user's explicit spec: door count
-    // auto-recommended from this section's own width (<=600mm -> 1,
-    // >=600mm -> 2), user-editable via leftSideDoorCountOverride/
-    // rightSideDoorCountOverride; door width = section width minus the
-    // inner-Kadappa deduction (2mm, always) minus the wall deduction
-    // (3mm if a real Wall Side Kadappa sits on that side, else 2mm) minus
-    // (doorCount-1) x 2mm gaps between doors, divided by doorCount.
+    // for EVERY Clear-Width section that isn't the Trolley section: the two
+    // OUTER sections (against the actual room wall — seg.fromLetter ===
+    // null for the left one, seg.toLetter === null for the right one) AND
+    // any INNER section (between two real Kadappa, no wall on either
+    // side) — per the user's explicit correction "in no trolley kitchen we
+    // have to give only door": a non-Trolley section was previously left
+    // completely empty unless it happened to be one of the two outer ones.
+    // Door count is auto-recommended from this section's own width
+    // (<=600mm -> 1, >=600mm -> 2), user-editable via
+    // leftSideDoorCountOverride/rightSideDoorCountOverride (outer) or
+    // innerSideDoorCountOverrides[seg.index] (inner); door width/height are
+    // both recalculated from whichever count is actually used, same
+    // formula shape either way (see sideSectionDoorCalc.ts).
     //
-    // `cornerEnd` (L-Shape only) suppresses door eligibility on whichever
-    // of THIS wall's own local ends is going to be an L-Shape corner —
-    // a real room wall never sits there, so a Side Section Door would be
-    // wrong (there is nothing to close against; Wall B/A continues past
-    // it). `null` (I-Shape's default) never suppresses either end.
+    // `cornerEnd` (L-Shape only) suppresses OUTER door eligibility on
+    // whichever of THIS wall's own local ends is going to be an L-Shape
+    // corner — a real room wall never sits there, so a Side Section Door
+    // would be wrong (there is nothing to close against; Wall B/A
+    // continues past it). `null` (I-Shape's default) never suppresses
+    // either end. Inner sections are never affected by cornerEnd since
+    // they never touch either wall end.
     const isLeftOuterSection = seg.fromLetter === null && cornerEnd !== 'left';
     const isRightOuterSection = seg.toLetter === null && cornerEnd !== 'right';
+    const isOuterSection = seg.fromLetter === null || seg.toLetter === null;
+    const isInnerSection = !isOuterSection;
     const isTrolleySection = seg.index === resolvedSectionId;
-    if ((isLeftOuterSection || isRightOuterSection) && !isTrolleySection && realGap > 0) {
-      const side = isLeftOuterSection ? 'left' : 'right';
-      const override = side === 'left' ? iShape.leftSideDoorCountOverride : iShape.rightSideDoorCountOverride;
-      const doors = calculateSideSectionDoors(iShape, seg, side, override);
+    const outerSectionEligible = (isLeftOuterSection || isRightOuterSection) && realGap > 0;
+    const innerSectionEligible = isInnerSection && realGap > 0;
+    if ((outerSectionEligible || innerSectionEligible) && !isTrolleySection) {
+      const side: 'left' | 'right' | 'inner' = isInnerSection ? 'inner' : (isLeftOuterSection ? 'left' : 'right');
+      const doors = side === 'inner'
+        ? calculateInnerSectionDoors(iShape, seg, iShape.innerSideDoorCountOverrides?.[seg.index] ?? null)
+        : calculateSideSectionDoors(iShape, seg, side, side === 'left' ? iShape.leftSideDoorCountOverride : iShape.rightSideDoorCountOverride);
       if (doors.valid) {
         const doorGapMm = 2;
         let doorX = segX1;
@@ -783,14 +792,16 @@ export function resolveKitchenWall(
           // generic whole-drawing heuristic happens to place them. A
           // single door keeps the default (unset) heuristic.
           const handleSide: 'left' | 'right' | undefined = doors.doorCount === 2 ? (i === 0 ? 'right' : 'left') : undefined;
+          const leftBoundaryLabel = side === 'inner' ? 'Kadappa' : (side === 'left' ? (doors.hasWallKadappa ? 'Wall Kadappa' : 'Wall') : 'Inner Kadappa');
+          const rightBoundaryLabel = side === 'inner' ? 'Kadappa' : (side === 'right' ? (doors.hasWallKadappa ? 'Wall Kadappa' : 'Wall') : 'Inner Kadappa');
           components.push({
             id: doorId, type: 'SIDE_SECTION_DOOR', label: '',
             x: doorX, y: kadappaY, width: Math.max(1, doors.doorWidth), height: kadappaH, qty: 1, visible: true,
             handleSide,
             source: {
               formula: doors.doorCount === 1
-                ? `Side Section Door (${side}) — Width = Section Width(${Math.round(doors.sectionWidth)}) − Inner Kadappa(2) − ${doors.hasWallKadappa ? 'Wall Kadappa' : 'Wall'}(${doors.wallDeductionMm}) = ${Math.round(doors.doorWidth)}mm`
-                : `Side Section Door ${i + 1} of ${doors.doorCount} (${side}) — Width = [Section Width(${Math.round(doors.sectionWidth)}) − Inner Kadappa(2) − ${doors.hasWallKadappa ? 'Wall Kadappa' : 'Wall'}(${doors.wallDeductionMm}) − Gaps(${(doors.doorCount - 1) * doorGapMm})] / ${doors.doorCount} = ${Math.round(doors.doorWidth)}mm`,
+                ? `Side Section Door (${side}) — Width = Section Width(${Math.round(doors.sectionWidth)}) − ${leftBoundaryLabel}(${doors.leftDeductionMm}) − ${rightBoundaryLabel}(${doors.rightDeductionMm}) = ${Math.round(doors.doorWidth)}mm`
+                : `Side Section Door ${i + 1} of ${doors.doorCount} (${side}) — Width = [Section Width(${Math.round(doors.sectionWidth)}) − ${leftBoundaryLabel}(${doors.leftDeductionMm}) − ${rightBoundaryLabel}(${doors.rightDeductionMm}) − Gaps(${(doors.doorCount - 1) * doorGapMm})] / ${doors.doorCount} = ${Math.round(doors.doorWidth)}mm`,
               constants: [],
             },
           });

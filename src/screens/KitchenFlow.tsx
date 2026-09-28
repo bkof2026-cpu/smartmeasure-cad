@@ -6,7 +6,7 @@ import type { KitchenWallConfig, WallSideKadappaOption } from '../store/types';
 import { TROLLEY_TEMPLATES } from '../products/kitchen/trolleyTemplates';
 import { buildKadappaSequence, buildClearSegments, resolveTrolleySectionId } from '../products/kitchen/iShapeKitchenGeometry';
 import { calculateTrolleyDimensions } from '../products/kitchen/trolleyDimensions';
-import { calculateSideSectionDoors } from '../products/kitchen/sideSectionDoorCalc';
+import { calculateSideSectionDoors, calculateInnerSectionDoors } from '../products/kitchen/sideSectionDoorCalc';
 import { logDrawingEvent } from '../auth/authClient';
 import { mountOffscreenSvgs } from '../pdf/mountOffscreen';
 import { generateAndDownloadSingleProductPdf } from '../pdf/pdfEngine';
@@ -431,10 +431,13 @@ function Step3Features({ onFinish, onBack }: { onFinish: () => void; onBack: () 
   );
 }
 
-/** Side Section Doors — read-only calculated door count/width for each
- * OUTER (wall-adjacent) Clear-Width section, per
- * sideSectionDoorCalc.ts. Only the door COUNT is editable (an override
- * input, defaulting to the auto-recommendation); the door WIDTH is always
+/** Side Section Doors — read-only calculated door count/width for EVERY
+ * non-Trolley Clear-Width section, per sideSectionDoorCalc.ts: the two
+ * OUTER (wall-adjacent) sections plus any INNER section (between two
+ * Kadappa) — per the user's explicit "no trolley kitchen -> only door"
+ * correction, an inner section is no longer left with nothing to
+ * configure. Only the door COUNT is editable (an override input,
+ * defaulting to the auto-recommendation); the door WIDTH is always
  * derived, never a separate field — same "auto-recommended but editable
  * count, always-derived width" pattern as the Loft's own door engine.
  * Never shown for the section the Trolley itself occupies (that section's
@@ -445,24 +448,23 @@ function SideSectionDoorsFrame({ iShape, clearSegments, updateIShapeConfig }: {
   updateIShapeConfig: ReturnType<typeof useApp>['updateIShapeConfig'];
 }) {
   const resolvedTrolleySectionId = resolveTrolleySectionId(iShape, clearSegments);
-  const outerSections = clearSegments.filter((seg) =>
-    (seg.fromLetter === null || seg.toLetter === null) && seg.index !== resolvedTrolleySectionId
-  );
-  if (outerSections.length === 0) return null;
+  const doorSections = clearSegments.filter((seg) => seg.index !== resolvedTrolleySectionId);
+  if (doorSections.length === 0) return null;
 
   return (
     <>
       <div className="h-px" style={{ background: '#2a3347' }} />
       <p className="text-xs font-bold tracking-widest uppercase" style={{ color: '#0891b2' }}>Side Section Doors</p>
       <div className="flex flex-col gap-3">
-        {outerSections.map((seg) => {
-          const side = seg.fromLetter === null ? 'left' : 'right';
-          const override = side === 'left' ? iShape.leftSideDoorCountOverride : iShape.rightSideDoorCountOverride;
-          const doors = calculateSideSectionDoors(iShape, seg, side, override);
+        {doorSections.map((seg) => {
+          const isOuter = seg.fromLetter === null || seg.toLetter === null;
+          const side: 'left' | 'right' | 'inner' = isOuter ? (seg.fromLetter === null ? 'left' : 'right') : 'inner';
+          const override = side === 'inner' ? (iShape.innerSideDoorCountOverrides?.[seg.index] ?? null) : (side === 'left' ? iShape.leftSideDoorCountOverride : iShape.rightSideDoorCountOverride);
+          const doors = side === 'inner' ? calculateInnerSectionDoors(iShape, seg, override) : calculateSideSectionDoors(iShape, seg, side, override);
           return (
             <div key={seg.index} className="rounded-xl p-3" style={{ background: '#101825', border: '1px solid #1e2a3d' }}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold" style={{ color: '#67e8f9' }}>{seg.label} ({Math.round(doors.sectionWidth)}mm)</span>
+                <span className="text-xs font-bold" style={{ color: '#67e8f9' }}>{seg.label} ({Math.round(doors.sectionWidth)}mm){side === 'inner' ? ' — inner' : ''}</span>
                 {!doors.valid && <span className="text-xs" style={{ color: '#f87171' }}>⚠ invalid</span>}
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -470,7 +472,9 @@ function SideSectionDoorsFrame({ iShape, clearSegments, updateIShapeConfig }: {
                   label="Number of Doors"
                   value={doors.doorCount}
                   onChange={(v) => updateIShapeConfig(
-                    side === 'left' ? { leftSideDoorCountOverride: v } : { rightSideDoorCountOverride: v }
+                    side === 'inner'
+                      ? { innerSideDoorCountOverrides: { ...iShape.innerSideDoorCountOverrides, [seg.index]: v } }
+                      : (side === 'left' ? { leftSideDoorCountOverride: v } : { rightSideDoorCountOverride: v })
                   )}
                   note={override === null ? `Auto-recommended (${doors.recommendedDoorCount})` : undefined}
                 />
@@ -480,7 +484,9 @@ function SideSectionDoorsFrame({ iShape, clearSegments, updateIShapeConfig }: {
                     {Math.round(doors.doorWidth)} mm
                   </div>
                   <p className="text-xs mt-0.5" style={{ color: '#64748b' }}>
-                    {doors.sectionWidth} − 2mm (inner) − {doors.wallDeductionMm}mm ({doors.hasWallKadappa ? 'wall Kadappa' : 'wall'})
+                    {side === 'inner'
+                      ? `${doors.sectionWidth} − ${doors.leftDeductionMm}mm (Kadappa) − ${doors.rightDeductionMm}mm (Kadappa)`
+                      : `${doors.sectionWidth} − 2mm (inner) − ${doors.wallDeductionMm}mm (${doors.hasWallKadappa ? 'wall Kadappa' : 'wall'})`}
                     {doors.doorCount > 1 ? ` − ${(doors.doorCount - 1) * 2}mm (gaps) ÷ ${doors.doorCount}` : ''}
                   </p>
                 </div>
@@ -917,7 +923,11 @@ function LShapeStep2Trolley({ onNext, onBack }: { onNext: () => void; onBack: ()
     <div className="flex flex-col gap-2 p-6">
       <p className="text-sm mb-2" style={{ color: '#64748b' }}>Select the Trolley Type for each wall — independently</p>
       <WallTabSelector active={activeWall} onChange={setActiveWall} />
+      {/* key={activeWall} — same fresh-remount fix as LShapeStep3Features's
+          own WallFeaturesForm below, needed here too since this form's SPO
+          width field also uses NumInput's own uncommitted draft state. */}
       <WallTrolleyTypeForm
+        key={activeWall}
         iShape={wallConfig}
         updateIShapeConfig={(patch) => updateLShapeWallConfig(activeWall, patch)}
       />
@@ -1001,7 +1011,17 @@ function LShapeStep3Features({ onFinish, onBack }: { onFinish: () => void; onBac
       <div className="h-px" style={{ background: '#2a3347' }} />
       <p className="text-sm" style={{ color: '#64748b' }}>Wall A / Wall B measurements and Kadappa layout — fully independent</p>
       <WallTabSelector active={activeWall} onChange={setActiveWall} />
+      {/* key={activeWall} forces a fresh remount (and fresh NumInput draft
+          state) on every Wall A <-> Wall B switch — without it, React
+          reuses the same NumInput instances across walls, so a value typed
+          into a field on one wall could still be showing in its own
+          uncommitted `draft` string when the same field slot re-renders
+          for the OTHER wall, even though the real underlying model data
+          was always correctly separate the whole time (confirmed via a
+          full audit: this was a pure display-only staleness bug, never a
+          data bug). */}
       <WallFeaturesForm
+        key={activeWall}
         iShape={wallConfig}
         updateIShapeConfig={(patch) => updateLShapeWallConfig(activeWall, patch)}
       />

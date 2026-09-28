@@ -6,7 +6,7 @@ import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
 const n = (v: number | string | undefined) => Number(v ?? 0);
 const DEFAULT_ST: SimpleSideTableInput = { enabled: false, depthMm: 460, widthMm: 560, drawerCount: 0 };
-const DEFAULT_PS: ProfileShutterInput = { enabled: false, side: 'left', heightMm: 150, light: false };
+const DEFAULT_PS: ProfileShutterInput = { enabled: false, side: 'left', heightMm: 150, light: false, widthMm: 560, depthMm: 460 };
 
 // Each box's own outline uses the same colour as its dimension lines (see
 // BED_COMPONENT_COLORS) — so a viewer can visually pair a measurement with
@@ -28,7 +28,7 @@ interface Props {
 export const SimpleBedDrawing: React.FC<Props> = ({ dims, lst, rst, profileShutter }) => {
   const H = n(dims.H);
   const inp: SimpleBedInputs = {
-    W: n(dims.W), L: n(dims.L), H,
+    W: n(dims.W), L: n(dims.L), H, D: n(dims.D),
     // Headboard is optional — defaults to shown (1) so existing saved
     // measurements without this field keep their current drawing.
     headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1,

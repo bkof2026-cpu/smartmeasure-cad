@@ -193,18 +193,18 @@ const bool1 = (v: number | string | undefined, def: number) => Number(v ?? def) 
 /** Bed A / Bed B only — parsed from the plain, always-expanded measurementFields (never behind a "+", since both beds are mandatory). */
 export function childrenBedsFromDims(dims: Record<string, number | string>): { bedA: SimpleBedInputs; bedB: SimpleBedInputs } {
   const bedA: SimpleBedInputs = {
-    W: n(dims.bedA_W), L: n(dims.bedA_L), H: n(dims.bedA_H),
+    W: n(dims.bedA_W), L: n(dims.bedA_L), H: n(dims.bedA_H), D: n(dims.bedA_D),
     headboardEnabled: bool1(dims.bedA_hasHeadboard, 1),
     headboardH: n(dims.bedA_headboardH) || 900,
     lst: DISABLED_ST, rst: DISABLED_ST,
-    profileShutter: { enabled: false, side: 'left', heightMm: 150, light: false },
+    profileShutter: { enabled: false, side: 'left', heightMm: 150, light: false, widthMm: 560, depthMm: 460 },
   };
   const bedB: SimpleBedInputs = {
-    W: n(dims.bedB_W), L: n(dims.bedB_L), H: n(dims.bedB_H),
+    W: n(dims.bedB_W), L: n(dims.bedB_L), H: n(dims.bedB_H), D: n(dims.bedB_D),
     headboardEnabled: bool1(dims.bedB_hasHeadboard, 1),
     headboardH: n(dims.bedB_headboardH) || 900,
     lst: DISABLED_ST, rst: DISABLED_ST,
-    profileShutter: { enabled: false, side: 'left', heightMm: 150, light: false },
+    profileShutter: { enabled: false, side: 'left', heightMm: 150, light: false, widthMm: 560, depthMm: 460 },
   };
   return { bedA, bedB };
 }
