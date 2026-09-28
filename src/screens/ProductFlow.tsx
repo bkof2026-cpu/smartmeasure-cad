@@ -833,6 +833,21 @@ export const ProductFlow: React.FC = () => {
   // which still drives the Measure/Drawing/Evidence workspace as normal.
   const [multiSelectIds, setMultiSelectIds] = useState<Set<InstanceKey>>(() => new Set());
   const [showMultiPanel, setShowMultiPanel] = useState(false);
+  // Closes the multi-product dropdown when clicking anywhere outside it —
+  // per the user's explicit request, matching standard dropdown behavior
+  // (previously it only closed via its own toggle button or picking a
+  // product row, so a click elsewhere on the page left it open).
+  const multiPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showMultiPanel) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (multiPanelRef.current && !multiPanelRef.current.contains(e.target as Node)) {
+        setShowMultiPanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMultiPanel]);
   // Combined PDF's per-instance Evidence Note picker (PDF tab, multi-product
   // case only) — which ticked instance's note is currently being edited.
   // Reuses the exact same setEvidenceNote/model.evidence store as the
@@ -1568,7 +1583,7 @@ export const ProductFlow: React.FC = () => {
           original single-row layout unchanged. */}
       <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4 px-2.5 sm:px-5 py-1.5 sm:py-3 flex-shrink-0"
         style={{ background: '#0d1117', borderBottom: '1px solid #1e293b' }}>
-        <div className="relative min-w-0 w-full sm:w-auto">
+        <div className="relative min-w-0 w-full sm:w-auto" ref={multiPanelRef}>
           <button
             onClick={() => setShowMultiPanel((prev) => !prev)}
             className="flex w-full sm:w-auto items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold outline-none sm:min-w-[200px]"

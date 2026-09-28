@@ -130,7 +130,7 @@ export interface KitchenWallConfig {
 
   // ─── Trolley Dimension Calculation (H × W × D) ───────────────────────────
   // Trolley Height  = Total Kitchen Height − Pani Patti Height −
-  //                    Floor Ceiling Patti Height − 30mm (height clearance)
+  //                    Floor Ceiling Patti Height − Trolley Height Clearance
   // Trolley Width   = Selected Trolley Section's real Inside/Clear Width
   //                    − 30mm (width fit)
   // Trolley Depth   = Total Kitchen Depth − depthDeduction
@@ -143,6 +143,13 @@ export interface KitchenWallConfig {
    * where it exists its height varies site to site, so this is a real
    * user-entered value rather than a constant. */
   floorCeilingPattiHeight: number;
+
+  /** Trolley Height Clearance (mm) deducted from Total Kitchen Height —
+   * editable, default 30mm, same "was a fixed constant, now a real
+   * user-entered value" treatment as Floor Ceiling Patti Height above, per
+   * the user's explicit direction ("this field should be editable &
+   * optional, same as Floor Ceiling Patti"). */
+  trolleyHeightClearance: number;
 
   /** Depth deduction (mm) applied to Kitchen Depth to get Trolley Depth —
    * editable, default 20mm, the only other common value is 10mm. */

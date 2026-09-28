@@ -58,7 +58,8 @@ export function calculateTrolleyDimensions(
   resolvedSection: ClearSegment | null,
 ): TrolleyDimensionResult {
   const floorCeilingPattiHeight = iShape.floorCeilingPattiHeight ?? DEFAULT_FLOOR_CEILING_PATTI_MM;
-  const calculatedHeight = iShape.height - iShape.paniPattiHeight - floorCeilingPattiHeight - HEIGHT_CLEARANCE_MM;
+  const heightClearance = iShape.trolleyHeightClearance ?? HEIGHT_CLEARANCE_MM;
+  const calculatedHeight = iShape.height - iShape.paniPattiHeight - floorCeilingPattiHeight - heightClearance;
 
   const sectionInsideWidth = resolvedSection ? (iShape.clearWidths[resolvedSection.index] ?? 0) : null;
   const calculatedWidth = sectionInsideWidth !== null ? sectionInsideWidth - WIDTH_FIT_MM : null;

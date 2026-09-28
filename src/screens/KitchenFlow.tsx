@@ -701,7 +701,16 @@ function TrolleyDimensionsFrame({ iShape, clearSegments, updateIShapeConfig }: {
             />
           </span>
         </div>
-        <div style={rowStyle}><span style={labelStyle}>Trolley Height Clearance</span><span style={valueStyle}>− 30 mm</span></div>
+        <div style={rowStyle}>
+          <span style={labelStyle}>Trolley Height Clearance {manualTag}</span>
+          <span style={valueStyle}>
+            −{' '}
+            <InlineNumEdit
+              value={iShape.trolleyHeightClearance}
+              onChange={(v) => updateIShapeConfig({ trolleyHeightClearance: v })}
+            />
+          </span>
+        </div>
         <div style={{ ...rowStyle, marginTop: 2, paddingTop: 4, borderTop: '1px dashed #2a3347' }}>
           <span style={{ ...labelStyle, color: '#e2e8f0', fontWeight: 700 }}>Final Trolley Height {autoTag}</span>
           <span style={{ ...valueStyle, color: '#fbbf24', fontWeight: 700 }}>{Math.round(dims.finalHeight)} mm</span>
