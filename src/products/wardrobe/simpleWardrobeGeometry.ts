@@ -189,6 +189,25 @@ export interface WardrobeLoftInput {
   doorCount: number;
 }
 
+// Loft Side Panel — a NEW, purely visual/informational extra measurement
+// for the main Loft (per the user's explicit request), drawn as its own
+// vertical panel at the Loft's RIGHT edge, parallel to the Loft Height
+// dimension (same vertical style, mirrored on the Loft's own right side).
+// Unlike Fix Patti/Khacha, this NEVER deducts from the Loft's usable door
+// width/door-count formula — confirmed with the user ("purely visual/
+// informational ... does NOT deduct from Loft door width"); it exists only
+// to be measured/fabricated, shown via its own name + H/W/D callout text
+// box in the free space beside it. Width and Height are both manually
+// entered; Depth defaults to the Wardrobe's own Depth but stays editable
+// (same "computed default, still editable" convention as Storage's own
+// Depth default).
+export interface WardrobeLoftSidePanelInput {
+  enabled: boolean;
+  widthMm: number;
+  heightMm: number; // independent of Loft Height — this panel's own real height
+  depthMm: number; // defaults to Wardrobe Depth, editable
+}
+
 // L-Shaped Loft — Wall B, a second, fully independent Loft standing on
 // the ADJACENT wall (Left or Right of the main Wardrobe structure), per
 // the user's own reference sketch. Uses the EXACT SAME rules as the main
@@ -230,6 +249,7 @@ export interface SimpleWardrobeInputs {
   dressing: WardrobeDressingInput;
   topPanel: WardrobeTopPanelInput;
   loft: WardrobeLoftInput;
+  loftSidePanel: WardrobeLoftSidePanelInput;
   fixPatti: WardrobeFixPattiInput;
   khacha: WardrobeKhachaInput;
   storage: WardrobeStorageInput;
@@ -344,6 +364,12 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     if (inp.loft.mode === 'box') {
       rows.push({ component: 'Loft Box Depth', width: inp.loft.widthMm, height: inp.loft.depthMm, qty: 1, remark: `Depth = ${Math.round(inp.loft.depthMm)}mm (entered, shown as the / leader) — Width shown here is the full Loft Width for reference only; see individual doors above for real cut widths` });
     }
+  }
+  if (inp.loftSidePanel.enabled) {
+    rows.push({
+      component: 'Side Panel', width: inp.loftSidePanel.widthMm, height: inp.loftSidePanel.heightMm, qty: 1,
+      remark: `Width x Height (both entered) | Depth = ${Math.round(inp.loftSidePanel.depthMm)}mm (defaults to Wardrobe Depth, editable) — purely visual/informational, never part of the Loft door-width formula`,
+    });
   }
   if (inp.storage.position !== 'none') {
     const sides: Array<['Left' | 'Right', WardrobeStorageSideInput]> = [];
@@ -635,12 +661,36 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // Panel end).
   const loftRowLeftX = wardrobeX - leftExtra;          // == composite left edge
   const loftRowWidth = totalWidth;                     // == composite full width
-  const loftFrameWidth = Math.max(1, loftRowWidth - leftKhachaW - leftFPW - rightFPW - rightKhachaW);
+  // loftFrameWidth — the REAL usable Loft door width, i.e. inp.loft.widthMm
+  // exactly as resolved in ProductFlow.tsx (Loft's own Total Width field −
+  // Fix Patti − Khacha). Previously this was re-derived from loftRowWidth
+  // (the drawn Wardrobe+Dressing+Top-Panel composite's own width) instead,
+  // which silently diverged from the Loft's own Total Width field the
+  // moment the two numbers differed — producing a drawn per-door width
+  // that didn't match (usableWidth − count×2)/count against the value the
+  // user actually typed into "Loft Total Width" (confirmed bug report:
+  // Loft Total Width 1960, 5 doors, expected (1960−10)/5=390mm, but the
+  // drawing showed 386mm — the composite's own drawn width was ~1940mm,
+  // not 1960). inp.loft.widthMm is the single authoritative usable width
+  // (same value the cutlist/door-count recommendation already use); the
+  // Fix Patti/Khacha WIDTHS below are still used to size/position their
+  // own drawn side-strips (a real, separate concern from the usable
+  // width), never to re-subtract from it a second time.
+  const loftFrameWidth = Math.max(1, loft.widthMm);
   const doorsAreaX = loftRowLeftX + leftKhachaW + leftFPW;
   // Canvas-sizing width — the widest of: the entered Total Width, the
-  // Loft row's own extent, and the furniture composite.
+  // Loft row's own real drawn extent (now that loftFrameWidth is the
+  // Loft's own authoritative usable width, this can legitimately exceed
+  // the furniture composite's own width — e.g. a Loft Total Width bigger
+  // than the Wardrobe+Dressing+Top-Panel span below it — so the canvas
+  // must reserve room for it explicitly, not just the old composite-
+  // derived loftRowWidth), and the furniture composite.
+  const loftRowRealRight = doorsAreaX + loftFrameWidth + rightFPW + rightKhachaW;
+  const loftSidePanelRight = loft.enabled && inp.loftSidePanel.enabled
+    ? loftRowRealRight + Math.max(1, inp.loftSidePanel.widthMm)
+    : loftRowRealRight;
   const roomWallWidth = loft.enabled
-    ? Math.max(totalWidthMm && totalWidthMm > 0 ? totalWidthMm : 0, loftRowWidth, totalWidth)
+    ? Math.max(totalWidthMm && totalWidthMm > 0 ? totalWidthMm : 0, loftRowWidth, totalWidth, loftSidePanelRight - loftRowLeftX)
     : totalWidth;
   if (loft.enabled) {
     loftH = loft.heightMm;
@@ -766,6 +816,41 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // there is no leftover span to mark. The entered Total Width, when it
     // exceeds the drawn furniture, is still shown honestly by its own
     // "Total W" dimension line — that stays.)
+
+    // Loft Side Panel — a NEW extra measurement, purely visual/
+    // informational (never affects the Loft's own door-count/width
+    // formula), drawn as a real box flush against the Loft's own RIGHT
+    // edge, matching the drawing's Loft Height (same Y-span as the Loft
+    // row) so it reads as sitting right beside the last door. Its own
+    // Height dimension is drawn on its OUTER right edge, parallel to the
+    // Loft Height arrow on the opposite (left) edge — same vertical style,
+    // mirrored — per the user's explicit "line parallel to the loft
+    // height" request. A text-box callout in the free space to its right
+    // names it and states its own H/W/D (same convention as Top Panel's
+    // own callout above), so nothing is hidden inside the drawing.
+    if (inp.loftSidePanel.enabled) {
+      const sp = inp.loftSidePanel;
+      const spX = doorsAreaX + loftFrameWidth + rightFPW + rightKhachaW;
+      const spW = Math.max(1, sp.widthMm);
+      const spH = Math.max(1, sp.heightMm);
+      const spY = loftY + loftH - spH; // bottom-aligned with the Loft row's own floor line
+      components.push({
+        id: 'loft-side-panel', type: 'LOFT_SIDE_PANEL', label: 'Side Panel',
+        x: spX, y: spY, width: spW, height: spH, qty: 1, visible: true,
+        source: { formula: `Side Panel — Width × Height (both entered) | Depth = ${Math.round(sp.depthMm)}mm (defaults to Wardrobe Depth, editable) | purely visual/informational, never deducted from the Loft door-width formula`, constants: [] },
+      });
+      dimReqs.push({
+        axis: 'v', x1: spX + spW, y1: spY, x2: spX + spW, y2: spY + spH, edge: 'right',
+        componentIds: ['loft-side-panel'], label: `${Math.round(spH)} (Side Panel H)`,
+        source: { formula: 'Side Panel Height (entered)', constants: [] },
+      });
+      calloutRequests.push({
+        id: 'loft-side-panel-note',
+        componentBounds: { x: spX, y: spY, w: spW, h: spH },
+        title: 'Side Panel', color: '#db2777',
+        lines: [`H : ${Math.round(spH)}`, `W : ${Math.round(spW)}`, `D : ${Math.round(sp.depthMm)}`],
+      });
+    }
   }
 
   const wardrobeY = topPad + loftH;
@@ -1544,6 +1629,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     ...(totalWidthMm && totalWidthMm > 0 && totalWidthMm < totalWidth - 25 ? [{ id: 'val-total-width-too-small', severity: 'WARNING' as const, code: 'TOTAL_WIDTH_SMALLER_THAN_FURNITURE', message: `⚠ Total Width entered (${Math.round(totalWidthMm)}mm) is smaller than the Wardrobe+Dressing+Side Panel width (${Math.round(totalWidth)}mm) — Total Width should be the full room span and can never be narrower than the furniture placed in it.` }] : []),
     ...(topPanel.enabled ? validateMeasurements({ W: topPanel.widthMm, D: topPanel.depthMm }, [{ key: 'W', label: 'Top Panel Width', min: 1 }, { key: 'D', label: 'Top Panel Depth', min: 1 }]) : []),
     ...(loft.enabled ? validateMeasurements({ W: loft.widthMm, H: loft.heightMm }, [{ key: 'W', label: 'Loft Width', min: 1 }, { key: 'H', label: 'Loft Height', min: 1 }]) : []),
+    ...(inp.loftSidePanel.enabled ? validateMeasurements({ W: inp.loftSidePanel.widthMm, H: inp.loftSidePanel.heightMm, D: inp.loftSidePanel.depthMm }, [{ key: 'W', label: 'Side Panel Width', min: 1 }, { key: 'H', label: 'Side Panel Height', min: 1 }, { key: 'D', label: 'Side Panel Depth', min: 1 }]) : []),
     ...(loft.enabled && (fixPatti.position === 'left' || fixPatti.position === 'both') ? validateMeasurements({ H: fixPatti.leftHeightMm, W: fixPatti.leftWidthMm }, [{ key: 'H', label: 'Left Fix Patti Height', min: 1 }, { key: 'W', label: 'Left Fix Patti Width', min: 1 }]) : []),
     ...(loft.enabled && (fixPatti.position === 'right' || fixPatti.position === 'both') ? validateMeasurements({ H: fixPatti.rightHeightMm, W: fixPatti.rightWidthMm }, [{ key: 'H', label: 'Right Fix Patti Height', min: 1 }, { key: 'W', label: 'Right Fix Patti Width', min: 1 }]) : []),
     ...(loft.enabled && (khacha.position === 'left' || khacha.position === 'both') ? validateMeasurements({ H: khacha.leftHeightMm, W: khacha.leftWidthMm }, [{ key: 'H', label: 'Left Khacha Height', min: 1 }, { key: 'W', label: 'Left Khacha Width', min: 1 }]) : []),

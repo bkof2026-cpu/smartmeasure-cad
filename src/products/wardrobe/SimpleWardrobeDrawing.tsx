@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, defaultStyleFor, type ComponentStyle } from '../../engine/CanonicalSvg';
-import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
+import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
 import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
@@ -8,6 +8,7 @@ const n = (v: number | string | undefined) => Number(v ?? 0);
 const DEFAULT_DRESSING: WardrobeDressingInput = { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 };
 const DEFAULT_TOP_PANEL: WardrobeTopPanelInput = { enabled: false, side: 'left', widthMm: 80, depthMm: 600 };
 const DEFAULT_LOFT: WardrobeLoftInput = { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 };
+const DEFAULT_LOFT_SIDE_PANEL: WardrobeLoftSidePanelInput = { enabled: false, widthMm: 100, heightMm: 400, depthMm: 600 };
 const DEFAULT_FIX_PATTI: WardrobeFixPattiInput = { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 };
 const DEFAULT_KHACHA: WardrobeKhachaInput = { position: 'none', leftHeightMm: 400, leftWidthMm: 100, rightHeightMm: 400, rightWidthMm: 100 };
 const DEFAULT_STORAGE_SIDE = { enabled: false, heightMm: 450, widthMm: 600, depthMm: 600, doorCount: 2 };
@@ -25,6 +26,7 @@ interface Props {
   dressing?: WardrobeDressingInput;
   topPanel?: WardrobeTopPanelInput;
   loft?: WardrobeLoftInput;
+  loftSidePanel?: WardrobeLoftSidePanelInput;
   fixPatti?: WardrobeFixPattiInput;
   khacha?: WardrobeKhachaInput;
   storage?: WardrobeStorageInput;
@@ -48,6 +50,7 @@ const WARDROBE_COMPONENT_COLORS: Record<string, ComponentStyle> = {
   DOOR:          { fill: '#f5f3ff', stroke: '#7c3aed', strokeWidth: 1.1 }, // Loft doors
   FIX_PATTI:     { fill: '#dcfce7', stroke: '#16a34a', strokeWidth: 1.5 },
   KHACHA:        { fill: '#bbf7d0', stroke: '#15803d', strokeWidth: 1.5 },
+  LOFT_SIDE_PANEL: { fill: '#fce7f3', stroke: '#db2777', strokeWidth: 1.5 }, // Loft's own Side Panel — distinct pink, never confused with Fix Patti/Khacha's green
   STORAGE_DOOR:  { fill: '#fef3c7', stroke: '#b45309', strokeWidth: 1.1 },
   OPEN_BOX:      { fill: '#fff7ed', stroke: '#ea580c', strokeWidth: 1.2, strokeDasharray: '4 2' },
   STUDY_TABLE_FRAME: { fill: '#ccfbf1', stroke: '#0d9488', strokeWidth: 1.5 },
@@ -57,7 +60,7 @@ function componentStyle(c: ComponentSpec): ComponentStyle {
   return WARDROBE_COMPONENT_COLORS[c.type] ?? defaultStyleFor(c);
 }
 
-export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft }) => {
+export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft }) => {
   const W = n(dims.W);
   const inp: SimpleWardrobeInputs = {
     W, H: n(dims.H), D: n(dims.D),
@@ -69,6 +72,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
     dressing: dressing ?? DEFAULT_DRESSING,
     topPanel: topPanel ?? DEFAULT_TOP_PANEL,
     loft: loft ?? DEFAULT_LOFT,
+    loftSidePanel: loftSidePanel ?? DEFAULT_LOFT_SIDE_PANEL,
     fixPatti: fixPatti ?? DEFAULT_FIX_PATTI,
     khacha: khacha ?? DEFAULT_KHACHA,
     storage: storage ?? DEFAULT_STORAGE,

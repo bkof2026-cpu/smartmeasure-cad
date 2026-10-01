@@ -332,6 +332,25 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
     {
+      // Side Panel — a NEW extra measurement for the Loft, purely visual/
+      // informational (per the user's explicit confirmation: it never
+      // deducts from the Loft's own door-count/width formula, unlike Fix
+      // Patti/Khacha). Sits flush against the Loft's own right edge, its
+      // own Height dimension drawn parallel to the Loft Height arrow.
+      // Depth defaults to the Wardrobe's own Depth (live computed default,
+      // still editable) — same convention as Storage's own Depth default.
+      id: 'loft-side-panel',
+      label: 'Side Panel',
+      icon: '🟢',
+      description: 'Extra panel beside the Loft, for reference only — Width/Height entered, Depth defaults to Wardrobe Depth (editable). Does not affect the Loft door calculation.',
+      placement: 'composite',
+      fields: [
+        { key: 'W', label: 'Width', defaultValue: 100, min: 10, max: 600 },
+        { key: 'H', label: 'Height', defaultValue: 400, min: 50, max: 900 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 100, max: 900 },
+      ],
+    },
+    {
       id: 'fix-patti',
       label: 'Fix Patti',
       icon: '🟩',
@@ -506,6 +525,20 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
+      ],
+    },
+    {
+      // See openable-wardrobe's own 'loft-side-panel' addon for the full
+      // rationale — same purely visual/informational field set.
+      id: 'loft-side-panel',
+      label: 'Side Panel',
+      icon: '🟢',
+      description: 'Extra panel beside the Loft, for reference only — Width/Height entered, Depth defaults to Wardrobe Depth (editable). Does not affect the Loft door calculation.',
+      placement: 'composite',
+      fields: [
+        { key: 'W', label: 'Width', defaultValue: 100, min: 10, max: 600 },
+        { key: 'H', label: 'Height', defaultValue: 400, min: 50, max: 900 },
+        { key: 'D', label: 'Depth', defaultValue: 600, min: 100, max: 900 },
       ],
     },
     {
