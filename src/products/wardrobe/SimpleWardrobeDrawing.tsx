@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, defaultStyleFor, type ComponentStyle } from '../../engine/CanonicalSvg';
-import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
+import { resolveSimpleWardrobePlan, simpleWardrobeTitle, wardrobeDoorWidthsFromDims, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
 import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
@@ -68,7 +68,7 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
     // which has its own different sliding-panel concept) — draws no door
     // lines at all, rather than silently assuming 2 doors.
     doorCount: n(dims.doorCount) || 0,
-    doorWidthMm: n(dims.doorWidthMm) || 0,
+    doorWidthsMm: wardrobeDoorWidthsFromDims(dims, n(dims.doorCount) || 0),
     dressing: dressing ?? DEFAULT_DRESSING,
     topPanel: topPanel ?? DEFAULT_TOP_PANEL,
     loft: loft ?? DEFAULT_LOFT,

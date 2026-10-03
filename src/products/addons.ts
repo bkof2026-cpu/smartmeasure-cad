@@ -101,10 +101,16 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   ],
   'openable-wardrobe': [
     { label: 'Wardrobe', color: '#3b82f6', keys: ['W', 'H', 'D'] },
-    // Door — Number of Doors + each Door's own Width (both entered); Door
+    // Door — Number of Doors is a real measurementFields entry; each
+    // door's own Width is rendered dynamically (one field per door, per
+    // doorCount) by ProductFlow.tsx's own Wardrobe-specific block right
+    // after this group, NOT a static key here — doors are no longer
+    // assumed identical (per the user's explicit "ask for both door
+    // widths and divide the door according to width" correction), so a
+    // fixed single 'doorWidthMm' key can no longer represent them. Door
     // Height is never a field here, it's always the formula value
     // (Wardrobe Height − 36mm − 70mm skirting), shown only on the drawing.
-    { label: 'Door', color: '#7c3aed', keys: ['doorCount', 'doorWidthMm'] },
+    { label: 'Door', color: '#7c3aed', keys: ['doorCount'] },
     // Directly-entered overall envelope — never recomputed FROM the
     // Wardrobe's own W/H (that direction still holds), but now used AS a
     // source for Top Panel Width / Loft Height / Loft Door Count when

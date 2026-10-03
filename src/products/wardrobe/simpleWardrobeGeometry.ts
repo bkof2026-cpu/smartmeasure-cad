@@ -244,8 +244,18 @@ export interface SimpleWardrobeInputs {
   W: number; // wardrobe width (entered — see carcass-width note above)
   H: number; // wardrobe height
   D: number; // wardrobe depth — shown as a "/" diagonal leader, never a straight arrow
-  doorCount: number; // Number of Doors (entered) — the wardrobe carcass is split into this many equal vertical panels
-  doorWidthMm: number; // each Door's own Width (entered manually — NOT derived from doorCount/W)
+  doorCount: number; // Number of Doors (entered) — the wardrobe carcass is split into this many vertical panels
+  // Each door's OWN real Width, entered independently (per the user's
+  // explicit correction: "if 2 doors then ask for both 2 door width and
+  // divide the door according to width" — doors are NOT assumed equal any
+  // more). Index i is Door (i+1); a short array (fewer entries than
+  // doorCount) falls back to the LAST entered width for any remaining
+  // door, so a user increasing Door Count never hits an undefined gap —
+  // see wardrobeDoorWidths() below, the single place this fallback
+  // happens. The divider lines are now drawn at these doors' own REAL
+  // cumulative boundaries, never an even W/doorCount split — so the drawn
+  // split and the printed per-door width label always agree exactly.
+  doorWidthsMm: number[];
   dressing: WardrobeDressingInput;
   topPanel: WardrobeTopPanelInput;
   loft: WardrobeLoftInput;
@@ -307,9 +317,18 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
   ];
   if (inp.doorCount > 0) {
     const doorH = wardrobeDoorHeight(inp.H);
-    rows.push({
-      component: `Door (x${inp.doorCount})`, width: inp.doorWidthMm, height: doorH, qty: inp.doorCount,
-      remark: `Width entered | Height = Wardrobe Height(${Math.round(inp.H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`,
+    const widths = wardrobeDoorWidths(inp.doorWidthsMm, inp.doorCount);
+    // One row per door — each carries its OWN entered width (per the
+    // user's explicit correction: doors are no longer assumed identical).
+    // Consecutive doors that happen to share the exact same width are
+    // still listed separately (never silently merged into a "xN" row),
+    // since a future edit to just one of them must never require
+    // splitting an already-merged row back apart.
+    widths.forEach((w, i) => {
+      rows.push({
+        component: `Door ${i + 1} of ${inp.doorCount}`, width: w, height: doorH, qty: 1,
+        remark: `Width entered (own per-door value) | Height = Wardrobe Height(${Math.round(inp.H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`,
+      });
     });
   }
   if (inp.dressing.enabled) {
@@ -462,6 +481,46 @@ export function wardrobeCarcassWidth(enteredW: number, dressing: WardrobeDressin
   if (!dressing.enabled) return enteredW;
   const sides = dressing.side === 'both' ? 2 : 1;
   return Math.max(1, enteredW - dressing.widthMm * sides);
+}
+
+/**
+ * Resolves the REAL per-door widths actually used for drawing/cutlist — one
+ * entry per door, index i = Door (i+1). `entered` may hold fewer entries
+ * than `doorCount` (e.g. the user increased Door Count but hasn't yet typed
+ * a width for the new door(s) — never undefined/NaN in the drawing): any
+ * missing entry falls back to the LAST real entered width, or 1mm if
+ * nothing was ever entered. This is the ONLY place that fallback happens —
+ * every caller needing a door's own real width goes through this array,
+ * never inp.doorWidthsMm directly, so the drawn divider and the printed
+ * label can never disagree (per the user's explicit "door get divided...
+ * but measurement showing wrong" bug report: the old code always drew an
+ * EVEN split while showing one shared, unrelated entered number).
+ */
+export function wardrobeDoorWidths(entered: number[], doorCount: number): number[] {
+  const count = Math.max(0, Math.round(doorCount) || 0);
+  const widths: number[] = [];
+  let lastKnown = 1;
+  for (let i = 0; i < count; i++) {
+    const v = entered[i];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) lastKnown = v;
+    widths.push(lastKnown);
+  }
+  return widths;
+}
+
+/**
+ * Parses the flat dims.doorWidth1/doorWidth2/.../doorWidthN keys (the
+ * on-screen measurement-form storage shape — a plain Record<string,
+ * number|string>, no native array field type) into the array
+ * wardrobeDoorWidths()/SimpleWardrobeInputs.doorWidthsMm expects. Shared by
+ * productRegistry.tsx's computeCutlist and SimpleWardrobeDrawing.tsx so the
+ * two never parse this differently.
+ */
+export function wardrobeDoorWidthsFromDims(dims: Record<string, number | string>, doorCount: number): number[] {
+  const count = Math.max(0, Math.round(doorCount) || 0);
+  const widths: number[] = [];
+  for (let i = 1; i <= count; i++) widths.push(Number(dims[`doorWidth${i}`] ?? 0));
+  return widths;
 }
 
 /**
@@ -1025,29 +1084,47 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const rightDimX = wardrobeX + W + dressR + topPanelR;
   dimReqs.push({ axis: 'v', x1: rightDimX, y1: wardrobeY, x2: rightDimX, y2: wardrobeY + bodyH, edge: 'right', componentIds: ['wardrobe'], label: `${Math.round(H)} (H)`, source: { formula: 'Wardrobe Height (entered, includes the 70mm skirting)', constants: [] } });
 
-  // Wardrobe Doors — plain vertical divider lines splitting the carcass
-  // into `doorCount` equal panels (per the user's own reference sketch: a
-  // single vertical line for 2 doors, never a boxed/bordered sub-component
-  // like the Loft's own doors). Door WIDTH is the entered doorWidthMm
-  // (a real per-door measurement, not derived); Door HEIGHT is always the
-  // formula value (never entered) — shown with the SAME straight dimension-
-  // arrow convention as the Wardrobe's own W/H above, on the first door
-  // panel only (every door shares the same H/W, so one set of arrows is
-  // enough — matches the reference, which only calls out one panel).
-  // doorCount <= 0 means this product doesn't use the Door field at all
-  // (e.g. Sliding Wardrobe, which never passes doorCount) — draw nothing
-  // rather than assuming a default door split.
+  // Wardrobe Doors — plain vertical divider lines splitting the carcass,
+  // per the user's own reference sketch (a single vertical line per
+  // internal boundary, never a boxed/bordered sub-component like the
+  // Loft's own doors). Each door's own real entered Width now determines
+  // where its divider actually falls (per the user's explicit correction:
+  // "if 2 doors then ask for both 2 door width and divide the door
+  // according to width" — the old code always split the carcass EVENLY
+  // while showing one shared, unrelated entered number as if it were real;
+  // the divider and the label could never agree). Door HEIGHT is always
+  // the formula value (never entered) — shown with the SAME straight
+  // dimension-arrow convention as the Wardrobe's own W/H above, once (every
+  // door shares the same Height). doorCount <= 0 means this product
+  // doesn't use the Door field at all (e.g. Sliding Wardrobe, which never
+  // passes doorCount) — draw nothing rather than assuming a default split.
   const doorCount = Math.round(inp.doorCount) || 0;
   const doorH = wardrobeDoorHeight(H);
-  const doorW = Math.max(1, inp.doorWidthMm || 0);
   if (doorCount > 0) {
-    const doorPanelW = W / doorCount;
-    // Divider lines at each internal boundary (doorCount − 1 lines) —
-    // never at the outer edges, which are already the wardrobe's own box.
-    for (let i = 1; i < doorCount; i++) {
-      const dx = wardrobeX + doorPanelW * i;
-      lines.push({ x1: dx, y1: wardrobeY, x2: dx, y2: wardrobeY + bodyH, color: '#1e3a8a', strokeWidth: 1.4 });
-    }
+    const doorWidths = wardrobeDoorWidths(inp.doorWidthsMm, doorCount);
+    // Doors are drawn at their REAL entered widths, honestly — never
+    // silently stretched/shrunk to force-fit the carcass (same "do not
+    // silently reconcile a mismatch" convention already used elsewhere in
+    // this codebase, e.g. Kitchen's WIDTH_SUM_MISMATCH). A real mismatch
+    // between the doors' own total and the carcass Width surfaces as a
+    // WARNING below (see issues), never hidden.
+    let doorCursorX = wardrobeX;
+    // Door Width — each door's own real dimension tick along the
+    // wardrobe's own TOP edge (a chain of per-door "(W)" arrows, same
+    // convention as the Loft's own per-door width chain), so every door's
+    // real size is visible and always matches exactly where its divider
+    // line actually falls.
+    doorWidths.forEach((dw, i) => {
+      if (i > 0) {
+        lines.push({ x1: doorCursorX, y1: wardrobeY, x2: doorCursorX, y2: wardrobeY + bodyH, color: '#1e3a8a', strokeWidth: 1.4 });
+      }
+      dimReqs.push({
+        axis: 'h', x1: doorCursorX, y1: wardrobeY, x2: doorCursorX + dw, y2: wardrobeY, edge: 'top',
+        componentIds: ['wardrobe'], label: `${Math.round(dw)}`,
+        source: { formula: `Door ${i + 1} of ${doorCount} Width (entered — own per-door value)`, constants: [] },
+      });
+      doorCursorX += dw;
+    });
     // Door Height — a real dimension arrow measuring the formula-derived
     // door height, anchored at the floor line (doors sit above the
     // skirting, matching the formula's own "− 70mm skirting" deduction).
@@ -1064,15 +1141,6 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       axis: 'v', x1: wardrobeX - leftExtra - 24, y1: wardrobeY + bodyH - doorH, x2: wardrobeX - leftExtra - 24, y2: wardrobeY + bodyH, edge: 'left',
       componentIds: ['wardrobe'], label: `${Math.round(doorH)} (Door H)`,
       source: { formula: `Door Height = Wardrobe Height(${Math.round(H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`, constants: [] },
-    });
-    // Door Width — a real dimension arrow along the wardrobe's own TOP
-    // edge, spanning the first door panel only (entered value, independent
-    // of doorPanelW — the divider lines split the box evenly for the
-    // drawing, but the door's own real Width is whatever was entered).
-    dimReqs.push({
-      axis: 'h', x1: wardrobeX, y1: wardrobeY, x2: wardrobeX + doorW, y2: wardrobeY, edge: 'top',
-      componentIds: ['wardrobe'], label: `${Math.round(doorW)} (Door W)`,
-      source: { formula: 'Door Width (entered) — same for every door', constants: [] },
     });
   }
 
@@ -1112,14 +1180,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // fields the user fills in directly (not derived from add-ons); the
   // drawing shows exactly the value entered, never recomputed. These are
   // genuinely allowed to differ from the Wardrobe's own Width/Height (e.g.
-  // when the overall opening is larger than the wardrobe unit itself) —
-  // per the user's explicit confirmation, no reconciliation between the two
-  // is attempted; both are shown, honestly, side by side. Spans the full
-  // composite footprint (same outer span as the add-on-driven total lines
-  // above) so it always reads as the true overall envelope, but carries
-  // its own distinct label/formula so it's never confused with — or
-  // silently overwritten by — the add-on-derived total above.
-  if (totalWidthMm && totalWidthMm > 0) {
+  // when the overall opening is larger than the wardrobe unit itself), in
+  // which case both are shown, honestly, side by side. BUT when the
+  // entered Total exactly equals the composite it would otherwise
+  // duplicate (within a 1mm rounding tolerance), only ONE line is drawn —
+  // per the user's explicit correction ("if total width and wardrobe
+  // width is same then show only once"): two identical dimension lines
+  // stacked on the same edge read as confusing/overriding each other, not
+  // as two genuinely different facts.
+  const totalWMatchesComposite = totalWidthMm !== undefined && Math.abs(totalWidthMm - totalWidth) <= 1;
+  if (totalWidthMm && totalWidthMm > 0 && !totalWMatchesComposite) {
     // This dimension's VISUAL span must match its own label — per the
     // user's explicit correction ("dimensions must follow the corrected
     // geometry... do not leave dimensions attached to old coordinates").
@@ -1132,7 +1202,13 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // is now measured against.
     dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + Math.max(totalWidthMm, totalWidth), y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} (Total W)`, source: { formula: 'Total Width (entered directly — a separate measurement, NOT Wardrobe Width + Dressing Width + Side Panel Width)', constants: [] } });
   }
-  if (totalHeightMm && totalHeightMm > 0) {
+  // Same "skip when it would just duplicate" rule for Height — compared
+  // against whichever composite Height is actually ON the canvas right
+  // now: Wardrobe Height + 10mm gap + Loft Height when a Loft is present,
+  // else plain Wardrobe Height alone.
+  const impliedTotalH = loftH > 0 ? loftH + LOFT_WARDROBE_GAP_MM + H : H;
+  const totalHMatchesComposite = totalHeightMm !== undefined && Math.abs(totalHeightMm - impliedTotalH) <= 1;
+  if (totalHeightMm && totalHeightMm > 0 && !totalHMatchesComposite) {
     // The arrow's VISUAL span must equal its own label — so it runs the
     // full entered Total Height UP from the floor line, not just the
     // wardrobe body. Bottom pinned to the floor (`wardrobeY + bodyH`);
@@ -1598,6 +1674,21 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       { key: 'H', label: 'Wardrobe Height', min: 1 },
       { key: 'D', label: 'Wardrobe Depth', min: 1 },
     ]),
+    // Doors are drawn at their own real entered widths, never silently
+    // stretched/shrunk to force-fit the carcass — a real mismatch between
+    // the doors' own total and the carcass Width is surfaced here, exactly
+    // the "do not silently reconcile" convention already used elsewhere
+    // (e.g. Kitchen's WIDTH_SUM_MISMATCH), rather than hidden.
+    ...(() => {
+      if (doorCount <= 0) return [];
+      const widths = wardrobeDoorWidths(inp.doorWidthsMm, doorCount);
+      const sum = widths.reduce((a, b) => a + b, 0);
+      if (Math.abs(sum - W) <= 1) return [];
+      return [{
+        id: 'val-door-width-sum-mismatch', severity: 'WARNING' as const, code: 'DOOR_WIDTH_SUM_MISMATCH',
+        message: `⚠ The ${doorCount} door width(s) sum to ${Math.round(sum)}mm, which doesn't match the Wardrobe's own drawn Width (${Math.round(W)}mm) — doors are drawn at their real entered widths, not stretched to fit.`,
+      }];
+    })(),
     ...(dressing.enabled ? validateMeasurements({ W: dressing.widthMm }, [{ key: 'W', label: 'Dressing Width', min: 1 }]) : []),
     ...(dressing.enabled && dressing.drawerCount > 0 ? validateMeasurements({ H: dressing.totalDrawerHeightMm }, [{ key: 'H', label: 'Total Drawer Height', min: 1 }]) : []),
     ...(dressing.enabled && dressing.drawerCount > 0 && dressing.totalDrawerHeightMm > bodyH ? [{ id: 'val-drawer-height-exceeds', severity: 'WARNING' as const, code: 'DRAWER_HEIGHT_EXCEEDS_DRESSING', message: `⚠ Total Drawer Height (${Math.round(dressing.totalDrawerHeightMm)}mm) exceeds Dressing Height (${Math.round(bodyH)}mm) — clamped to fit.` }] : []),

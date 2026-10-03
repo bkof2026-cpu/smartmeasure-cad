@@ -10,7 +10,7 @@ import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type
 import { ChildrenBedDrawing } from '../products/bed/ChildrenBedDrawing';
 import { childrenBedCutlist, childrenBedInputsFromDims, type CenterTableInput } from '../products/bed/childrenBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, wardrobeDoorWidthsFromDims, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
 import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, totalFixPattiWidth, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
@@ -541,7 +541,8 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
   }
   if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
     const { dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
-    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), doorCount: n(dims.doorCount ?? 0), doorWidthMm: n(dims.doorWidthMm ?? 0), dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
+    const wardrobeDoorCount = n(dims.doorCount ?? 0);
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), doorCount: wardrobeDoorCount, doorWidthsMm: wardrobeDoorWidthsFromDims(dims, wardrobeDoorCount), dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
       element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} adjacentLoft={adjacentLoft} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
@@ -1327,7 +1328,7 @@ export const ProductFlow: React.FC = () => {
         : selectedId === 'bed'
         ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), D: n(dims.D), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
-        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doorCount: n(dims.doorCount ?? 0), doorWidthMm: n(dims.doorWidthMm ?? 0), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftSidePanel: wardrobeLoftSidePanel, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doorCount: n(dims.doorCount ?? 0), doorWidthsMm: wardrobeDoorWidthsFromDims(dims, n(dims.doorCount ?? 0)), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftSidePanel: wardrobeLoftSidePanel, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
@@ -1985,6 +1986,42 @@ export const ProductFlow: React.FC = () => {
                           )}
                         </div>
                       ))}
+                    {/* Each door's own real Width — one field per door
+                        (per the user's explicit "ask for both door widths
+                        and divide the door according to width" correction:
+                        doors are no longer assumed identical). Rendered
+                        dynamically here rather than as a static
+                        measurementFields entry since the count depends on
+                        the live Number of Doors value. Stored as flat
+                        dims.doorWidth1/doorWidth2/... keys — see
+                        wardrobeDoorWidthsFromDims() in
+                        simpleWardrobeGeometry.ts, the single shared parser
+                        every caller (this form, the cutlist, the drawing)
+                        goes through. */}
+                    {group.label === 'Door' && (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && (() => {
+                      const doorCount = Math.max(0, Math.round(Number(dims.doorCount ?? 0)) || 0);
+                      if (doorCount <= 0) return null;
+                      return Array.from({ length: doorCount }, (_, i) => {
+                        const key = `doorWidth${i + 1}`;
+                        return (
+                          <div key={key} className="flex flex-col gap-0.5" style={{ borderLeft: `2px solid ${group.color}40`, paddingLeft: 8 }}>
+                            <label className="text-xs font-semibold" style={{ color: `${group.color}cc` }}>
+                              Door {i + 1} Width <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>(mm)</span>
+                            </label>
+                            <div className="flex gap-1">
+                              <MeasurementNumberInput
+                                value={Number(dims[key] ?? 1120)}
+                                onCommit={(val) => handleDimChange(key, val)}
+                                min={200} max={1800} step={1}
+                                className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                style={{ background: '#1e293b', color: '#e2e8f0', border: `1px solid ${group.color}40` }}
+                              />
+                              <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               )) : (
