@@ -93,8 +93,15 @@ function drawCellEvidenceNote(doc: jsPDF, note: string | undefined, cell: { x: n
 const PAGE_W = 595.28; // A4 portrait width in pt
 const PAGE_H = 841.89; // A4 portrait height in pt
 const MARGIN = 24; // ~8.5mm — slightly tighter than the old A3 margin, since A4 has much less width to spend
-const INFO_BLOCK_W = 200; // narrower than the old A3 version's 230 — proportionate to A4's much narrower page
-const INFO_BLOCK_H = 88;
+// Header now spans the FULL page width (not a narrow top-left box) and is
+// split into two side-by-side columns — per the user's explicit PDF-layout
+// request: less vertical header space frees more room for the drawing,
+// without losing any of the existing project/product metadata. The exact
+// height is computed per-call from however many rows actually exist in each
+// column (see drawInfoBlock/infoBlockHeight below) rather than a fixed
+// constant, since e.g. a single-product PDF has one fewer "Products" line
+// of wrapping than a many-product combined one.
+const INFO_BLOCK_W = PAGE_W - MARGIN * 2;
 
 /** Sanitizes a string for use as a filesystem filename: strips characters
  * invalid on Windows/macOS/Linux, collapses whitespace to a single
@@ -123,49 +130,111 @@ export function pdfClientFileName(clientName: string, projectId: string): string
   return project && project !== 'Project' ? `${client}_${project}` : client;
 }
 
-/** Draws the compact project-info block PINNED to the top-left of the
- * CURRENT page — real PDF drawing calls (rect/text at fixed coordinates),
- * not HTML/CSS layout, so there is no flex/centering ambiguity possible:
- * this always lands at exactly (MARGIN, MARGIN) with the exact same size
- * on every page. */
-function drawInfoBlock(doc: jsPDF, info: PdfProjectInfo, pageNum: number, pageCount: number) {
-  const x = MARGIN, y = MARGIN;
-  doc.setDrawColor(200, 200, 200);
-  doc.setLineWidth(0.75);
-  doc.rect(x, y, INFO_BLOCK_W, INFO_BLOCK_H);
+// Two-column header layout constants — a title band, then two equal
+// columns of label/value rows. Label column width is fixed (short labels
+// like "Employee"/"Date" never need more); the value wraps within
+// whatever's left of that column's own half-width, so a long client name
+// or product list wraps inside ITS column rather than colliding with the
+// other column or running off the page edge.
+const HEADER_TITLE_H = 18;
+const HEADER_ROW_H = 11; // one line of label:value
+const HEADER_ROW_GAP = 2;
+const HEADER_COL_LABEL_W = 56;
+const HEADER_COL_GAP = 14;
+const HEADER_PAD = 10;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(29, 78, 216);
-  doc.text('SmartMeasure CAD', x + 10, y + 16);
-
-  const rows: [string, string][] = [
+/** Splits the project/product metadata into the two columns the spec asks
+ * for (left: identity — Project ID/Client/Employee/Product; right: timing +
+ * anything else) — a fixed, logical split since these are the only fields
+ * this app's PDFs have ever carried; a future field would be a deliberate
+ * addition to one list below, not a dynamic "whatever's left over" guess. */
+function headerColumns(info: PdfProjectInfo): { left: [string, string][]; right: [string, string][] } {
+  const left: [string, string][] = [
     ['Project ID', info.projectId || '—'],
     ['Client', info.clientName || '—'],
     ['Employee', info.employeeName || '—'],
     [info.products.length > 1 ? 'Products' : 'Product', info.products.join(', ') || '—'],
+  ];
+  const right: [string, string][] = [
     ['Date', new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })],
     ['Time', new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })],
   ];
-  doc.setFontSize(8);
-  let rowY = y + 30;
-  for (const [label, value] of rows) {
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(136, 136, 136);
-    doc.text(label, x + 10, rowY);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(17, 17, 17);
-    // Wrap long values (e.g. many product names) within the block's own
-    // width rather than overflowing past its right edge.
-    const wrapped = doc.splitTextToSize(value, INFO_BLOCK_W - 68);
-    doc.text(wrapped, x + 68, rowY);
-    rowY += 9 * Math.max(1, wrapped.length);
-  }
+  return { left, right };
+}
 
+/** How many lines a column's rows will actually wrap to, at the header's
+ * own fixed font size — used both to size the header box up front (so the
+ * drawing area below it is computed correctly) and to position each row
+ * while drawing, so the two never disagree. */
+function columnRowLineCounts(doc: jsPDF, rows: [string, string][], colW: number): number[] {
+  const valueW = Math.max(20, colW - HEADER_COL_LABEL_W);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  return rows.map(([, value]) => Math.max(1, doc.splitTextToSize(value, valueW).length));
+}
+
+/** The header block's real total height for this specific info (dynamic —
+ * never a fixed constant — per the spec's "work dynamically even when some
+ * fields are missing" requirement): title band + the taller of the two
+ * columns' own real wrapped-row heights + padding. Callers use this to lay
+ * out everything below the header (drawing area, table) against the header's
+ * ACTUAL height, not a guess, so freed space is real, not approximate. */
+function infoBlockHeight(doc: jsPDF, info: PdfProjectInfo): number {
+  const colW = (INFO_BLOCK_W - HEADER_PAD * 2 - HEADER_COL_GAP) / 2;
+  const { left, right } = headerColumns(info);
+  const leftLines = columnRowLineCounts(doc, left, colW);
+  const rightLines = columnRowLineCounts(doc, right, colW);
+  const colH = (lines: number[]) => lines.reduce((sum, n) => sum + n * HEADER_ROW_H + HEADER_ROW_GAP, 0);
+  const tallestColH = Math.max(colH(leftLines), colH(rightLines));
+  return HEADER_PAD + HEADER_TITLE_H + tallestColH + HEADER_PAD * 0.6;
+}
+
+/** Draws the compact, two-column project-info header spanning the FULL page
+ * width, PINNED to the top of the CURRENT page — real PDF drawing calls
+ * (rect/text at fixed coordinates), not HTML/CSS layout, so there is no
+ * flex/centering ambiguity possible: this always lands at exactly (MARGIN,
+ * MARGIN) with a height derived from infoBlockHeight(), which every caller
+ * MUST call first (and use the SAME result) to lay out the content below it
+ * — the two are a matched pair by construction, never two independent
+ * height guesses that could silently drift apart. */
+function drawInfoBlock(doc: jsPDF, info: PdfProjectInfo, pageNum: number, pageCount: number, blockH: number) {
+  const x = MARGIN, y = MARGIN;
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.75);
+  doc.rect(x, y, INFO_BLOCK_W, blockH);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(29, 78, 216);
+  doc.text('SmartMeasure CAD', x + HEADER_PAD, y + 14);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(102, 102, 102);
-  doc.text(`Page ${pageNum} of ${pageCount}`, PAGE_W - MARGIN, y + 12, { align: 'right' });
+  doc.text(`Page ${pageNum} of ${pageCount}`, x + INFO_BLOCK_W - HEADER_PAD, y + 14, { align: 'right' });
+
+  const colW = (INFO_BLOCK_W - HEADER_PAD * 2 - HEADER_COL_GAP) / 2;
+  const { left, right } = headerColumns(info);
+  const colTop = y + HEADER_TITLE_H + 6;
+
+  function drawColumn(rows: [string, string][], colX: number) {
+    const valueX = colX + HEADER_COL_LABEL_W;
+    const valueW = Math.max(20, colW - HEADER_COL_LABEL_W);
+    let rowY = colTop;
+    for (const [label, value] of rows) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(136, 136, 136);
+      doc.text(label, colX, rowY + 7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(17, 17, 17);
+      const wrapped = doc.splitTextToSize(value, valueW);
+      doc.text(wrapped, valueX, rowY + 7);
+      rowY += wrapped.length * HEADER_ROW_H + HEADER_ROW_GAP;
+    }
+  }
+
+  drawColumn(left, x + HEADER_PAD);
+  drawColumn(right, x + HEADER_PAD + colW + HEADER_COL_GAP);
 }
 
 function drawCategoryHeading(doc: jsPDF, heading: string, y: number): number {
@@ -194,6 +263,35 @@ function drawCategoryHeading(doc: jsPDF, heading: string, y: number): number {
  * built-in, always-embedded fonts before handing it to svg2pdf.js — the
  * LIVE on-screen SVG (the original element, never mutated) is completely
  * unaffected, since this operates on a clone. */
+// jsPDF's base-14 fonts (Courier/Helvetica, the only ones pdfSafeSvgClone
+// ever rewrites font-family to) cover plain ASCII only — a label text node
+// containing a character outside that range (e.g. the "→" U+2192 arrow
+// used in Kitchen's own "300 mm (A → B)" Kadappa-segment labels) has no
+// glyph to fall back to and renders as garbled null-byte text in the PDF
+// (confirmed via a real generated Kitchen PDF during this feature's own
+// verification) — entirely a PDF-export-layer issue, the on-screen SVG
+// renders it correctly via a real web font that DOES have the glyph. Fixed
+// by substituting each such character for its closest plain-ASCII
+// equivalent in the CLONE's own text content only, never the live
+// on-screen SVG and never the underlying label/formula data a component
+// carries — purely a presentation substitution for jsPDF's limited font
+// coverage.
+const PDF_UNSAFE_CHAR_SUBSTITUTIONS: [RegExp, string][] = [
+  [/→/g, '->'],
+  [/←/g, '<-'],
+  [/×/g, 'x'],
+  [/–/g, '-'], // en dash
+  [/—/g, '-'], // em dash
+  [/′/g, "'"], // prime
+  [/″/g, '"'], // double prime
+];
+
+function pdfSafeText(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of PDF_UNSAFE_CHAR_SUBSTITUTIONS) out = out.replace(pattern, replacement);
+  return out;
+}
+
 function pdfSafeSvgClone(svgEl: SVGSVGElement): SVGSVGElement {
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
   const monoSafe = 'Courier';
@@ -209,6 +307,15 @@ function pdfSafeSvgClone(svgEl: SVGSVGElement): SVGSVGElement {
       const rewritten = styleAttr.replace(/font-family\s*:\s*[^;]+/i, (m) => `font-family:${rewrite(m)}`);
       el.setAttribute('style', rewritten);
     }
+  }
+
+  // Walk every real text node (not attributes — <text>/<tspan> content) and
+  // substitute any character the base-14 fonts above can't render.
+  const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    if (node.textContent) node.textContent = pdfSafeText(node.textContent);
+    node = walker.nextNode();
   }
   return clone;
 }
@@ -288,7 +395,14 @@ function isLargeDrawing(item: PdfDrawingItem): boolean {
   const [, , vbW, vbH] = vb.split(/\s+/).map(Number);
   if (!vbW || !vbH) return false;
   const usableW = PAGE_W - MARGIN * 2;
-  const usableH = PAGE_H - MARGIN * 2 - INFO_BLOCK_H - 20;
+  // packPages (this function's only caller) runs before any jsPDF `doc`
+  // exists, so the header's real dynamic height (infoBlockHeight, which
+  // needs a doc to measure text wrapping) isn't available yet — a
+  // conservative typical-header estimate is fine here since this is only a
+  // size-classification heuristic (large vs. small drawing), not a layout
+  // measurement that has to be pixel-exact.
+  const TYPICAL_HEADER_H_ESTIMATE = 60;
+  const usableH = PAGE_H - MARGIN * 2 - TYPICAL_HEADER_H_ESTIMATE - 20;
   // A drawing whose own real aspect ratio, scaled to the FULL usable page,
   // would still occupy more than ~35% of that page's area reads as
   // "large/complex" — this is scale-independent (a huge Width but tiny
@@ -393,9 +507,10 @@ export async function generateAndDownloadPdf(
     const page = pages[pageIdx];
     if (pageIdx > 0) doc.addPage([PAGE_W, PAGE_H], 'portrait');
 
-    drawInfoBlock(doc, info, pageIdx + 1, pages.length);
+    const blockH = infoBlockHeight(doc, info);
+    drawInfoBlock(doc, info, pageIdx + 1, pages.length, blockH);
 
-    let contentTop = MARGIN + INFO_BLOCK_H + 14;
+    let contentTop = MARGIN + blockH + 14;
     if (page.heading) contentTop = drawCategoryHeading(doc, page.heading, contentTop) + 6;
 
     const gridX = MARGIN;
@@ -550,19 +665,36 @@ export async function generateAndDownloadSingleProductPdf(
   if (!info.clientName.trim()) return { ok: false, error: 'Client Name is required before a PDF can be generated.' };
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [PAGE_W, PAGE_H] });
-  drawInfoBlock(doc, info, 1, 1);
+  const blockH = infoBlockHeight(doc, info);
+  drawInfoBlock(doc, info, 1, 1, blockH);
 
-  const contentTop = MARGIN + INFO_BLOCK_H + 12;
+  const contentTop = MARGIN + blockH + 12;
   const contentBottom = PAGE_H - MARGIN;
   const usableH = contentBottom - contentTop;
   const tableW = PAGE_W - MARGIN * 2;
 
   const hasTable = cutlist.length > 0;
-  // 65/35 split per the user's explicit instruction, only when there IS a
-  // table to show — a product with no computable cutlist just gets the
-  // drawing at full height, same as always.
-  const drawingH = hasTable ? usableH * 0.65 : usableH;
-  const tableZoneTop = contentTop + drawingH + (hasTable ? 8 : 0);
+  // Per the PDF-layout spec: give the drawing whatever's left over after
+  // the Component Table's own REAL measured height (not a fixed 65/35
+  // split) — a short cutlist now hands almost all the freed vertical space
+  // straight to the drawing, maximizing it exactly the way a single-product
+  // PDF is supposed to ("use the available page area more aggressively"),
+  // while a long cutlist still reserves enough real room for itself rather
+  // than being squeezed into an arbitrary 35%.
+  const tableGap = hasTable ? 8 : 0; // gap between the drawing zone and the "Component Table" label
+  const tableHeadingOffset = hasTable ? 8 : 0; // label-to-grid offset — matches drawComponentTable's own (tableZoneTop + 8) call below
+  const measuredTableH = hasTable ? componentTableHeight(doc, cutlist, tableW, evidenceNote) : 0;
+  // Never let the table eat MORE than 45% of the usable height even if its
+  // real content is taller than that — an unusually long cutlist still
+  // overflows past the reserved zone exactly as the pre-existing comment
+  // below already documents (jsPDF has no hard page boundary mid-draw), but
+  // the DRAWING above it should never shrink below a sane minimum (55%)
+  // just because of a long table — preserves this function's own original
+  // floor on drawing prominence while removing the opposite problem (a
+  // short table wastefully reserving a fixed 35% it doesn't need).
+  const reservedTableH = hasTable ? Math.min(usableH * 0.45, tableGap + tableHeadingOffset + measuredTableH) : 0;
+  const drawingH = hasTable ? usableH - reservedTableH : usableH;
+  const tableZoneTop = contentTop + drawingH + tableGap;
 
   // Drawing zone: N views laid out side-by-side across the full width (every
   // real product has exactly one view; a rare multi-view product — e.g. the
@@ -582,11 +714,12 @@ export async function generateAndDownloadSingleProductPdf(
     doc.setFontSize(9);
     doc.setTextColor(30, 30, 30);
     doc.text('Component Table', MARGIN, tableZoneTop - 2);
-    // Table height is whatever the real rows need; if that's taller than
-    // the reserved 35% zone the table itself still draws in full (jsPDF has
-    // no hard page boundary mid-draw) — MARGIN-bounded overflow is
-    // extremely unlikely at normal component counts and is preferable to
-    // silently truncating real part data.
+    // Table height is sized from its OWN real measured content
+    // (measuredTableH above) — the reserved zone already accounts for it,
+    // so this normally fits exactly; an unusually long cutlist can still
+    // overflow past the capped 45%-of-usable-height reservation (jsPDF has
+    // no hard page boundary mid-draw) — extremely unlikely at normal
+    // component counts and preferable to silently truncating real part data.
     drawComponentTable(doc, cutlist, tableZoneTop + 8, tableW, evidenceNote);
   }
 
