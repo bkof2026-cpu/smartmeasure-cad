@@ -2200,6 +2200,17 @@ export const ProductFlow: React.FC = () => {
                     }
                     const soleGroupKey = positionFields.length === 1 ? positionFields[0].key : undefined;
                     const visibleFields = addon.fields.filter((f) => {
+                      // Dressing's own W/D fields are rendered by its own
+                      // special-case block below (which also shows the
+                      // "starting value from LST/RST" context next to
+                      // them) — never duplicated via this generic field
+                      // list. MUST be checked first/unconditionally — a
+                      // real bug previously had this check placed AFTER
+                      // the `!f.sideOf` early-return below, which exited
+                      // the filter before ever reaching it (W/D have no
+                      // sideOf), so both the generic list AND the special-
+                      // case block rendered the same fields side by side.
+                      if (addon.id === 'profile-shutter' && (f.key === 'W' || f.key === 'D')) return false;
                       // showWhen: another field in this addon must currently
                       // hold one of the given values (e.g. Loft Depth only
                       // when Loft Type = "Box").
@@ -2212,20 +2223,29 @@ export const ProductFlow: React.FC = () => {
                       if (!f.sideOf) return true;
                       const groupKey = f.groupKey ?? soleGroupKey;
                       const activeSides = groupKey ? activeSidesByKey[groupKey] : undefined;
-                      if (activeSides) return activeSides[f.sideOf];
-                      // Dressing's own W/D fields are rendered by its own
-                      // special-case block below (which also shows the
-                      // "auto-fetched"/"no side table" context next to
-                      // them) — never duplicated via the generic field list.
-                      if (addon.id === 'profile-shutter' && (f.key === 'W' || f.key === 'D')) return false;
-                      return true;
+                      return activeSides ? activeSides[f.sideOf] : true;
                     });
                     return (
                       <div key={addon.id} className="rounded-xl overflow-hidden"
                         style={{ border: `1px solid ${active ? '#7c3aed' : '#1e293b'}`, background: active ? '#13082a' : '#0e1624', opacity: isBlocked ? 0.45 : 1 }}>
                         {/* Addon header row */}
                         <button
-                          onClick={() => !isBlocked && handleAddonToggle(addon.id, addon, wardrobeComputedAddonDefaults[addon.id] ? Object.keys(wardrobeComputedAddonDefaults[addon.id]) : undefined)}
+                          onClick={() => !isBlocked && handleAddonToggle(
+                            addon.id,
+                            addon,
+                            wardrobeComputedAddonDefaults[addon.id]
+                              ? Object.keys(wardrobeComputedAddonDefaults[addon.id])
+                              // Dressing's own W/D are seeded from the LST/
+                              // RST (when present) rather than their own
+                              // static defaultValue the instant the addon
+                              // is toggled on — same "live computed default,
+                              // never pre-written" treatment as the
+                              // Wardrobe's own computed fields above, so
+                              // adDims['W']/['D'] stay undefined (and the
+                              // "Starting value from..." hint keeps showing)
+                              // until the user actually edits them.
+                              : addon.id === 'profile-shutter' ? ['W', 'D'] : undefined,
+                          )}
                           disabled={isBlocked}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
                           style={{ cursor: isBlocked ? 'not-allowed' : 'pointer' }}>
@@ -2308,61 +2328,63 @@ export const ProductFlow: React.FC = () => {
                               </div>
                             )}
                             {addon.id === 'profile-shutter' && (() => {
+                              // Dressing's own Width/Depth are ALWAYS real,
+                              // independently editable fields now — never
+                              // locked/read-only, and never silently
+                              // recomputed from whichever Side Table happens
+                              // to be mounted on that side, per the user's
+                              // explicit correction ("remove that confusing
+                              // duplicate fields... give the editable
+                              // height and width and depth of dressing [[
+                              // regardless of whether a side table is
+                              // present]]... depth of dressing is not same
+                              // as bed"). The ONLY thing the Side Table's
+                              // own Width/Depth still does is seed this
+                              // field's DISPLAYED DEFAULT the first time
+                              // it's shown (a one-time convenience, via
+                              // effectiveDefault's own "computed default
+                              // until touched" convention) — once the user
+                              // types a real value, or the field has no
+                              // Side Table to seed from, it falls back to
+                              // the plain static default (560/460).
                               const onLeft = (adDims['side'] ?? 0) === 0;
                               const target = onLeft ? bedLST : bedRST;
-                              // A side table is no longer compulsory for
-                              // Dressing (per the user's explicit
-                              // correction) — when the mounted side's table
-                              // isn't enabled, Width/Depth become real
-                              // editable fields (own addon dims, W/D) instead
-                              // of a read-only "enable the table" warning;
-                              // Dressing still renders in the exact same
-                              // position/size convention either way.
-                              if (!target.enabled) {
-                                return (
-                                  <div className="flex flex-col gap-2 mt-2">
-                                    <div className="flex flex-col gap-0.5">
-                                      <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width (mm)</label>
-                                      <div className="flex gap-1">
-                                        <MeasurementNumberInput
-                                          value={Number(adDims['W'] ?? 560)}
-                                          onCommit={(val) => handleAddonDimChange(addon.id, 'W', val)}
-                                          min={280} max={900} step={1}
-                                          className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
-                                          style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
-                                        />
-                                        <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
-                                      </div>
-                                      <span className="text-xs" style={{ color: '#334155' }}>No {onLeft ? 'Left' : 'Right'} Side Table added — entered directly</span>
-                                    </div>
-                                    <div className="flex flex-col gap-0.5">
-                                      <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Depth (mm)</label>
-                                      <div className="flex gap-1">
-                                        <MeasurementNumberInput
-                                          value={Number(adDims['D'] ?? 460)}
-                                          onCommit={(val) => handleAddonDimChange(addon.id, 'D', val)}
-                                          min={280} max={700} step={1}
-                                          className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
-                                          style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
-                                        />
-                                        <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              }
+                              const widthDefault = target.enabled ? target.widthMm : 560;
+                              const depthDefault = target.enabled ? target.depthMm : 460;
                               return (
-                                <div className="flex flex-col gap-0.5 mt-2">
-                                  <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width (mm)</label>
-                                  <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
-                                    {Math.round(target.widthMm)} mm
+                                <div className="flex flex-col gap-2 mt-2">
+                                  <div className="flex flex-col gap-0.5">
+                                    <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width (mm)</label>
+                                    <div className="flex gap-1">
+                                      <MeasurementNumberInput
+                                        value={Number(adDims['W'] ?? widthDefault)}
+                                        onCommit={(val) => handleAddonDimChange(addon.id, 'W', val)}
+                                        min={280} max={900} step={1}
+                                        className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                        style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
+                                      />
+                                      <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                    </div>
+                                    {adDims['W'] === undefined && target.enabled && (
+                                      <span className="text-xs" style={{ color: '#334155' }}>Starting value from {onLeft ? 'LST' : 'RST'} Width — edit freely</span>
+                                    )}
                                   </div>
-                                  <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from {onLeft ? 'LST' : 'RST'} Width</span>
-                                  <label className="text-xs font-semibold mt-1" style={{ color: '#a78bfa' }}>Depth (mm)</label>
-                                  <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
-                                    {Math.round(target.depthMm)} mm
+                                  <div className="flex flex-col gap-0.5">
+                                    <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Depth (mm)</label>
+                                    <div className="flex gap-1">
+                                      <MeasurementNumberInput
+                                        value={Number(adDims['D'] ?? depthDefault)}
+                                        onCommit={(val) => handleAddonDimChange(addon.id, 'D', val)}
+                                        min={280} max={700} step={1}
+                                        className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                        style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
+                                      />
+                                      <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                    </div>
+                                    {adDims['D'] === undefined && target.enabled && (
+                                      <span className="text-xs" style={{ color: '#334155' }}>Starting value from {onLeft ? 'LST' : 'RST'} Depth — edit freely</span>
+                                    )}
                                   </div>
-                                  <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from {onLeft ? 'LST' : 'RST'} Depth</span>
                                 </div>
                               );
                             })()}

@@ -203,11 +203,17 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       ],
     },
     {
-      // Width is not a field here — always auto-fetched from whichever side
-      // table (LST/RST) it's mounted on, per the user's own reference
-      // sketch: the profile shutter sits flush on top of that table, sharing
-      // its full width. Height and Depth are entered; the optional profile
-      // light is a real checkbox, not a dropdown, since it's a plain on/off.
+      // Width and Depth are ALWAYS real, independently entered fields —
+      // never locked to whichever Side Table (LST/RST) happens to be
+      // mounted on that side, per the user's explicit correction ("remove
+      // that confusing duplicate fields of width and depth if side table
+      // present and not... give the editable height and width and depth
+      // of dressing... depth of dressing is not same as bed"). When a
+      // Side Table IS present, its own Width/Depth only SEED these
+      // fields' starting displayed value (a one-time convenience, still
+      // freely editable) — ProductFlow.tsx's own profile-shutter
+      // special-case block renders them (not this generic field list),
+      // since it also shows that "starting value from LST/RST" context.
       // Displayed name renamed "Profile Shutter" → "Dressing" per the
       // user's explicit instruction — the internal id stays 'profile-shutter'
       // (existing saved sessions/history reference it by id, and every
@@ -216,19 +222,17 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'profile-shutter',
       label: 'Dressing',
       icon: '💡',
-      description: 'Light shutter box — Width/Depth auto-fetched from the side table on that side if one is added, otherwise entered directly (a side table is not required)',
+      description: 'Light shutter box — real, independently editable Height/Width/Depth (seeded from the side table on that side if one is added, but never locked to it)',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 1, options: ['Left Side', 'Right Side'] },
         { key: 'H', label: 'Height', defaultValue: 150, min: 50, max: 400 },
         { key: 'light', label: 'Add Profile Light', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
-        // W/D are only actually used by the geometry engine when the
-        // mounted side's table isn't enabled — ProductFlow.tsx renders
-        // them as real inputs in that case (see its own profile-shutter
-        // special-case block) instead of via this generic field list, so
-        // they're declared here for schema/defaults completeness only.
-        { key: 'W', label: 'Width (if no side table)', defaultValue: 560, min: 280, max: 900 },
-        { key: 'D', label: 'Depth (if no side table)', defaultValue: 460, min: 280, max: 700 },
+        // W/D are rendered by ProductFlow.tsx's own profile-shutter
+        // special-case block (not this generic field list), so they're
+        // declared here for schema/defaults completeness only.
+        { key: 'W', label: 'Width', defaultValue: 560, min: 280, max: 900 },
+        { key: 'D', label: 'Depth', defaultValue: 460, min: 280, max: 700 },
       ],
     },
     // ── Children Bed only (bedType === 'Children Bed') — Center Table/LST/

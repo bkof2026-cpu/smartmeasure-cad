@@ -103,17 +103,19 @@ function profileShutterActive(inp: SimpleBedInputs): boolean {
   return inp.profileShutter.enabled;
 }
 
-/** Dressing's own Width/Depth — auto-fetched from its mounted side table
- * when that table is enabled (unchanged original behavior), or its own
- * manually entered widthMm/depthMm when the table isn't enabled (per the
- * user's explicit correction that a side table is no longer compulsory). */
-function profileShutterSize(inp: SimpleBedInputs): { width: number; depth: number; sourceLabel: string } {
-  const onLeft = inp.profileShutter.side === 'left';
-  const targetTable = onLeft ? inp.lst : inp.rst;
-  if (targetTable.enabled) {
-    return { width: targetTable.widthMm, depth: targetTable.depthMm, sourceLabel: onLeft ? 'LST' : 'RST' };
-  }
-  return { width: inp.profileShutter.widthMm, depth: inp.profileShutter.depthMm, sourceLabel: 'entered' };
+/** Dressing's own Width/Depth — ALWAYS the real, independently entered
+ * profileShutter.widthMm/depthMm fields, per the user's explicit
+ * correction: "remove that confusing duplicate fields of width and depth
+ * if side table present and not... give the editable height and width and
+ * depth of dressing [regardless]... depth of dressing is not same as bed."
+ * Dressing is no longer locked to (or silently recomputed from) whichever
+ * Side Table it's mounted on — the UI layer (ProductFlow.tsx) may SEED the
+ * field's starting value from the Side Table's own Width/Depth as a one-
+ * time convenience default when the field is first touched, but the
+ * geometry layer here never re-derives it live from the table, and the
+ * table being enabled/disabled never changes which value this returns. */
+function profileShutterSize(inp: SimpleBedInputs): { width: number; depth: number } {
+  return { width: inp.profileShutter.widthMm, depth: inp.profileShutter.depthMm };
 }
 
 /** "BED WITHOUT SIDE TABLE" / "BED WITH LEFT SIDE TABLE" / "BED WITH RIGHT SIDE TABLE" / "BED WITH SIDE TABLES",
@@ -145,18 +147,14 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
   }
   if (profileShutterActive(inp)) {
     const onLeftRow = inp.profileShutter.side === 'left';
-    const sideLabel = onLeftRow ? 'LST' : 'RST';
-    const { width: dressW, depth: dressD, sourceLabel } = profileShutterSize(inp);
-    const sizeNote = sourceLabel === 'entered'
-      ? `Width = ${Math.round(dressW)}mm, Depth = ${Math.round(dressD)}mm (both entered — no ${sideLabel})`
-      : `Width = ${Math.round(dressW)}mm, Depth = ${Math.round(dressD)}mm (both auto-fetched from ${sideLabel})`;
+    const { width: dressW, depth: dressD } = profileShutterSize(inp);
     rows.push({
       // Displayed name renamed "Profile Shutter" → "Dressing" per the
       // user's explicit instruction — internal field/id names (inp.
       // profileShutter, 'profile-shutter') are unchanged, this is a label
       // change only.
-      component: `Dressing (${sourceLabel === 'entered' ? `${onLeftRow ? 'left' : 'right'}, no table` : `on ${sideLabel}`})`, width: dressW, height: inp.profileShutter.heightMm, qty: 1,
-      remark: `Height = ${Math.round(inp.profileShutter.heightMm)}mm (entered); ${sizeNote}${inp.profileShutter.light ? ' | Profile light included' : ''}`,
+      component: `Dressing (${onLeftRow ? 'left' : 'right'})`, width: dressW, height: inp.profileShutter.heightMm, qty: 1,
+      remark: `Height = ${Math.round(inp.profileShutter.heightMm)}mm, Width = ${Math.round(dressW)}mm, Depth = ${Math.round(dressD)}mm (all independently entered)${inp.profileShutter.light ? ' | Profile light included' : ''}`,
     });
   }
   return rows;
@@ -341,7 +339,7 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
   const psActive = profileShutterActive(inp);
   if (psActive) {
     const onLeft = inp.profileShutter.side === 'left';
-    const { width: tableW, depth: tableD, sourceLabel } = profileShutterSize(inp);
+    const { width: tableW, depth: tableD } = profileShutterSize(inp);
     const tableX = onLeft ? bedX - tableW : bedX + W;
     const psH = inp.profileShutter.heightMm;
     components.push({
@@ -352,7 +350,7 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       // explicit instruction — id/type stay unchanged (internal keys).
       id: 'profile-shutter', type: 'PROFILE_SHUTTER', label: 'Dressing',
       x: tableX, y: 0, width: tableW, height: bedY, qty: 1, visible: true,
-      source: { formula: `Height = ${Math.round(psH)}mm (entered) | Width = ${Math.round(tableW)}mm, Depth = ${Math.round(tableD)}mm (${sourceLabel === 'entered' ? 'both entered — no side table' : `both auto-fetched from the ${sourceLabel}`})`, constants: [] },
+      source: { formula: `Height = ${Math.round(psH)}mm, Width = ${Math.round(tableW)}mm, Depth = ${Math.round(tableD)}mm (all independently entered — Dressing is never locked to the Side Table's own size)`, constants: [] },
     });
     // Depth — same "/" diagonal convention as every other value, drawn
     // INSIDE the shutter's own bottom-left corner, going up into the box —
@@ -373,7 +371,7 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     // enough clearance; Width and Height instead each get their own
     // quarter of the box's full height (top and bottom respectively),
     // maximising real separation from both the name and each other.
-    dimReqs.push({ axis: 'h', x1: tableX, y1: bedY * 0.08, x2: tableX + tableW, y2: bedY * 0.08, edge: 'bottom', componentIds: ['profile-shutter'], label: `${Math.round(tableW)} mm (W)`, source: { formula: sourceLabel === 'entered' ? 'Width (entered — no side table)' : `Width = ${sourceLabel} Width (auto-fetched)`, constants: [] }, color: BED_COMPONENT_COLORS['profile-shutter'] });
+    dimReqs.push({ axis: 'h', x1: tableX, y1: bedY * 0.08, x2: tableX + tableW, y2: bedY * 0.08, edge: 'bottom', componentIds: ['profile-shutter'], label: `${Math.round(tableW)} mm (W)`, source: { formula: 'Dressing Width (entered)', constants: [] }, color: BED_COMPONENT_COLORS['profile-shutter'] });
     // Height — a real straight vertical DimensionLine spanning the box's
     // FULL drawn height (y=0 to bedY), same convention as the Bed's own
     // Length and LST/RST's own Height (dashed extension lines + arrows,
@@ -426,10 +424,11 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     ...(headboardEnabled ? validateMeasurements({ headboardH }, [{ key: 'headboardH', label: 'Headboard Height', min: 1 }]) : []),
     ...(lst.enabled ? validateMeasurements({ D: lst.depthMm, W: lst.widthMm }, [{ key: 'D', label: 'LST Depth', min: 1 }, { key: 'W', label: 'LST Width', min: 1 }]) : []),
     ...(rst.enabled ? validateMeasurements({ D: rst.depthMm, W: rst.widthMm }, [{ key: 'D', label: 'RST Depth', min: 1 }, { key: 'W', label: 'RST Width', min: 1 }]) : []),
-    // Dressing's own Width/Depth need a check only when it's standing alone
-    // (no side table) — table-mounted Dressing already reuses that table's
-    // own already-validated values.
-    ...(psActive && profileShutterSize(inp).sourceLabel === 'entered'
+    // Dressing's own Width/Depth are always independently entered now
+    // (never auto-locked to a mounted Side Table's size) — always
+    // validated, regardless of whether a Side Table also happens to be
+    // present on that side.
+    ...(psActive
       ? validateMeasurements({ D: inp.profileShutter.depthMm, W: inp.profileShutter.widthMm }, [{ key: 'D', label: 'Dressing Depth', min: 1 }, { key: 'W', label: 'Dressing Width', min: 1 }])
       : []),
     ...(psActive ? validateMeasurements({ H: inp.profileShutter.heightMm }, [{ key: 'H', label: 'Dressing Height', min: 1 }]) : []),
