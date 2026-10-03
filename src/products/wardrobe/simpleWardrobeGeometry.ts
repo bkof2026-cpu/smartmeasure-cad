@@ -1180,16 +1180,14 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // fields the user fills in directly (not derived from add-ons); the
   // drawing shows exactly the value entered, never recomputed. These are
   // genuinely allowed to differ from the Wardrobe's own Width/Height (e.g.
-  // when the overall opening is larger than the wardrobe unit itself), in
-  // which case both are shown, honestly, side by side. BUT when the
-  // entered Total exactly equals the composite it would otherwise
-  // duplicate (within a 1mm rounding tolerance), only ONE line is drawn —
-  // per the user's explicit correction ("if total width and wardrobe
-  // width is same then show only once"): two identical dimension lines
-  // stacked on the same edge read as confusing/overriding each other, not
-  // as two genuinely different facts.
-  const totalWMatchesComposite = totalWidthMm !== undefined && Math.abs(totalWidthMm - totalWidth) <= 1;
-  if (totalWidthMm && totalWidthMm > 0 && !totalWMatchesComposite) {
+  // when the overall opening is larger than the wardrobe unit itself) —
+  // per the user's explicit confirmation, no reconciliation between the two
+  // is attempted; both are shown, honestly, side by side. Spans the full
+  // composite footprint (same outer span as the add-on-driven total lines
+  // above) so it always reads as the true overall envelope, but carries
+  // its own distinct label/formula so it's never confused with — or
+  // silently overwritten by — the add-on-derived total above.
+  if (totalWidthMm && totalWidthMm > 0) {
     // This dimension's VISUAL span must match its own label — per the
     // user's explicit correction ("dimensions must follow the corrected
     // geometry... do not leave dimensions attached to old coordinates").
@@ -1202,13 +1200,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     // is now measured against.
     dimReqs.push({ axis: 'h', x1: loftX, y1: wardrobeY + bodyH, x2: loftX + Math.max(totalWidthMm, totalWidth), y2: wardrobeY + bodyH, edge: 'bottom', componentIds: [], label: `${Math.round(totalWidthMm)} (Total W)`, source: { formula: 'Total Width (entered directly — a separate measurement, NOT Wardrobe Width + Dressing Width + Side Panel Width)', constants: [] } });
   }
-  // Same "skip when it would just duplicate" rule for Height — compared
-  // against whichever composite Height is actually ON the canvas right
-  // now: Wardrobe Height + 10mm gap + Loft Height when a Loft is present,
-  // else plain Wardrobe Height alone.
-  const impliedTotalH = loftH > 0 ? loftH + LOFT_WARDROBE_GAP_MM + H : H;
-  const totalHMatchesComposite = totalHeightMm !== undefined && Math.abs(totalHeightMm - impliedTotalH) <= 1;
-  if (totalHeightMm && totalHeightMm > 0 && !totalHMatchesComposite) {
+  if (totalHeightMm && totalHeightMm > 0) {
     // The arrow's VISUAL span must equal its own label — so it runs the
     // full entered Total Height UP from the floor line, not just the
     // wardrobe body. Bottom pinned to the floor (`wardrobeY + bodyH`);

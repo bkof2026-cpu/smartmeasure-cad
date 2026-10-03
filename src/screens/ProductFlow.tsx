@@ -279,35 +279,16 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   const loftTotalWidthDefault = totalWidthForCalc;
   const loftTotalW = (addonDims['loft']?.totalW) ?? loftTotalWidthDefault;
 
-  // Wardrobe-door <-> Dressing-door real fabrication gap — per the user's
-  // explicit instruction: when Side Dressing is attached AND the Loft is
-  // present, there's a real 20mm gap between the Wardrobe's own door and
-  // the Dressing's own door in actual fabrication. This gap is NEVER drawn
-  // as its own line/dimension (purely a calculation adjustment, not a
-  // visible component), but the Loft sits above BOTH doors, so its own
-  // usable width calculation must account for that real 20mm the Loft
-  // spans across — added to the Loft's own Total Width before the door-
-  // count/width formula runs. Confirmed worked example: Wardrobe Total
-  // Width 1940mm + Dressing 200mm (already folded into that 1940 per the
-  // Wardrobe-carcass-shrink convention) + this 20mm gap, 5 doors ->
-  // (1940+20-5*2)/5 = 390mm. Only applies when BOTH Dressing and Loft are
-  // actually enabled — a Loft with no Dressing has no such gap to account
-  // for, and stays exactly as before.
-  const LOFT_DRESSING_DOOR_GAP_MM = 20;
-  const loftEnabled = isWardrobe && selectedAddons.has('loft');
-  const loftTotalWAdjusted = loftEnabled && dressing.enabled ? loftTotalW + LOFT_DRESSING_DOOR_GAP_MM : loftTotalW;
-
-  // Loft Width = Loft Total Width (adjusted for the Dressing door gap,
-  // above) − Fix Patti (Left+Right) − Khacha (Left+Right). Wardrobe/
-  // Dressing/Top Panel Width are NEVER part of this deduction (they sit
-  // below the Loft, not beside it). loft.widthMm is therefore already the
-  // final USABLE Loft Door Width — Door Count / One Door Width / the
-  // drawing all use it directly.
-  const usableW = usableLoftDoorWidthWithKhacha(loftTotalWAdjusted, fixPatti, khacha);
+  // Loft Width = Loft Total Width − Fix Patti (Left+Right) − Khacha
+  // (Left+Right). Wardrobe/Dressing/Top Panel Width are NEVER part of
+  // this deduction (they sit below the Loft, not beside it). loft.widthMm
+  // is therefore already the final USABLE Loft Door Width — Door Count /
+  // One Door Width / the drawing all use it directly.
+  const usableW = usableLoftDoorWidthWithKhacha(loftTotalW, fixPatti, khacha);
   const doorCountDefault = recommendLoftDoorCount(usableW).doorCount;
 
   const loft: WardrobeLoftInput = {
-    enabled: loftEnabled,
+    enabled: isWardrobe && selectedAddons.has('loft'),
     mode: loftMode,
     widthMm: usableW,
     heightMm: resolvedLoftHeight,
