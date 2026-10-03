@@ -177,7 +177,7 @@ export type LoftMode = 'door' | 'box';
 export interface WardrobeLoftInput {
   enabled: boolean;
   mode: LoftMode;
-  widthMm: number; // defaults to the composite total width when not overridden
+  widthMm: number; // defaults to the composite total width when not overridden — the Loft's REAL, physical width: drives the drawn box/boundary, dimension lines, canvas sizing. NEVER includes any calculation-only allowance.
   heightMm: number;
   depthMm: number; // only meaningful in 'box' mode
   // The door count actually used for the drawing/cutlist — the caller
@@ -187,6 +187,16 @@ export interface WardrobeLoftInput {
   // itself — it just draws whatever count it's handed, per doors that
   // width using the shared engine's real deduction formula.
   doorCount: number;
+  // Per the user's explicit "Attached Side Dressing -> Loft door width
+  // calculation gets a +20mm calculation-only allowance" spec: when set,
+  // the Loft's own DOOR WIDTH is calculated by dividing THIS value (not
+  // widthMm) by doorCount — while the drawn box/boundary still uses the
+  // real, physical widthMm untouched. Optional (undefined = use widthMm
+  // for the door-width calculation too, i.e. no Dressing allowance) so
+  // every existing caller that doesn't know about this rule keeps working
+  // exactly as before. See calculateLoftDoorWidth() in
+  // engine/loftDoorEngine.ts — the ONE place this +20mm value is computed.
+  doorCalculationWidthMm?: number;
 }
 
 // Loft Side Panel — a NEW, purely visual/informational extra measurement
@@ -376,10 +386,21 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     // modes — "Box" mode shows the same real per-door boxes as "Only
     // Door", not a plain undivided box.
     const usableW = inp.loft.widthMm;
+    // Per the user's explicit "Attached Side Dressing -> +20mm
+    // calculation-only allowance" spec: the CUT WIDTH listed here (the
+    // real fabrication number) uses the calculation width when set
+    // (doorCalculationWidthMm, from calculateLoftDoorWidth() in
+    // engine/loftDoorEngine.ts) — the drawing's own physical Loft box
+    // stays at the real usableW, this only changes the number reported as
+    // each door's own cut width.
+    const doorCalcW = inp.loft.doorCalculationWidthMm ?? usableW;
     const count = Math.max(1, Math.round(inp.loft.doorCount) || 1);
-    const doorW = loftOneDoorWidth(usableW, count);
+    const doorW = loftOneDoorWidth(doorCalcW, count);
     const doorLabel = inp.loft.mode === 'box' ? `Loft Box Door (x${count})` : `Loft Door (x${count})`;
-    rows.push({ component: doorLabel, width: doorW, height: inp.loft.heightMm, qty: count, remark: `Loft Width (Total Width − Fix Patti) = ${Math.round(usableW)}mm | Deduction = ${count} × 2 = ${count * 2}mm | Each Door = (${Math.round(usableW)} − ${count * 2}) / ${count} = ${doorW.toFixed(2)}mm` });
+    const doorRemark = doorCalcW !== usableW
+      ? `Calculation Loft Width (physical ${Math.round(usableW)}mm + 20mm Attached-Dressing allowance) = ${Math.round(doorCalcW)}mm | Deduction = ${count} × 2 = ${count * 2}mm | Each Door = (${Math.round(doorCalcW)} − ${count * 2}) / ${count} = ${doorW.toFixed(2)}mm`
+      : `Loft Width (Total Width − Fix Patti) = ${Math.round(usableW)}mm | Deduction = ${count} × 2 = ${count * 2}mm | Each Door = (${Math.round(usableW)} − ${count * 2}) / ${count} = ${doorW.toFixed(2)}mm`;
+    rows.push({ component: doorLabel, width: doorW, height: inp.loft.heightMm, qty: count, remark: doorRemark });
     if (inp.loft.mode === 'box') {
       rows.push({ component: 'Loft Box Depth', width: inp.loft.widthMm, height: inp.loft.depthMm, qty: 1, remark: `Depth = ${Math.round(inp.loft.depthMm)}mm (entered, shown as the / leader) — Width shown here is the full Loft Width for reference only; see individual doors above for real cut widths` });
     }
@@ -508,20 +529,6 @@ export function wardrobeDoorWidths(entered: number[], doorCount: number): number
   return widths;
 }
 
-/**
- * Parses the flat dims.doorWidth1/doorWidth2/.../doorWidthN keys (the
- * on-screen measurement-form storage shape — a plain Record<string,
- * number|string>, no native array field type) into the array
- * wardrobeDoorWidths()/SimpleWardrobeInputs.doorWidthsMm expects. Shared by
- * productRegistry.tsx's computeCutlist and SimpleWardrobeDrawing.tsx so the
- * two never parse this differently.
- */
-export function wardrobeDoorWidthsFromDims(dims: Record<string, number | string>, doorCount: number): number[] {
-  const count = Math.max(0, Math.round(doorCount) || 0);
-  const widths: number[] = [];
-  for (let i = 1; i <= count; i++) widths.push(Number(dims[`doorWidth${i}`] ?? 0));
-  return widths;
-}
 
 /**
  * A short "/" or "\" diagonal drawn INSIDE a component's own corner, rather
@@ -736,6 +743,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // own drawn side-strips (a real, separate concern from the usable
   // width), never to re-subtract from it a second time.
   const loftFrameWidth = Math.max(1, loft.widthMm);
+  // Loft Door Width calculation width — per the user's explicit "Attached
+  // Side Dressing -> +20mm calculation-only allowance" spec: when
+  // doorCalculationWidthMm is set (ProductFlow.tsx only sets it when this
+  // Wardrobe actually has an Attached Side Dressing), the DOOR WIDTH
+  // division below uses THIS value — never loftFrameWidth, which keeps
+  // driving the drawn box/boundary at the real, physical width completely
+  // unaffected. Falls back to the real width when unset (no Dressing, or
+  // a caller that doesn't know about this rule), so the formula is
+  // byte-identical to before whenever the allowance doesn't apply.
+  const loftDoorCalcWidth = Math.max(1, loft.doorCalculationWidthMm ?? loft.widthMm);
   const doorsAreaX = loftRowLeftX + leftKhachaW + leftFPW;
   // Canvas-sizing width — the widest of: the entered Total Width, the
   // Loft row's own real drawn extent (now that loftFrameWidth is the
@@ -818,16 +835,27 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       });
     }
 
-    // Doors — packed across the FULL Loft Width (loftFrameWidth already IS
-    // the usable width: Total Room Width − Fix Patti − Khacha, resolved
-    // upstream), using the shared loftDoorEngine's exact deduction
-    // formula: Width = (LoftWidth − doorCount×2) / doorCount.
-    // loft.doorCount here is already the FINAL resolved count
-    // (auto-recommended unless the user overrode it) — this module just
-    // draws it. Same value the cutlist reports.
+    // Doors — the drawn boxes are packed across the REAL, physical Loft
+    // Width (loftFrameWidth — Total Room Width − Fix Patti − Khacha,
+    // resolved upstream) so the visible drawing/boundary is NEVER widened
+    // by the Attached-Dressing +20mm calculation allowance (per the user's
+    // explicit "must NOT increase the visible Loft drawing... must NOT
+    // move the Loft boundary" rule) — doorW below is the real DRAWN box
+    // width. The printed per-door WIDTH NUMBER, however, is the
+    // CALCULATED value (loftDoorCalcWidth-based, via the shared
+    // calculateLoftDoorWidth() engine) — labelDoorW below — so a Wardrobe
+    // with an Attached Side Dressing correctly shows "390" even though the
+    // physical door panel is still drawn at its real ~386mm share of the
+    // unchanged 1940mm frame. Without an Attached Dressing the two values
+    // are identical (loftDoorCalcWidth === loftFrameWidth), so this is a
+    // no-op for every pre-existing scenario. loft.doorCount here is
+    // already the FINAL resolved count (auto-recommended unless the user
+    // overrode it) — this module just draws it. Same value the cutlist
+    // reports.
     {
       const count = Math.max(1, Math.round(loft.doorCount) || 1);
       const doorW = loftOneDoorWidth(loftFrameWidth, count);
+      const labelDoorW = loftOneDoorWidth(loftDoorCalcWidth, count);
       const gapMm = 2;
       let doorCursorX = doorsAreaX;
       // Each door is its OWN component box (with its own real border,
@@ -840,18 +868,32 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
           // dimension tick along the Loft top edge (below).
           id: `loft-door-${i}`, type: 'DOOR', label: '',
           x: doorCursorX, y: loftY + 2, width: doorW, height: loftH - 4, qty: 1, visible: true, noHandle: true,
-          source: { formula: `Loft Door ${i + 1} of ${count} — Width = (Loft Width(${Math.round(loftFrameWidth)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm`, constants: [] },
+          source: {
+            formula: loftDoorCalcWidth !== loftFrameWidth
+              ? `Loft Door ${i + 1} of ${count} — drawn Width = (physical Loft Width(${Math.round(loftFrameWidth)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm | shown Door Width = (calculation Loft Width(${Math.round(loftDoorCalcWidth)}, incl. the Attached-Dressing 20mm calculation-only allowance) − ${count}×2) / ${count} = ${labelDoorW.toFixed(2)}mm`
+              : `Loft Door ${i + 1} of ${count} — Width = (Loft Width(${Math.round(loftFrameWidth)}) − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm`,
+            constants: [],
+          },
         });
         // Each door's own width as a real dimension tick along the Loft's
         // TOP edge — a chain of per-door "(W)" arrows in the free space
         // above the Loft, so every door's size is visible even when the
         // door box itself is too narrow to hold the number. All on the
         // same 'top' edge → the collision engine keeps the chain on one
-        // tier and clear of the Wardrobe/Top-Panel dims below.
+        // tier and clear of the Wardrobe/Top-Panel dims below. The arrow's
+        // own VISUAL span still matches the real drawn box (doorCursorX to
+        // doorCursorX+doorW) — only the printed label text uses the
+        // calculated value — so the arrow itself is never stretched past
+        // the physical Loft boundary.
         dimReqs.push({
           axis: 'h', x1: doorCursorX, y1: loftY, x2: doorCursorX + doorW, y2: loftY,
-          edge: 'top', componentIds: [`loft-door-${i}`], label: `${Math.round(doorW)}`,
-          source: { formula: `Loft Door ${i + 1} of ${count} width = (Loft Width ${Math.round(loftFrameWidth)} − ${count}×2) / ${count} = ${doorW.toFixed(2)}mm`, constants: [] },
+          edge: 'top', componentIds: [`loft-door-${i}`], label: `${Math.round(labelDoorW)}`,
+          source: {
+            formula: loftDoorCalcWidth !== loftFrameWidth
+              ? `Loft Door ${i + 1} of ${count} width = (calculation Loft Width ${Math.round(loftDoorCalcWidth)} − ${count}×2) / ${count} = ${labelDoorW.toFixed(2)}mm (calculation-only; physical Loft Width stays ${Math.round(loftFrameWidth)}mm)`
+              : `Loft Door ${i + 1} of ${count} width = (Loft Width ${Math.round(loftFrameWidth)} − ${count}×2) / ${count} = ${labelDoorW.toFixed(2)}mm`,
+            constants: [],
+          },
         });
         doorCursorX += doorW + gapMm;
       }

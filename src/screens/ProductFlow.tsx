@@ -10,8 +10,8 @@ import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type
 import { ChildrenBedDrawing } from '../products/bed/ChildrenBedDrawing';
 import { childrenBedCutlist, childrenBedInputsFromDims, type CenterTableInput } from '../products/bed/childrenBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, wardrobeDoorWidthsFromDims, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
-import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, totalFixPattiWidth, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, wardrobeCarcassWidth, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
+import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, totalFixPattiWidth, calculateLoftDoorWidth, calculateWardrobeDoorWidth, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
@@ -152,6 +152,30 @@ const KHACHA_POSITIONS: KhachaPosition[] = ['none', 'left', 'right', 'both'];
 // so this is its own local option list rather than reusing SIDE_OPTS.
 const SIDE_OR_NONE_OPTS: (WardrobeSide | 'none')[] = ['none', 'left', 'right', 'both'];
 
+/** Openable/Sliding Wardrobe's own per-door Width array — every door shares
+ * the SAME calculated width now (per the user's explicit correction: no
+ * longer manually entered, per-door or shared single-field; see
+ * calculateWardrobeDoorWidth() in engine/loftDoorEngine.ts, the one shared
+ * calculation). Returns an array sized doorCount, each entry the real
+ * unrounded calculated width — feeds resolveSimpleWardrobePlan/
+ * simpleWardrobeCutlist's own doorWidthsMm array directly, so the drawing's
+ * divider lines land at the correct EQUAL boundaries. */
+function wardrobeCalculatedDoorWidths(dims: Record<string, number | string>, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>, doorCount: number): number[] {
+  const count = Math.max(0, Math.round(doorCount) || 0);
+  if (count <= 0) return [];
+  const SIDE_OPTS: WardrobeSide[] = ['left', 'right', 'both'];
+  const dressing: WardrobeDressingInput = {
+    enabled: selectedAddons.has('dressing'),
+    side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
+    widthMm: (addonDims['dressing']?.W) ?? 400,
+    hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0,
+  };
+  const carcassW = wardrobeCarcassWidth(n(dims.W ?? 0), dressing);
+  const extraOn = Number(dims.doorExtraDeduction ?? 0) === 1;
+  const calc = calculateWardrobeDoorWidth({ wardrobeDoorWidth: carcassW, doorCount: count, extra2mmDeduction: extraOn });
+  return Array.from({ length: count }, () => calc.doorWidth);
+}
+
 /** Real Wardrobe/Loft/Fix Patti add-on state, with the "auto-calculated
  * default, still editable" pattern the spec requires for Top Panel Width,
  * Loft Height, and Loft Door Count: `addonDims[...]` only holds a REAL
@@ -283,8 +307,28 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
   // (Left+Right). Wardrobe/Dressing/Top Panel Width are NEVER part of
   // this deduction (they sit below the Loft, not beside it). loft.widthMm
   // is therefore already the final USABLE Loft Door Width — Door Count /
-  // One Door Width / the drawing all use it directly.
+  // One Door Width / the drawing all use it directly as the REAL,
+  // PHYSICAL width (drawn box/boundary — never includes the Attached-
+  // Dressing calculation allowance below).
   const usableW = usableLoftDoorWidthWithKhacha(loftTotalW, fixPatti, khacha);
+
+  // Attached Side Dressing -> Loft Door Width calculation-only +20mm
+  // allowance — per the user's explicit, repeated spec: a real 20mm
+  // fabrication gap between the Wardrobe's own door and the Dressing's
+  // own door, which the Loft spans across, so its DOOR WIDTH (never its
+  // drawn geometry) must account for it. `dressing.enabled` is exactly
+  // "this Wardrobe has an Attached Side Dressing" (not a standalone
+  // Dressing product elsewhere) — the one condition specified. Uses the
+  // ONE shared calculateLoftDoorWidth() engine (engine/loftDoorEngine.ts)
+  // so Openable Wardrobe and Sliding Wardrobe never get two different
+  // formulas. doorCalculationWidthMm is handed to the geometry resolver
+  // as a SEPARATE field from widthMm — the resolver only ever uses it for
+  // the printed door-width number, never for the drawn Loft box itself.
+  const loftDoorCalc = calculateLoftDoorWidth({
+    actualLoftWidth: usableW,
+    doorCount: (addonDims['loft']?.doors) ?? recommendLoftDoorCount(usableW).doorCount,
+    hasAttachedDressing: dressing.enabled,
+  });
   const doorCountDefault = recommendLoftDoorCount(usableW).doorCount;
 
   const loft: WardrobeLoftInput = {
@@ -294,6 +338,7 @@ function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, nu
     heightMm: resolvedLoftHeight,
     depthMm: loftDepthMm,
     doorCount: (addonDims['loft']?.doors) ?? doorCountDefault,
+    doorCalculationWidthMm: loftDoorCalc.calculationLoftWidth,
   };
 
   // Loft Side Panel — purely visual/informational extra measurement,
@@ -523,7 +568,7 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
   if (product.id === 'openable-wardrobe' || product.id === 'sliding-wardrobe') {
     const { dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft } = deriveWardrobeAddonInputs(product.id, dims, selectedAddons, addonDims);
     const wardrobeDoorCount = n(dims.doorCount ?? 0);
-    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), doorCount: wardrobeDoorCount, doorWidthsMm: wardrobeDoorWidthsFromDims(dims, wardrobeDoorCount), dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
+    const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), doorCount: wardrobeDoorCount, doorWidthsMm: wardrobeCalculatedDoorWidths(dims, selectedAddons, addonDims, wardrobeDoorCount), dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
       element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} adjacentLoft={adjacentLoft} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
@@ -1309,7 +1354,7 @@ export const ProductFlow: React.FC = () => {
         : selectedId === 'bed'
         ? simpleBedCutlist({ W: n(dims.W), L: n(dims.L), H: n(dims.H), D: n(dims.D), headboardEnabled: Number(dims.hasHeadboard ?? 1) === 1, headboardH: n(dims.headboardH) || 900, lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isWardrobe
-        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doorCount: n(dims.doorCount ?? 0), doorWidthsMm: wardrobeDoorWidthsFromDims(dims, n(dims.doorCount ?? 0)), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftSidePanel: wardrobeLoftSidePanel, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
+        ? simpleWardrobeCutlist({ W: n(dims.W), H: n(dims.H), D: n(dims.D), doorCount: n(dims.doorCount ?? 0), doorWidthsMm: wardrobeCalculatedDoorWidths(dims, selectedAddons, addonDims, n(dims.doorCount ?? 0)), dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftSidePanel: wardrobeLoftSidePanel, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : isShoeRack
         ? shoeRackCutlist({ twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor }).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, remark: r.remark }))
         : product.computeCutlist(dims).map((r) => ({ component: r.component, width: r.width, height: r.height, qty: r.qty, thickness: r.thickness, remark: r.remark }));
@@ -1967,41 +2012,66 @@ export const ProductFlow: React.FC = () => {
                           )}
                         </div>
                       ))}
-                    {/* Each door's own real Width — one field per door
-                        (per the user's explicit "ask for both door widths
-                        and divide the door according to width" correction:
-                        doors are no longer assumed identical). Rendered
-                        dynamically here rather than as a static
-                        measurementFields entry since the count depends on
-                        the live Number of Doors value. Stored as flat
-                        dims.doorWidth1/doorWidth2/... keys — see
-                        wardrobeDoorWidthsFromDims() in
-                        simpleWardrobeGeometry.ts, the single shared parser
-                        every caller (this form, the cutlist, the drawing)
-                        goes through. */}
+                    {/* Openable/Sliding Wardrobe Door Width — per the
+                        user's explicit correction, no longer manually
+                        entered (per door or shared): it's CALCULATED from
+                        the Wardrobe's own real usable door width, Door
+                        Count, a mandatory 2mm/door deduction, and an
+                        optional single 2mm deduction — via the ONE shared
+                        calculateWardrobeDoorWidth() engine
+                        (engine/loftDoorEngine.ts), so every door gets the
+                        exact same calculated width. Shown here as a
+                        read-only breakdown (never an editable number) plus
+                        the one real input this section DOES take: the
+                        Extra 2mm Deduction toggle. This fully replaces the
+                        old per-door manual Width fields. */}
                     {group.label === 'Door' && (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && (() => {
                       const doorCount = Math.max(0, Math.round(Number(dims.doorCount ?? 0)) || 0);
                       if (doorCount <= 0) return null;
-                      return Array.from({ length: doorCount }, (_, i) => {
-                        const key = `doorWidth${i + 1}`;
-                        return (
-                          <div key={key} className="flex flex-col gap-0.5" style={{ borderLeft: `2px solid ${group.color}40`, paddingLeft: 8 }}>
-                            <label className="text-xs font-semibold" style={{ color: `${group.color}cc` }}>
-                              Door {i + 1} Width <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>(mm)</span>
-                            </label>
-                            <div className="flex gap-1">
-                              <MeasurementNumberInput
-                                value={Number(dims[key] ?? 1120)}
-                                onCommit={(val) => handleDimChange(key, val)}
-                                min={200} max={1800} step={1}
-                                className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
-                                style={{ background: '#1e293b', color: '#e2e8f0', border: `1px solid ${group.color}40` }}
-                              />
-                              <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
-                            </div>
+                      const wardrobeDressingForDoor: WardrobeDressingInput = {
+                        enabled: selectedAddons.has('dressing'),
+                        side: (['left', 'right', 'both'] as WardrobeSide[])[(addonDims['dressing']?.side) ?? 0] ?? 'left',
+                        widthMm: (addonDims['dressing']?.W) ?? 400,
+                        hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0,
+                      };
+                      const carcassW = wardrobeCarcassWidth(Number(dims.W ?? 0), wardrobeDressingForDoor);
+                      const extraOn = Number(dims.doorExtraDeduction ?? 0) === 1;
+                      const calc = calculateWardrobeDoorWidth({ wardrobeDoorWidth: carcassW, doorCount, extra2mmDeduction: extraOn });
+                      return (
+                        <div className="flex flex-col gap-1.5 mt-1" style={{ borderLeft: `2px solid ${group.color}40`, paddingLeft: 8 }}>
+                          <div className="flex items-center justify-between text-xs">
+                            <span style={{ color: '#94a3b8' }}>Wardrobe Width (usable)</span>
+                            <span className="font-mono" style={{ color: '#e2e8f0' }}>{Math.round(carcassW)} mm</span>
                           </div>
-                        );
-                      });
+                          <div className="flex items-center justify-between text-xs">
+                            <span style={{ color: '#94a3b8' }}>Mandatory Deduction ({doorCount} × 2mm)</span>
+                            <span className="font-mono" style={{ color: '#e2e8f0' }}>{calc.mandatoryDeductionMm} mm</span>
+                          </div>
+                          <label className="flex items-center justify-between gap-2 text-xs cursor-pointer">
+                            <span style={{ color: `${group.color}cc` }} className="font-semibold">Extra 2mm Deduction</span>
+                            <button
+                              onClick={() => handleDimChange('doorExtraDeduction', extraOn ? 0 : 1)}
+                              className="flex items-center gap-2 px-2 py-1 rounded-lg text-xs font-semibold"
+                              style={{ background: '#1e293b', color: '#94a3b8', border: `1px solid ${group.color}40` }}>
+                              <span className="w-7 h-4 rounded-full relative flex-shrink-0"
+                                style={{ background: extraOn ? group.color : '#334155' }}>
+                                <span className="absolute top-0.5 w-3 h-3 rounded-full"
+                                  style={{ background: '#fff', transition: 'left .15s', left: extraOn ? '14px' : '2px' }} />
+                              </span>
+                              {extraOn ? 'Yes' : 'No'}
+                            </button>
+                          </label>
+                          <div className="flex items-center justify-between text-xs pt-1 mt-0.5" style={{ borderTop: `1px dashed ${group.color}40` }}>
+                            <span className="font-semibold" style={{ color: '#e2e8f0' }}>Calculated Door Width</span>
+                            <span className="font-mono font-bold" style={{ color: calc.valid ? group.color : '#f87171' }}>
+                              {calc.valid ? calc.doorWidth.toFixed(1) : '—'} mm
+                            </span>
+                          </div>
+                          {!calc.valid && (
+                            <p className="text-xs" style={{ color: '#f87171' }}>⚠ Reduce Door Count or increase Wardrobe Width — the calculated Door Width must be greater than 0.</p>
+                          )}
+                        </div>
+                      );
                     })()}
                   </div>
                 </div>

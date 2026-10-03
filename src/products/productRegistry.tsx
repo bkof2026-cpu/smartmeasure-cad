@@ -20,7 +20,7 @@ import { SeparateSideTableDrawing } from './separateSideTable/SeparateSideTableD
 import { separateSideTableCutlist } from './separateSideTable/separateSideTableGeometry';
 import { LoftBoxDrawing } from './loftBox/LoftBoxDrawing';
 import { loftBoxCutlist } from './loftBox/loftBoxGeometry';
-import { recommendLoftDoorCount } from '../engine/loftDoorEngine';
+import { recommendLoftDoorCount, calculateWardrobeDoorWidth } from '../engine/loftDoorEngine';
 import { StudyTableDrawing } from './studyTable/StudyTableDrawing';
 import { studyTableCutlist } from './studyTable/studyTableGeometry';
 import { PartitionDrawing } from './partition/PartitionDrawing';
@@ -36,7 +36,7 @@ import { kitchenCabinetCutlist } from './kitchenCabinet/kitchenCabinetGeometry';
 import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { SimpleWardrobeDrawing } from './wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, wardrobeDoorWidthsFromDims } from './wardrobe/simpleWardrobeGeometry';
+import { simpleWardrobeCutlist } from './wardrobe/simpleWardrobeGeometry';
 import { SimpleShoeRackDrawing } from './shoeRack/SimpleShoeRackDrawing';
 import { shoeRackCutlist } from './shoeRack/shoeRackGeometry';
 
@@ -986,16 +986,20 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // WardrobeTechnicalDrawing.tsx) is kept intact for a future
     // "fabrication detail" mode — nothing deleted, this entry and
     // ProductFlow.tsx's design-selection gate just no longer require it.
-    demoDimensions: { W: 2290, H: 2090, D: 600, doorCount: 2, doorWidth1: 1120, doorWidth2: 1120, totalWidth: 0, totalHeight: 0 },
+    demoDimensions: { W: 2290, H: 2090, D: 600, doorCount: 2, doorExtraDeduction: 0, totalWidth: 0, totalHeight: 0 },
     measurementFields: [
       { key: 'W', label: 'Wardrobe Width', unit: 'mm', defaultValue: 2290, min: 900, max: 3600 },
       { key: 'H', label: 'Wardrobe Height', unit: 'mm', defaultValue: 2090, min: 1800, max: 2700 },
       { key: 'D', label: 'Wardrobe Depth', unit: 'mm', defaultValue: 600, min: 500, max: 700 },
-      // Door — Number of Doors (entered); each door's own real Width is
-      // NOT a static field here (it's rendered dynamically, one input per
-      // door, by ProductFlow.tsx's own Wardrobe-specific block right after
-      // the "Door" group, reading flat dims.doorWidth1/doorWidth2/... keys
-      // — up to `max` of them, matching Number of Doors' own 1-8 range).
+      // Door — Number of Doors (entered); each door's own Width is now
+      // CALCULATED (per the user's explicit correction — no longer
+      // manually entered, per-door or shared) from the Wardrobe's own
+      // usable Width, Door Count, a mandatory 2mm/door deduction, and an
+      // optional single "Extra 2mm Deduction" toggle (dims.
+      // doorExtraDeduction) — rendered as a read-only breakdown by
+      // ProductFlow.tsx's own Wardrobe-specific block right after the
+      // "Door" group. See calculateWardrobeDoorWidth() in
+      // engine/loftDoorEngine.ts, the one shared calculation.
       // Door Height is never entered here — it's always the formula value
       // (Wardrobe Height − 36mm − 70mm skirting), computed and drawn by
       // simpleWardrobeGeometry.ts's wardrobeDoorHeight().
@@ -1009,9 +1013,13 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     views: ['plan'],
     computeCutlist: (dims) => {
       const doorCount = n(dims.doorCount) || 2;
+      // Door Width is calculated (no Dressing addon available on this
+      // fallback/addon-unaware path, so the Wardrobe's own entered Width
+      // IS its usable door-calculation width here).
+      const doorCalc = calculateWardrobeDoorWidth({ wardrobeDoorWidth: n(dims.W), doorCount, extra2mmDeduction: Number(dims.doorExtraDeduction ?? 0) === 1 });
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
-        doorCount, doorWidthsMm: wardrobeDoorWidthsFromDims(dims, doorCount),
+        doorCount, doorWidthsMm: Array.from({ length: doorCount }, () => doorCalc.doorWidth),
         dressing: { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 },
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },

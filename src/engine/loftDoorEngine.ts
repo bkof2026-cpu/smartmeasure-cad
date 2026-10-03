@@ -42,6 +42,71 @@ export function loftOneDoorWidth(usableWidth: number, doorCount: number): number
   return netWidth / count;
 }
 
+// ─── Loft Door Width — Attached Side Dressing calculation allowance ───────────
+// When a Wardrobe has an ATTACHED Side Dressing, there's a real 20mm
+// fabrication gap between the Wardrobe's own door and the Dressing's own
+// door — the Loft sits above both doors, so its own door-width calculation
+// must account for the extra 20mm span it covers. This is STRICTLY a
+// calculation-only allowance (per the user's own explicit, repeated
+// instruction and worked diagram): it must NEVER be used as the Loft's own
+// CAD geometry/drawn width, never move any component, never appear as a
+// new dimension line — only loftDoorWidthWithDressingAllowance() below
+// (and the single addend constant it uses) ever applies it. Every other
+// caller that needs the Loft's real physical width keeps using the plain,
+// unmodified actualLoftWidth — see calculateLoftDoorWidth()'s own doc
+// comment for the exact separation this enforces.
+export const LOFT_DRESSING_DOOR_GAP_MM = 20;
+
+export interface LoftDoorCalculationInput {
+  /** The Loft's own REAL, physical width — the same value already used to
+   * draw the Loft's CAD geometry. Never mutated by this function. */
+  actualLoftWidth: number;
+  doorCount: number;
+  /** Whether this Wardrobe has an ATTACHED Side Dressing (not a standalone
+   * Dressing product elsewhere, nor merely "a Dressing exists somewhere in
+   * the project") — the one condition that triggers the +20mm calculation
+   * allowance. */
+  hasAttachedDressing: boolean;
+}
+
+export interface LoftDoorCalculationResult {
+  /** The real physical Loft width, unchanged — safe to feed straight into
+   * CAD geometry/drawing code. */
+  actualLoftWidth: number;
+  /** actualLoftWidth, +20mm when hasAttachedDressing, else unchanged —
+   * EXISTS ONLY for the division below; never draw this value. */
+  calculationLoftWidth: number;
+  doorCount: number;
+  /** (calculationLoftWidth − doorCount×2mm) / doorCount — the real,
+   * unrounded door width. Round only for display. */
+  doorWidth: number;
+  /** false when doorCount <= 0 or the resulting doorWidth would be <= 0 —
+   * callers must surface a validation message in that case rather than
+   * drawing a broken/negative-width door. */
+  valid: boolean;
+}
+
+/**
+ * The ONE reusable Loft Door Width calculation — used identically by
+ * Openable Wardrobe and Sliding Wardrobe (and any other product with a
+ * Loft), per the user's explicit "do not create two different formulas"
+ * instruction. Keeps the physical (actualLoftWidth) and calculation
+ * (calculationLoftWidth) values strictly separate in the return shape, so
+ * a caller can never accidentally wire the +20mm value into CAD geometry —
+ * it simply isn't present under any key a geometry resolver would read for
+ * "the Loft's width to draw."
+ */
+export function calculateLoftDoorWidth(input: LoftDoorCalculationInput): LoftDoorCalculationResult {
+  const { actualLoftWidth, hasAttachedDressing } = input;
+  const doorCount = Math.max(0, Math.round(input.doorCount) || 0);
+  const calculationLoftWidth = hasAttachedDressing ? actualLoftWidth + LOFT_DRESSING_DOOR_GAP_MM : actualLoftWidth;
+  if (doorCount <= 0) {
+    return { actualLoftWidth, calculationLoftWidth, doorCount, doorWidth: 0, valid: false };
+  }
+  const doorWidth = loftOneDoorWidth(calculationLoftWidth, doorCount);
+  return { actualLoftWidth, calculationLoftWidth, doorCount, doorWidth, valid: doorWidth > 0 };
+}
+
 export type LoftDoorWidthStatus = 'valid' | 'below-min' | 'above-max';
 
 /** Classifies a real (already-computed) One Door Width against the
@@ -192,4 +257,65 @@ export function usableLoftDoorWidthWithKhacha(totalWidth: number, fixPatti: FixP
 export const LOFT_WARDROBE_GAP_MM = 10;
 export function loftHeightForWardrobe(totalHeight: number, wardrobeHeight: number): number {
   return Math.max(0, totalHeight - wardrobeHeight - LOFT_WARDROBE_GAP_MM);
+}
+
+// ─── Openable Wardrobe Door Width — calculated, not manually entered ──────────
+// Per the user's explicit instruction: the Wardrobe's own door width is no
+// longer a free-entry field — it's calculated from the Wardrobe's own real
+// usable door width (its CARCASS width — the value Dressing is already
+// deducted from, via wardrobeCarcassWidth() in simpleWardrobeGeometry.ts;
+// this function never re-derives that itself, it only takes the final
+// number as input), the entered Door Count, a MANDATORY 2mm deduction per
+// door, and an OPTIONAL single 2mm deduction (never multiplied by door
+// count) toggled by the user. Completely separate from the Loft's own
+// +20mm Dressing-gap allowance above — THIS calculation never applies it
+// and never reads actualLoftWidth/calculationLoftWidth at all, per the
+// spec's explicit "Rule 9: Openable Wardrobe Door calculation uses
+// Wardrobe Door Width, not Loft Width."
+export const WARDROBE_DOOR_GAP_PER_DOOR_MM = 2;
+export const WARDROBE_DOOR_EXTRA_DEDUCTION_MM = 2;
+
+export interface WardrobeDoorCalculationInput {
+  /** The Wardrobe's own real usable door-calculation width — its drawn
+   * carcass width (Dressing/Top Panel/etc already excluded upstream by
+   * whatever existing logic produces it). Never the Loft's width. */
+  wardrobeDoorWidth: number;
+  doorCount: number;
+  /** A single additional 2mm deduction, applied ONCE regardless of door
+   * count — defaults OFF, matching the spec's own documented default. */
+  extra2mmDeduction: boolean;
+}
+
+export interface WardrobeDoorCalculationResult {
+  wardrobeDoorWidth: number;
+  doorCount: number;
+  mandatoryDeductionMm: number;
+  extraDeductionMm: number;
+  totalDeductionMm: number;
+  /** The real, unrounded per-door width — round only for display. */
+  doorWidth: number;
+  /** false when doorCount <= 0 or the resulting doorWidth would be <= 0 —
+   * callers must surface a validation message rather than draw a broken/
+   * negative-width door (spec Part 10). */
+  valid: boolean;
+}
+
+/**
+ * The ONE reusable Openable Wardrobe door-width calculation — used
+ * identically wherever a Wardrobe door's own width needs to be known
+ * (measurement-panel display, cutlist, drawing), per the same "one
+ * reusable function, not duplicated formulas" rule the Loft engine above
+ * already follows.
+ */
+export function calculateWardrobeDoorWidth(input: WardrobeDoorCalculationInput): WardrobeDoorCalculationResult {
+  const { wardrobeDoorWidth, extra2mmDeduction } = input;
+  const doorCount = Math.max(0, Math.round(input.doorCount) || 0);
+  const mandatoryDeductionMm = doorCount * WARDROBE_DOOR_GAP_PER_DOOR_MM;
+  const extraDeductionMm = extra2mmDeduction ? WARDROBE_DOOR_EXTRA_DEDUCTION_MM : 0;
+  const totalDeductionMm = mandatoryDeductionMm + extraDeductionMm;
+  if (doorCount <= 0) {
+    return { wardrobeDoorWidth, doorCount, mandatoryDeductionMm, extraDeductionMm, totalDeductionMm, doorWidth: 0, valid: false };
+  }
+  const doorWidth = (wardrobeDoorWidth - totalDeductionMm) / doorCount;
+  return { wardrobeDoorWidth, doorCount, mandatoryDeductionMm, extraDeductionMm, totalDeductionMm, doorWidth, valid: doorWidth > 0 };
 }
