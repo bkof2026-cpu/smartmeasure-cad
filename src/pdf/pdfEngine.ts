@@ -130,10 +130,10 @@ export function pdfClientFileName(clientName: string, projectId: string): string
   return project && project !== 'Project' ? `${client}_${project}` : client;
 }
 
-// Two-column header layout constants — a title band, then two equal
+// Three-column header layout constants — a title band, then three equal
 // columns of label/value rows. Label column width is fixed (short labels
 // like "Employee"/"Date" never need more); the value wraps within
-// whatever's left of that column's own half-width, so a long client name
+// whatever's left of that column's own third of the width, so a long client name
 // or product list wraps inside ITS column rather than colliding with the
 // other column or running off the page edge.
 const HEADER_TITLE_H = 18;
@@ -143,24 +143,31 @@ const HEADER_COL_LABEL_W = 56;
 const HEADER_COL_GAP = 14;
 const HEADER_PAD = 10;
 
-/** Splits the project/product metadata into the two columns the spec asks
- * for (left: identity — Project ID/Client/Employee/Product; right: timing +
- * anything else) — a fixed, logical split since these are the only fields
- * this app's PDFs have ever carried; a future field would be a deliberate
- * addition to one list below, not a dynamic "whatever's left over" guess. */
-function headerColumns(info: PdfProjectInfo): { left: [string, string][]; right: [string, string][] } {
-  const left: [string, string][] = [
-    ['Project ID', info.projectId || '—'],
-    ['Client', info.clientName || '—'],
-    ['Employee', info.employeeName || '—'],
-    [info.products.length > 1 ? 'Products' : 'Product', info.products.join(', ') || '—'],
+/** Splits the project/product metadata into three compact columns of two
+ * rows each (Project ID/Client · Employee/Product · Date/Time) — three
+ * columns instead of two keeps the header to just two rows tall, freeing
+ * more vertical space for the drawing. A fixed, logical split since these
+ * are the only fields this app's PDFs have ever carried; a future field
+ * would be a deliberate addition to one list below, not a dynamic guess. */
+const HEADER_COLS = 3;
+function headerColumns(info: PdfProjectInfo): [string, string][][] {
+  return [
+    [
+      ['Project ID', info.projectId || '—'],
+      ['Client', info.clientName || '—'],
+    ],
+    [
+      ['Employee', info.employeeName || '—'],
+      [info.products.length > 1 ? 'Products' : 'Product', info.products.join(', ') || '—'],
+    ],
+    [
+      ['Date', new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })],
+      ['Time', new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })],
+    ],
   ];
-  const right: [string, string][] = [
-    ['Date', new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })],
-    ['Time', new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })],
-  ];
-  return { left, right };
 }
+
+const headerColW = () => (INFO_BLOCK_W - HEADER_PAD * 2 - HEADER_COL_GAP * (HEADER_COLS - 1)) / HEADER_COLS;
 
 /** How many lines a column's rows will actually wrap to, at the header's
  * own fixed font size — used both to size the header box up front (so the
@@ -180,12 +187,9 @@ function columnRowLineCounts(doc: jsPDF, rows: [string, string][], colW: number)
  * out everything below the header (drawing area, table) against the header's
  * ACTUAL height, not a guess, so freed space is real, not approximate. */
 function infoBlockHeight(doc: jsPDF, info: PdfProjectInfo): number {
-  const colW = (INFO_BLOCK_W - HEADER_PAD * 2 - HEADER_COL_GAP) / 2;
-  const { left, right } = headerColumns(info);
-  const leftLines = columnRowLineCounts(doc, left, colW);
-  const rightLines = columnRowLineCounts(doc, right, colW);
+  const colW = headerColW();
   const colH = (lines: number[]) => lines.reduce((sum, n) => sum + n * HEADER_ROW_H + HEADER_ROW_GAP, 0);
-  const tallestColH = Math.max(colH(leftLines), colH(rightLines));
+  const tallestColH = Math.max(...headerColumns(info).map((rows) => colH(columnRowLineCounts(doc, rows, colW))));
   return HEADER_PAD + HEADER_TITLE_H + tallestColH + HEADER_PAD * 0.6;
 }
 
@@ -212,8 +216,7 @@ function drawInfoBlock(doc: jsPDF, info: PdfProjectInfo, pageNum: number, pageCo
   doc.setTextColor(102, 102, 102);
   doc.text(`Page ${pageNum} of ${pageCount}`, x + INFO_BLOCK_W - HEADER_PAD, y + 14, { align: 'right' });
 
-  const colW = (INFO_BLOCK_W - HEADER_PAD * 2 - HEADER_COL_GAP) / 2;
-  const { left, right } = headerColumns(info);
+  const colW = headerColW();
   const colTop = y + HEADER_TITLE_H + 6;
 
   function drawColumn(rows: [string, string][], colX: number) {
@@ -233,8 +236,7 @@ function drawInfoBlock(doc: jsPDF, info: PdfProjectInfo, pageNum: number, pageCo
     }
   }
 
-  drawColumn(left, x + HEADER_PAD);
-  drawColumn(right, x + HEADER_PAD + colW + HEADER_COL_GAP);
+  headerColumns(info).forEach((rows, i) => drawColumn(rows, x + HEADER_PAD + i * (colW + HEADER_COL_GAP)));
 }
 
 function drawCategoryHeading(doc: jsPDF, heading: string, y: number): number {
