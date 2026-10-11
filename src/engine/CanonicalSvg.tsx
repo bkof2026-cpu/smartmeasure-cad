@@ -17,6 +17,13 @@ import type { AnnotationLine, ComponentSpec, CustomShape, DimensionLine, NoteBox
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DIM_COLOR = '#cc2200';
+
+/** Optional viewport override for every TechnicalDrawingSvg below it. The
+ * PDF export wraps each drawing in this with a viewport sized to that
+ * drawing's real PDF cell, so the fixed-px labels come out at a legible
+ * size on paper instead of being shrunk along with a 1280px-wide canvas.
+ * Absent (the normal on-screen case) changes nothing. */
+export const DrawingViewportContext = React.createContext<{ maxVw: number; maxVh: number } | null>(null);
 const DIM_TIER_STEP_PX = 18; // viewport px of offset per collision tier
 const PAD = 60; // viewport px padding for dimension lines + labels
 
@@ -222,8 +229,11 @@ export function TechnicalDrawingSvg({
   // drew too small to read comfortably. More canvas area directly buys
   // more scale, which grows every drawn box's real on-screen size (fixed-
   // px labels/fonts stay constant, so this is pure legibility headroom).
-  maxVw = 1280, maxVh = 960, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension, plainDimLabels,
+  maxVw: maxVwProp = 1280, maxVh: maxVhProp = 960, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension, plainDimLabels,
 }: RenderProps) {
+  const viewportOverride = React.useContext(DrawingViewportContext);
+  const maxVw = viewportOverride?.maxVw ?? maxVwProp;
+  const maxVh = viewportOverride?.maxVh ?? maxVhProp;
   // Extra pixel headroom per collision tier actually used, so nothing clips.
   // Bounded to a fraction of the requested viewport — at full size (640x480)
   // this is just PAD/DIM_TIER_STEP_PX as before, but a small preview

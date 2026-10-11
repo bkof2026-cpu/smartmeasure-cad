@@ -21,6 +21,10 @@ export interface SimpleSideTableInput {
   enabled: boolean;
   depthMm: number;
   widthMm: number;
+  // Own editable Height — defaults to the Bed's own Height (the rule), but
+  // the user can override it per table. Optional so callers that never set
+  // it (e.g. Children Bed) keep the old "always = Bed Height" behaviour.
+  heightMm?: number;
   // Purely visual — real drawer fronts drawn inside the table's own,
   // already-resolved box (see resolveSimpleBedPlan below). Never changes
   // the table's own position/width/depth/height or any other component's
@@ -139,11 +143,11 @@ export function simpleBedCutlist(inp: SimpleBedInputs): SimpleBedCutRow[] {
   }
   if (inp.lst.enabled) {
     const lstDrawers = Math.max(0, Math.round(inp.lst.drawerCount) || 0);
-    rows.push({ component: 'Left Side Table (LST)', width: inp.lst.widthMm, height: inp.lst.depthMm, qty: 1, remark: `Depth × Width entered; Height = Bed Height (auto-fetched, ${Math.round(inp.H)}mm)${lstDrawers > 0 ? ` | ${lstDrawers} drawer front(s)` : ''}` });
+    rows.push({ component: 'Left Side Table (LST)', width: inp.lst.widthMm, height: inp.lst.depthMm, qty: 1, remark: `Depth × Width entered; Height = ${Math.round(inp.lst.heightMm ?? inp.H)}mm (default = Bed Height, editable)${lstDrawers > 0 ? ` | ${lstDrawers} drawer front(s)` : ''}` });
   }
   if (inp.rst.enabled) {
     const rstDrawers = Math.max(0, Math.round(inp.rst.drawerCount) || 0);
-    rows.push({ component: 'Right Side Table (RST)', width: inp.rst.widthMm, height: inp.rst.depthMm, qty: 1, remark: `Depth × Width entered; Height = Bed Height (auto-fetched, ${Math.round(inp.H)}mm)${rstDrawers > 0 ? ` | ${rstDrawers} drawer front(s)` : ''}` });
+    rows.push({ component: 'Right Side Table (RST)', width: inp.rst.widthMm, height: inp.rst.depthMm, qty: 1, remark: `Depth × Width entered; Height = ${Math.round(inp.rst.heightMm ?? inp.H)}mm (default = Bed Height, editable)${rstDrawers > 0 ? ` | ${rstDrawers} drawer front(s)` : ''}` });
   }
   if (profileShutterActive(inp)) {
     const onLeftRow = inp.profileShutter.side === 'left';
@@ -250,11 +254,11 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
   }
 
   if (lst.enabled) {
-    const lw = lst.widthMm, ld = lst.depthMm;
+    const lw = lst.widthMm, ld = lst.depthMm, lh = lst.heightMm ?? H;
     const lx = bedX - lw; // flush against the Bed's left edge
     components.push({
       id: 'lst', type: 'SIDE_TABLE', label: 'LST', x: lx, y: bedY, width: lw, height: ld, qty: 1, visible: true,
-      source: { formula: `Depth = ${Math.round(ld)}mm (entered) | Width = ${Math.round(lw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
+      source: { formula: `Depth = ${Math.round(ld)}mm (entered) | Width = ${Math.round(lw)}mm (entered) | Height = ${Math.round(lh)}mm (default = Bed Height, editable)`, constants: [] },
     });
     // Drawers — purely visual real drawer fronts drawn INSIDE the table's
     // own already-resolved box (never changes lx/ld/lw or any other
@@ -280,7 +284,7 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     // Height is a real, straight vertical dimension (auto-fetched from Bed
     // Height, but still the table's genuine vertical extent) — stays
     // outside the box, standard convention for a straight dimension.
-    dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + H, edge: 'left', componentIds: ['lst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'LST Height = Bed Height (auto-fetched)', constants: [] }, color: BED_COMPONENT_COLORS.lst });
+    dimReqs.push({ axis: 'v', x1: lx - 8, y1: bedY, x2: lx - 8, y2: bedY + ld, edge: 'left', componentIds: ['lst'], label: `${Math.round(lh)} mm (H)`, source: { formula: 'LST Height (default = Bed Height, editable)', constants: [] }, color: BED_COMPONENT_COLORS.lst });
     // Depth is the "/" diagonal leader, drawn INSIDE the table's own
     // BOTTOM-left corner leaning up-right — matching the user's own
     // reference sketch exactly. Authored TIP-first (x1,y1 = the inward
@@ -294,11 +298,11 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     lines.push({ x1: lstDiag.x2, y1: lstDiag.y2, x2: lx, y2: bedY + ld, color: BED_COMPONENT_COLORS.lst, label: `${Math.round(ld)} mm (D)`, labelAtStart: true });
   }
   if (rst.enabled) {
-    const rw = rst.widthMm, rd = rst.depthMm;
+    const rw = rst.widthMm, rd = rst.depthMm, rh = rst.heightMm ?? H;
     const rx = bedX + W;
     components.push({
       id: 'rst', type: 'SIDE_TABLE', label: 'RST', x: rx, y: bedY, width: rw, height: rd, qty: 1, visible: true,
-      source: { formula: `Depth = ${Math.round(rd)}mm (entered) | Width = ${Math.round(rw)}mm (entered) | Height = Bed Height (auto-fetched, ${Math.round(H)}mm)`, constants: [] },
+      source: { formula: `Depth = ${Math.round(rd)}mm (entered) | Width = ${Math.round(rw)}mm (entered) | Height = ${Math.round(rh)}mm (default = Bed Height, editable)`, constants: [] },
     });
     // Drawers — same treatment as LST above (horizontal bands, stacked
     // top-to-bottom), purely visual, drawn inside RST's own already-
@@ -312,7 +316,7 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
     }
     // Width along the bottom edge, same as LST.
     dimReqs.push({ axis: 'h', x1: rx, y1: bedY + rd + 8, x2: rx + rw, y2: bedY + rd + 8, edge: 'bottom', componentIds: ['rst'], label: `${Math.round(rw)} mm (W)`, source: { formula: 'RST Width (entered)', constants: [] }, color: BED_COMPONENT_COLORS.rst });
-    dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + H, edge: 'right', componentIds: ['rst'], label: `${Math.round(H)} mm (H)`, source: { formula: 'RST Height = Bed Height (auto-fetched)', constants: [] }, color: BED_COMPONENT_COLORS.rst });
+    dimReqs.push({ axis: 'v', x1: rx + rw + 8, y1: bedY, x2: rx + rw + 8, y2: bedY + rd, edge: 'right', componentIds: ['rst'], label: `${Math.round(rh)} mm (H)`, source: { formula: 'RST Height (default = Bed Height, editable)', constants: [] }, color: BED_COMPONENT_COLORS.rst });
     // Same "/" convention as LST, drawn inside RST's own BOTTOM-right
     // corner leaning up-left (mirrored, matching the reference sketch) —
     // same tip-first + labelAtStart treatment as LST above, so the label
@@ -422,8 +426,8 @@ export function resolveSimpleBedPlan(inp: SimpleBedInputs): ResolvedDrawing {
       { key: 'D', label: 'Bed Depth', min: 1 },
     ]),
     ...(headboardEnabled ? validateMeasurements({ headboardH }, [{ key: 'headboardH', label: 'Headboard Height', min: 1 }]) : []),
-    ...(lst.enabled ? validateMeasurements({ D: lst.depthMm, W: lst.widthMm }, [{ key: 'D', label: 'LST Depth', min: 1 }, { key: 'W', label: 'LST Width', min: 1 }]) : []),
-    ...(rst.enabled ? validateMeasurements({ D: rst.depthMm, W: rst.widthMm }, [{ key: 'D', label: 'RST Depth', min: 1 }, { key: 'W', label: 'RST Width', min: 1 }]) : []),
+    ...(lst.enabled ? validateMeasurements({ D: lst.depthMm, W: lst.widthMm, H: lst.heightMm ?? H }, [{ key: 'D', label: 'LST Depth', min: 1 }, { key: 'W', label: 'LST Width', min: 1 }, { key: 'H', label: 'LST Height', min: 1 }]) : []),
+    ...(rst.enabled ? validateMeasurements({ D: rst.depthMm, W: rst.widthMm, H: rst.heightMm ?? H }, [{ key: 'D', label: 'RST Depth', min: 1 }, { key: 'W', label: 'RST Width', min: 1 }, { key: 'H', label: 'RST Height', min: 1 }]) : []),
     // Dressing's own Width/Depth are always independently entered now
     // (never auto-locked to a mounted Side Table's size) — always
     // validated, regardless of whether a Side Table also happens to be

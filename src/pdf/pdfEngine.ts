@@ -322,25 +322,38 @@ function pdfSafeSvgClone(svgEl: SVGSVGElement): SVGSVGElement {
   return clone;
 }
 
-async function drawItemCell(doc: jsPDF, item: PdfDrawingItem, cell: { x: number; y: number; w: number; h: number }) {
+type Cell = { x: number; y: number; w: number; h: number };
+
+const CELL_PAD = 8;
+
+/** The area inside a cell left for the drawing itself, after its title,
+ * caption and Evidence Note — shared by drawItemCell and the layout pass
+ * (which needs the same numbers to size each drawing's re-render). */
+function cellSvgArea(doc: jsPDF, item: PdfDrawingItem, cell: Cell): Cell {
+  const titleY = cell.y + CELL_PAD + 9;
+  const captionH = item.caption ? 12 : 0;
+  const noteH = cellEvidenceNoteHeight(doc, item.evidenceNote, cell.w);
+  const y = titleY + 6 + captionH;
+  return { x: cell.x + CELL_PAD, y, w: cell.w - CELL_PAD * 2, h: cell.y + cell.h - CELL_PAD - y - noteH };
+}
+
+async function drawItemCell(doc: jsPDF, item: PdfDrawingItem, cell: Cell) {
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.75);
   doc.rect(cell.x, cell.y, cell.w, cell.h);
 
-  const pad = 8;
-  let titleY = cell.y + pad + 9;
+  const pad = CELL_PAD;
+  const titleY = cell.y + pad + 9;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(30, 30, 30);
   doc.text(item.name.toUpperCase(), cell.x + cell.w / 2, titleY, { align: 'center', maxWidth: cell.w - pad * 2 });
 
-  let captionH = 0;
   if (item.caption) {
     doc.setFont('courier', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(102, 102, 102);
     doc.text(item.caption, cell.x + cell.w / 2, titleY + 10, { align: 'center', maxWidth: cell.w - pad * 2 });
-    captionH = 12;
   }
 
   // Reserve room at the bottom of THIS cell for its own Evidence Note (if
@@ -349,9 +362,10 @@ async function drawItemCell(doc: jsPDF, item: PdfDrawingItem, cell: { x: number;
   // exactly that much" approach as the single-product PDF's page-level note.
   const noteH = cellEvidenceNoteHeight(doc, item.evidenceNote, cell.w);
 
-  const svgAreaY = titleY + 6 + captionH;
-  const svgAreaH = cell.y + cell.h - pad - svgAreaY - noteH;
-  const svgAreaW = cell.w - pad * 2;
+  const area = cellSvgArea(doc, item, cell);
+  const svgAreaY = area.y;
+  const svgAreaH = area.h;
+  const svgAreaW = area.w;
   if (svgAreaW <= 4 || svgAreaH <= 4) {
     if (noteH > 0) drawCellEvidenceNote(doc, item.evidenceNote, cell);
     return;
@@ -418,18 +432,95 @@ function isLargeDrawing(item: PdfDrawingItem): boolean {
 interface PackedPage {
   items: PdfDrawingItem[];
   heading?: string;
-  cols: number;
-  rows: number;
+}
+
+/** A drawing's real width/height ratio, from its own viewBox. */
+function itemAspect(item: PdfDrawingItem): number {
+  const vb = item.svgEl.getAttribute('viewBox');
+  const [, , vbW, vbH] = vb ? vb.split(/\s+/).map(Number) : [0, 0, 0, 0];
+  return vbW > 0 && vbH > 0 ? vbW / vbH : 1.4;
+}
+
+// Room a cell spends on its own title/caption/padding, outside the drawing.
+const CELL_CHROME_W = CELL_PAD * 2;
+const CELL_CHROME_H = 44;
+
+/** Drawn area of a drawing with the given aspect, fitted into a w x h cell. */
+function fittedArea(aspect: number, w: number, h: number): number {
+  const aw = Math.max(1, w - CELL_CHROME_W);
+  const ah = Math.max(1, h - CELL_CHROME_H);
+  const dw = Math.min(aw, ah * aspect);
+  return dw * (dw / aspect);
+}
+
+/** Lays one page's items out inside the grid area, choosing the split from
+ * the drawings' own real shapes rather than a fixed rule: every column
+ * count is tried and the one giving the SMALLEST drawing the most room
+ * wins (so two wide drawings stack top/bottom, two tall ones sit side by
+ * side). Row heights are sized so every drawing gets as much room as
+ * possible — a row of tall drawings gets more height than a row of flat
+ * ones. */
+function layoutCells(items: PdfDrawingItem[], gridX: number, gridY: number, gridW: number, gridH: number, gap: number): Cell[] {
+  const n = items.length;
+  const aspects = items.map(itemAspect);
+
+  function rowHeights(cols: number): number[] {
+    const rows = Math.ceil(n / cols);
+    const drawW = (gridW - gap * (cols - 1)) / cols - CELL_CHROME_W;
+    const availH = gridH - gap * (rows - 1);
+    // Cell height a row needs so each of its drawings gets drawn area A
+    // (capped at what the cell's width allows).
+    const rowNeed = (r: number, A: number) => Math.max(...aspects.slice(r * cols, r * cols + cols).map((a) => {
+      const w = Math.min(drawW, Math.sqrt(A * a));
+      return w / a;
+    })) + CELL_CHROME_H;
+    const totalNeed = (A: number) => Array.from({ length: rows }, (_, r) => rowNeed(r, A)).reduce((x, y) => x + y, 0);
+    // Largest common drawn area that still fits the page height.
+    let lo = 0;
+    let hi = drawW * availH;
+    for (let k = 0; k < 40; k++) {
+      const mid = (lo + hi) / 2;
+      if (totalNeed(mid) <= availH) lo = mid; else hi = mid;
+    }
+    const needs = Array.from({ length: rows }, (_, r) => rowNeed(r, lo));
+    // Hand any leftover height out in proportion to each row's need.
+    const used = needs.reduce((x, y) => x + y, 0);
+    return needs.map((h) => (h * availH) / Math.max(1, used));
+  }
+
+  let best: { cols: number; score: number; total: number } | null = null;
+  for (let cols = 1; cols <= Math.min(n, 3); cols++) {
+    const cellW = (gridW - gap * (cols - 1)) / cols;
+    const heights = rowHeights(cols);
+    const areas = aspects.map((a, i) => fittedArea(a, cellW, heights[Math.floor(i / cols)]));
+    const score = Math.min(...areas);
+    const total = areas.reduce((x, y) => x + y, 0);
+    if (!best || score > best.score * 1.02 || (score >= best.score * 0.98 && total > best.total)) best = { cols, score, total };
+  }
+
+  const cols = best!.cols;
+  const cellW = (gridW - gap * (cols - 1)) / cols;
+  const heights = rowHeights(cols);
+  const cells: Cell[] = [];
+  let y = gridY;
+  for (let r = 0; r < heights.length; r++) {
+    const rowItems = Math.min(cols, n - r * cols);
+    // A short last row is centred rather than left-aligned.
+    const rowX = gridX + ((cols - rowItems) * (cellW + gap)) / 2;
+    for (let c = 0; c < rowItems; c++) cells.push({ x: rowX + c * (cellW + gap), y, w: cellW, h: heights[r] });
+    y += heights[r] + gap;
+  }
+  return cells;
 }
 
 /** The real packing algorithm (spec §2): Kitchen items always page-
  * separate from everything else; Master Bedroom + Living Room items
- * merge into one shared pool. ≤5 combined items pack onto a single page
- * in a responsive grid; >5 splits into a "small items" grid page (or
- * pages, if still too many) and a separate "large/complex" page (1–2 per
- * page). A category heading only appears on a page's FIRST section run
- * for that category-group, and a page is never created with a heading and
- * no drawings (every page pushed here always carries ≥1 item). */
+ * merge into one shared pool. ≤5 combined items pack onto a single page;
+ * >5 splits into a "small items" page (or pages, if still too many) and a
+ * separate "large/complex" page (1–2 per page). The grid shape itself is
+ * chosen later, per page, by layoutCells. A category heading only appears
+ * on a page's FIRST section run for that category-group, and a page is
+ * never created with a heading and no drawings. */
 function packPages(items: PdfDrawingItem[]): PackedPage[] {
   const kitchen = items.filter((it) => it.roomCategory === 'Kitchen');
   const bedroomLiving = items.filter((it) => it.roomCategory === 'Master Bedroom' || it.roomCategory === 'Living Room');
@@ -437,54 +528,28 @@ function packPages(items: PdfDrawingItem[]): PackedPage[] {
 
   const pages: PackedPage[] = [];
 
-  function gridFor(count: number): { cols: number; rows: number } {
-    if (count <= 1) return { cols: 1, rows: 1 };
-    if (count === 2) return { cols: 2, rows: 1 };
-    if (count <= 4) return { cols: 2, rows: 2 };
-    if (count <= 6) return { cols: 3, rows: 2 };
-    return { cols: 3, rows: 3 };
-  }
-
   function pushGridPages(group: PdfDrawingItem[], heading: string | undefined, maxPerPage: number) {
     for (let i = 0; i < group.length; i += maxPerPage) {
-      const slice = group.slice(i, i + maxPerPage);
-      pages.push({ items: slice, heading: i === 0 ? heading : undefined, ...gridFor(slice.length) });
+      pages.push({ items: group.slice(i, i + maxPerPage), heading: i === 0 ? heading : undefined });
     }
   }
 
-  // Master Bedroom + Living Room — merged pool, packed per §2's rule.
-  if (bedroomLiving.length > 0) {
-    if (bedroomLiving.length <= 5) {
-      pages.push({ items: bedroomLiving, heading: 'Master Bedroom + Living Room', ...gridFor(bedroomLiving.length) });
-    } else {
-      const small = bedroomLiving.filter((it) => !isLargeDrawing(it));
-      const large = bedroomLiving.filter((it) => isLargeDrawing(it));
-      if (small.length > 0) pushGridPages(small, 'Master Bedroom + Living Room', 6);
-      if (large.length > 0) pushGridPages(large, small.length > 0 ? undefined : 'Master Bedroom + Living Room', 2);
+  function pushGroup(group: PdfDrawingItem[], heading: string | undefined) {
+    if (group.length === 0) return;
+    if (group.length <= 5) {
+      pages.push({ items: group, heading });
+      return;
     }
+    const small = group.filter((it) => !isLargeDrawing(it));
+    const large = group.filter((it) => isLargeDrawing(it));
+    if (small.length > 0) pushGridPages(small, heading, 6);
+    if (large.length > 0) pushGridPages(large, small.length > 0 ? undefined : heading, 2);
   }
 
-  // Kitchen — always its own dedicated page(s), same small/large packing.
-  if (kitchen.length > 0) {
-    if (kitchen.length <= 5) {
-      pages.push({ items: kitchen, heading: 'Kitchen', ...gridFor(kitchen.length) });
-    } else {
-      const small = kitchen.filter((it) => !isLargeDrawing(it));
-      const large = kitchen.filter((it) => isLargeDrawing(it));
-      if (small.length > 0) pushGridPages(small, 'Kitchen', 6);
-      if (large.length > 0) pushGridPages(large, small.length > 0 ? undefined : 'Kitchen', 2);
-    }
-  }
-
-  // Any product with no room category (whole-room/apartment layout items)
-  // — never silently dropped, packed the same way as its own trailing group.
-  if (other.length > 0) {
-    if (other.length <= 5) {
-      pages.push({ items: other, ...gridFor(other.length) });
-    } else {
-      pushGridPages(other, undefined, 6);
-    }
-  }
+  pushGroup(bedroomLiving, 'Master Bedroom + Living Room');
+  pushGroup(kitchen, 'Kitchen');
+  // Any product with no room category — never silently dropped.
+  pushGroup(other, undefined);
 
   return pages;
 }
@@ -496,6 +561,11 @@ function packPages(items: PdfDrawingItem[]): PackedPage[] {
 export async function generateAndDownloadPdf(
   items: PdfDrawingItem[],
   info: PdfProjectInfo,
+  /** Optional: re-renders the given items' drawings at the given viewport
+   * sizes (one per item, same order) and returns the new <svg> elements.
+   * Lets each drawing be redrawn for its real cell so its labels stay
+   * legible on paper. Without it the original SVGs are just scaled. */
+  rerender?: (viewports: { maxVw: number; maxVh: number }[]) => Promise<(SVGSVGElement | null)[]>,
 ): Promise<{ ok: boolean; error?: string }> {
   if (items.length === 0) return { ok: false, error: 'No product drawings to include.' };
   if (!info.clientName.trim()) return { ok: false, error: 'Client Name is required before a PDF can be generated.' };
@@ -504,38 +574,50 @@ export async function generateAndDownloadPdf(
   if (pages.length === 0) return { ok: false, error: 'No product drawings to include.' };
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [PAGE_W, PAGE_H] });
+  const blockH = infoBlockHeight(doc, info);
 
-  for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
-    const page = pages[pageIdx];
+  // Layout pass — every item's cell, before anything is drawn.
+  const placed = pages.map((page) => {
+    const headingTop = MARGIN + blockH + 14;
+    // drawCategoryHeading returns its y + 20; the grid then sits 6 below.
+    const gridY = page.heading ? headingTop + 26 : headingTop;
+    const cells = layoutCells(page.items, MARGIN, gridY, PAGE_W - MARGIN * 2, PAGE_H - MARGIN - gridY, 10);
+    return { page, cells };
+  });
+
+  // Re-render each drawing for its own cell: the drawing's fixed-px labels
+  // then print at roughly FONT_PX / PDF_VIEWPORT_PER_PT points (~6.5pt),
+  // instead of shrinking with a 1280px canvas squeezed into a small cell.
+  const PDF_VIEWPORT_PER_PT = 1.5;
+  const drawItems = new Map<PdfDrawingItem, PdfDrawingItem>();
+  if (rerender) {
+    const order = new Map(items.map((it, i) => [it, i]));
+    const viewports = items.map(() => ({ maxVw: 1280, maxVh: 960 }));
+    for (const { page, cells } of placed) {
+      page.items.forEach((item, i) => {
+        const area = cellSvgArea(doc, item, cells[i]);
+        viewports[order.get(item)!] = { maxVw: Math.max(200, area.w * PDF_VIEWPORT_PER_PT), maxVh: Math.max(150, area.h * PDF_VIEWPORT_PER_PT) };
+      });
+    }
+    const fresh = await rerender(viewports);
+    items.forEach((it, i) => {
+      const el = fresh[i];
+      if (el) drawItems.set(it, { ...it, svgEl: el });
+    });
+  }
+
+  for (let pageIdx = 0; pageIdx < placed.length; pageIdx++) {
+    const { page, cells } = placed[pageIdx];
     if (pageIdx > 0) doc.addPage([PAGE_W, PAGE_H], 'portrait');
 
-    const blockH = infoBlockHeight(doc, info);
-    drawInfoBlock(doc, info, pageIdx + 1, pages.length, blockH);
-
-    let contentTop = MARGIN + blockH + 14;
-    if (page.heading) contentTop = drawCategoryHeading(doc, page.heading, contentTop) + 6;
-
-    const gridX = MARGIN;
-    const gridY = contentTop;
-    const gridW = PAGE_W - MARGIN * 2;
-    const gridH = PAGE_H - MARGIN - gridY;
-    const gap = 10;
-    const cellW = (gridW - gap * (page.cols - 1)) / page.cols;
-    const cellH = (gridH - gap * (page.rows - 1)) / page.rows;
+    drawInfoBlock(doc, info, pageIdx + 1, placed.length, blockH);
+    if (page.heading) drawCategoryHeading(doc, page.heading, MARGIN + blockH + 14);
 
     for (let i = 0; i < page.items.length; i++) {
-      const col = i % page.cols;
-      const row = Math.floor(i / page.cols);
-      const cell = {
-        x: gridX + col * (cellW + gap),
-        y: gridY + row * (cellH + gap),
-        w: cellW,
-        h: cellH,
-      };
       // eslint-disable-next-line no-await-in-loop -- svg2pdf.js renders
       // one SVG at a time onto the same jsPDF document instance; parallel
       // calls would race on shared drawing state.
-      await drawItemCell(doc, page.items[i], cell);
+      await drawItemCell(doc, drawItems.get(page.items[i]) ?? page.items[i], cells[i]);
     }
   }
 
@@ -662,6 +744,9 @@ export async function generateAndDownloadSingleProductPdf(
   cutlist: PdfCutRow[],
   info: PdfProjectInfo,
   evidenceNote?: string,
+  /** Optional: re-renders the views at the given viewport sizes (one per
+   * view, same order) — same purpose as generateAndDownloadPdf's own. */
+  rerender?: (viewports: { maxVw: number; maxVh: number }[]) => Promise<(SVGSVGElement | null)[]>,
 ): Promise<{ ok: boolean; error?: string }> {
   if (views.length === 0) return { ok: false, error: 'No drawing to include.' };
   if (!info.clientName.trim()) return { ok: false, error: 'Client Name is required before a PDF can be generated.' };
@@ -704,11 +789,21 @@ export async function generateAndDownloadSingleProductPdf(
   // instead of spilling onto a second page).
   const viewGap = 8;
   const viewW = (tableW - viewGap * (views.length - 1)) / views.length;
+  const viewItems: PdfDrawingItem[] = views.map((v, i) => ({ id: `view-${i}`, name: views.length > 1 ? `${productName} — ${v.label}` : productName, caption: '', svgEl: v.svgEl }));
+  const viewCells: Cell[] = views.map((_, i) => ({ x: MARGIN + i * (viewW + viewGap), y: contentTop, w: viewW, h: drawingH }));
+  if (rerender) {
+    // Same 1.5 viewport-px-per-pt sizing as the combined PDF, so labels
+    // print at a legible size.
+    const fresh = await rerender(viewItems.map((it, i) => {
+      const area = cellSvgArea(doc, it, viewCells[i]);
+      return { maxVw: Math.max(200, area.w * 1.5), maxVh: Math.max(150, area.h * 1.5) };
+    }));
+    fresh.forEach((el, i) => { if (el) viewItems[i] = { ...viewItems[i], svgEl: el }; });
+  }
   for (let i = 0; i < views.length; i++) {
-    const cell = { x: MARGIN + i * (viewW + viewGap), y: contentTop, w: viewW, h: drawingH };
     // eslint-disable-next-line no-await-in-loop -- svg2pdf.js renders one
     // SVG at a time onto the same jsPDF document instance.
-    await drawItemCell(doc, { id: `view-${i}`, name: views.length > 1 ? `${productName} — ${views[i].label}` : productName, caption: '', svgEl: views[i].svgEl }, cell);
+    await drawItemCell(doc, viewItems[i], viewCells[i]);
   }
 
   if (hasTable) {

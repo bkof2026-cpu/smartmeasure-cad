@@ -175,18 +175,20 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
 export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
   bed: [
     {
-      // Height is intentionally not a field here — it's auto-fetched from
-      // Bed Height (see ProductFlow.tsx's bedLST/bedRST construction), not
-      // independently entered. Attaches to the bed's headboard-side left
+      // Height defaults to Bed Height (see ProductFlow.tsx's
+      // deriveBedAddonInputs) but is editable. Attaches to the bed's headboard-side left
       // corner (X = Bed.Left - LST.Width, Y = Bed.Top).
       id: 'side-table-left',
       label: 'Left Side Table (LST)',
       icon: '🪑',
-      description: 'Attaches at the headboard-side left corner — Height auto-fetched from Bed Height',
+      description: 'Attaches at the headboard-side left corner — Height defaults to Bed Height, editable',
       placement: 'composite',
       fields: [
         { key: 'D', label: 'Depth', defaultValue: 460, min: 280, max: 650 },
         { key: 'W', label: 'Width', defaultValue: 560, min: 280, max: 700 },
+        // Defaults live to Bed Height (ProductFlow.tsx's computed addon
+        // defaults) until the user types their own value.
+        { key: 'H', label: 'Height', defaultValue: 450, min: 100, max: 1200 },
         { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 6, isCount: true },
       ],
     },
@@ -194,11 +196,14 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'side-table-right',
       label: 'Right Side Table (RST)',
       icon: '🪑',
-      description: 'Attaches at the headboard-side right corner — Height auto-fetched from Bed Height',
+      description: 'Attaches at the headboard-side right corner — Height defaults to Bed Height, editable',
       placement: 'composite',
       fields: [
         { key: 'D', label: 'Depth', defaultValue: 460, min: 280, max: 650 },
         { key: 'W', label: 'Width', defaultValue: 560, min: 280, max: 700 },
+        // Defaults live to Bed Height (ProductFlow.tsx's computed addon
+        // defaults) until the user types their own value.
+        { key: 'H', label: 'Height', defaultValue: 450, min: 100, max: 1200 },
         { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 6, isCount: true },
       ],
     },

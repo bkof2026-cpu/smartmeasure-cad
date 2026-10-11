@@ -93,30 +93,36 @@ interface PdfProjectInfo {
 // session data — used by the multi-product combined PDF, which needs every
 // selected product's real drawing, not just whichever one is on screen.
 
-function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
+function deriveBedAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>, bedH: number) {
+  // Side Table Height defaults to the Bed's own Height (the rule) until the
+  // user types their own value — same "live computed default, still
+  // editable" convention as the Wardrobe's computed addon fields.
   const lst: SimpleSideTableInput = {
     enabled: productId === 'bed' && selectedAddons.has('side-table-left'),
     depthMm: (addonDims['side-table-left']?.D) ?? 460, widthMm: (addonDims['side-table-left']?.W) ?? 560,
+    heightMm: (addonDims['side-table-left']?.H) ?? bedH,
     drawerCount: (addonDims['side-table-left']?.drawers) ?? 0,
   };
   const rst: SimpleSideTableInput = {
     enabled: productId === 'bed' && selectedAddons.has('side-table-right'),
     depthMm: (addonDims['side-table-right']?.D) ?? 460, widthMm: (addonDims['side-table-right']?.W) ?? 560,
+    heightMm: (addonDims['side-table-right']?.H) ?? bedH,
     drawerCount: (addonDims['side-table-right']?.drawers) ?? 0,
   };
   const PS_SIDE_OPTS: ProfileShutterSide[] = ['left', 'right'];
+  const psSide = PS_SIDE_OPTS[(addonDims['profile-shutter']?.side) ?? 0] ?? 'left';
+  // Dressing's Width/Depth default to the Side Table on its own side (when
+  // that table is added), else 560/460 — the SAME starting value the form
+  // shows, so the drawing never disagrees with an untouched field. A real
+  // user edit always wins.
+  const psTable = psSide === 'left' ? lst : rst;
   const profileShutter: ProfileShutterInput = {
     enabled: productId === 'bed' && selectedAddons.has('profile-shutter'),
-    side: PS_SIDE_OPTS[(addonDims['profile-shutter']?.side) ?? 0] ?? 'left',
+    side: psSide,
     heightMm: (addonDims['profile-shutter']?.H) ?? 150,
     light: ((addonDims['profile-shutter']?.light) ?? 0) === 1,
-    // Own Width/Depth — only actually used by the geometry engine when the
-    // mounted side's table isn't enabled (per the user's explicit
-    // correction that a side table is no longer compulsory for Dressing);
-    // when the table IS enabled these are ignored in favor of its real
-    // Width/Depth, same as before this feature.
-    widthMm: (addonDims['profile-shutter']?.W) ?? 560,
-    depthMm: (addonDims['profile-shutter']?.D) ?? 460,
+    widthMm: (addonDims['profile-shutter']?.W) ?? (psTable.enabled ? psTable.widthMm : 560),
+    depthMm: (addonDims['profile-shutter']?.D) ?? (psTable.enabled ? psTable.depthMm : 460),
   };
   return { lst, rst, profileShutter };
 }
@@ -557,7 +563,7 @@ export function instanceLabel(productName: string, instance: number): string {
 function elementAndIssuesForSession(product: ProductTemplate, session: ProductSessionData): { element: React.ReactElement; criticalIssues: string[] } {
   const { dims, selectedAddons, addonDims } = session;
   if (product.id === 'bed') {
-    const { lst, rst, profileShutter } = deriveBedAddonInputs(product.id, selectedAddons, addonDims);
+    const { lst, rst, profileShutter } = deriveBedAddonInputs(product.id, selectedAddons, addonDims, n(dims.H ?? 0));
     const headboardEnabled = Number(dims.hasHeadboard ?? 1) === 1;
     const drawing = resolveSimpleBedPlan({ W: n(dims.W ?? 0), L: n(dims.L ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), headboardEnabled, headboardH: n(dims.headboardH ?? 0) || 900, lst, rst, profileShutter });
     return {
@@ -1264,7 +1270,7 @@ export const ProductFlow: React.FC = () => {
   // any OTHER selected product's inputs from its own saved session (see
   // elementAndIssuesForSession above), called here with the live state for
   // whichever product is currently active on screen.
-  const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims);
+  const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims, n(dims.H ?? 0));
   const { centerTable: childrenBedCenterTable, lst: childrenBedLST, rst: childrenBedRST } = deriveChildrenBedAddonInputs(selectedId, dims, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
   const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftTotalWidthDefault: wardrobeLoftTotalWidthDefault, loftSidePanel: wardrobeLoftSidePanel, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
@@ -1292,6 +1298,10 @@ export const ProductFlow: React.FC = () => {
     // entered Width (after its own Fix Patti/Khacha), same shared
     // loftDoorEngine formula as Wall A, same live-recalc pattern.
     'adjacent-loft': { doors: wardrobeAdjacentLoft.doorCount },
+  } : selectedId === 'bed' ? {
+    // Bed Side Table Height — defaults to Bed Height, still editable.
+    'side-table-left': { H: bedLST.heightMm ?? 0 },
+    'side-table-right': { H: bedRST.heightMm ?? 0 },
   } : {};
   const isShoeRack = selectedId === 'shoe-rack';
   const { twoDoor: shoeRackTwoDoor, singleDoor: shoeRackSingleDoor } = deriveShoeRackAddonInputs(selectedId, selectedAddons, addonDims);
@@ -1344,7 +1354,10 @@ export const ProductFlow: React.FC = () => {
     setPdfError(null);
     setPdfBusy(true);
     try {
-      const { svgs, cleanup } = await mountOffscreenSvgs(product.views.map((v) => renderMainDrawing(v)));
+      const viewElements = product.views.map((v) => renderMainDrawing(v));
+      const { svgs, cleanup } = await mountOffscreenSvgs(viewElements);
+      const cleanups = [cleanup];
+      const keptViewElements = viewElements.filter((_, i) => !!svgs[i]);
       const views: PdfViewItem[] = product.views
         .map((v, i) => ({ label: v.replace(/-/g, ' '), svgEl: svgs[i] }))
         .filter((v): v is PdfViewItem => !!v.svgEl);
@@ -1370,8 +1383,13 @@ export const ProductFlow: React.FC = () => {
         clientName: model.project.clientName,
         employeeName: model.employeeName || '',
         products: [product.name],
-      }, evidenceNote);
-      cleanup();
+      }, evidenceNote, async (viewports) => {
+        // Redraw each view sized to its real PDF area so labels stay legible.
+        const resized = await mountOffscreenSvgs(keptViewElements, viewports);
+        cleanups.push(resized.cleanup);
+        return resized.svgs;
+      });
+      cleanups.forEach((c) => c());
       if (!result.ok) {
         setPdfError(result.error ?? 'Unable to generate PDF.');
         return;
@@ -1526,6 +1544,8 @@ export const ProductFlow: React.FC = () => {
         return elementAndIssuesForSession(t.product, session).element;
       });
       const { svgs, cleanup } = await mountOffscreenSvgs(elements);
+      const cleanups = [cleanup];
+      const itemElements: React.ReactElement[] = [];
       const items: PdfDrawingItem[] = todoInstances
         .map((t, i): PdfDrawingItem | null => {
           const session = liveSessions[t.key] ?? freshSession(t.product);
@@ -1535,6 +1555,7 @@ export const ProductFlow: React.FC = () => {
           // picker above — never another instance's, since it's looked up
           // by this exact instance's key.
           const evidenceNote = model.evidence.find((item) => item.measurementId === t.key && item.type === 'note')?.caption;
+          itemElements.push(elements[i]);
           return { id: t.key, name: instanceLabel(t.product.name, t.instance), caption: captionForSession(t.product, session.dims), roomCategory: t.product.roomCategory, svgEl, evidenceNote };
         })
         .filter((it): it is PdfDrawingItem => it !== null);
@@ -1544,8 +1565,14 @@ export const ProductFlow: React.FC = () => {
         clientName: model.project.clientName,
         employeeName: model.employeeName,
         products: todoInstances.map((t) => instanceLabel(t.product.name, t.instance)),
+      }, async (viewports) => {
+        // Redraw each drawing sized to its own PDF cell, so its labels stay
+        // readable instead of shrinking with the full on-screen canvas.
+        const resized = await mountOffscreenSvgs(itemElements, viewports);
+        cleanups.push(resized.cleanup);
+        return resized.svgs;
       });
-      cleanup();
+      cleanups.forEach((c) => c());
       if (!result.ok) {
         setPdfError(result.error ?? 'Unable to generate Combined PDF.');
         return;
@@ -2309,15 +2336,6 @@ export const ProductFlow: React.FC = () => {
                                 )}
                               </div>
                             ))}
-                            {(addon.id === 'side-table-left' || addon.id === 'side-table-right') && (
-                              <div className="flex flex-col gap-0.5 mt-2">
-                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Height (mm)</label>
-                                <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
-                                  {Number(dims.H ?? 0)} mm
-                                </div>
-                                <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from Bed Height</span>
-                              </div>
-                            )}
                             {addon.id === 'dressing' && (
                               <div className="flex flex-col gap-0.5 mt-2">
                                 <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Height (mm)</label>
@@ -2349,8 +2367,8 @@ export const ProductFlow: React.FC = () => {
                               // the plain static default (560/460).
                               const onLeft = (adDims['side'] ?? 0) === 0;
                               const target = onLeft ? bedLST : bedRST;
-                              const widthDefault = target.enabled ? target.widthMm : 560;
-                              const depthDefault = target.enabled ? target.depthMm : 460;
+                              const widthDefault = bedProfileShutter.widthMm;
+                              const depthDefault = bedProfileShutter.depthMm;
                               return (
                                 <div className="flex flex-col gap-2 mt-2">
                                   <div className="flex flex-col gap-0.5">

@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { DrawingViewportContext } from '../engine/CanonicalSvg';
 
 /**
  * Mounts a batch of React elements into a real, attached-to-document (but
@@ -20,6 +21,9 @@ export async function mountOffscreenSvgs(
   // first — this function renders <>{null}</> as an empty fragment for
   // those and simply returns a null svg for that index.
   elements: (React.ReactElement | null)[],
+  // Optional per-element drawing viewport (see DrawingViewportContext) —
+  // lets the PDF re-render each drawing sized to its own real PDF cell.
+  viewports?: ({ maxVw: number; maxVh: number } | null)[],
 ): Promise<{ svgs: (SVGSVGElement | null)[]; cleanup: () => void }> {
   const container = document.createElement('div');
   // Off-screen, not display:none — some browsers skip layout/measurement
@@ -42,7 +46,8 @@ export async function mountOffscreenSvgs(
 
   await new Promise<void>((resolve) => {
     itemRoots.forEach(({ root }, i) => {
-      root.render(elements[i]);
+      const vp = viewports?.[i];
+      root.render(vp ? <DrawingViewportContext.Provider value={vp}>{elements[i]}</DrawingViewportContext.Provider> : elements[i]);
     });
     // React 19's createRoot render is synchronous for a simple tree on the
     // next microtask/paint — a double rAF plus a microtask flush reliably
@@ -50,6 +55,13 @@ export async function mountOffscreenSvgs(
     // in a testing-only flushSync dependency.
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
+  // A batch of several drawings doesn't always commit within those two
+  // frames — keep waiting (up to ~2s) until every non-null element has
+  // actually produced its <svg>, rather than handing back a null.
+  for (let tries = 0; tries < 40; tries++) {
+    if (itemRoots.every(({ holder }, i) => !elements[i] || holder.querySelector('svg'))) break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
 
   const svgs = itemRoots.map(({ holder }) => holder.querySelector('svg') as SVGSVGElement | null);
 
