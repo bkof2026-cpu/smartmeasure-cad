@@ -19,8 +19,7 @@ import { labeledBoxCutlist, type LabeledBoxConfig } from './simpleBox/labeledBox
 import { SeparateSideTableDrawing } from './separateSideTable/SeparateSideTableDrawing';
 import { separateSideTableCutlist } from './separateSideTable/separateSideTableGeometry';
 import { LoftBoxDrawing } from './loftBox/LoftBoxDrawing';
-import { loftBoxCutlist } from './loftBox/loftBoxGeometry';
-import { recommendLoftDoorCount, calculateWardrobeDoorWidth } from '../engine/loftDoorEngine';
+import { loftBoxCutlist, loftBoxInputsFromDims } from './loftBox/loftBoxGeometry';
 import { StudyTableDrawing } from './studyTable/StudyTableDrawing';
 import { studyTableCutlist } from './studyTable/studyTableGeometry';
 import { PartitionDrawing } from './partition/PartitionDrawing';
@@ -37,6 +36,7 @@ import { TechnicalDrawingSvg } from '../engine/CanonicalSvg';
 import { DrawingInspector } from '../engine/DrawingInspector';
 import { SimpleWardrobeDrawing } from './wardrobe/SimpleWardrobeDrawing';
 import { simpleWardrobeCutlist } from './wardrobe/simpleWardrobeGeometry';
+import { wardrobeDoorWidthBreakdown } from './wardrobe/wardrobeAddonInputs';
 import { SimpleShoeRackDrawing } from './shoeRack/SimpleShoeRackDrawing';
 import { shoeRackCutlist } from './shoeRack/shoeRackGeometry';
 
@@ -1016,10 +1016,10 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       // Door Width is calculated (no Dressing addon available on this
       // fallback/addon-unaware path, so the Wardrobe's own entered Width
       // IS its usable door-calculation width here).
-      const doorCalc = calculateWardrobeDoorWidth({ wardrobeDoorWidth: n(dims.W), doorCount, extra2mmDeduction: Number(dims.doorExtraDeduction ?? 0) === 1 });
+      const doorWidthsMm = wardrobeDoorWidthBreakdown(dims, { enabled: false, side: 'left', widthMm: 0, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 }, doorCount).widths;
       const cutRows = simpleWardrobeCutlist({
         W: n(dims.W), H: n(dims.H), D: n(dims.D),
-        doorCount, doorWidthsMm: Array.from({ length: doorCount }, () => doorCalc.doorWidth),
+        doorCount, doorWidthsMm,
         dressing: { enabled: false, side: 'left', widthMm: 400, hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0 },
         topPanel: { enabled: false, side: 'left', widthMm: 80, depthMm: 600 },
         loft: { enabled: false, mode: 'door', widthMm: 0, heightMm: 400, depthMm: 350, doorCount: 2 },
@@ -1483,7 +1483,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // never a genuine value), per the user's explicit instruction: no more
     // fixed 6 default; LoftBoxDrawing.tsx computes the live recommendation
     // from Width via the shared loftDoorEngine until the user edits it.
-    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 0, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
+    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 0, shutterW: 0, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
     measurementFields: [
       { key: 'H', label: 'Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
       { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1000, min: 600, max: 3600 },
@@ -1493,19 +1493,15 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       // computed recommendation exists — LoftBoxDrawing.tsx overrides the
       // effective value live from Width / 400 (shared loftDoorEngine).
       { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 0, min: 1, max: 12 },
+      // 0 = not entered — shows the live formula value (W − count×2) / count until edited.
+      { key: 'shutterW', label: 'Shutter Width', unit: 'mm', defaultValue: 0, min: 0, max: 1200 },
       { key: 'topPanel', label: 'Top Panel', unit: 'bool', defaultValue: 0 },
       { key: 'topPanelSide', label: 'Top Panel Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
       { key: 'topPanelWidth', label: 'Top Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 1200 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
-      const shutterCountRaw = n(dims.shutterCount);
-      const shutterCount = shutterCountRaw > 0 ? shutterCountRaw : recommendLoftDoorCount(n(dims.W) || 1000).doorCount;
-      const cutRows = loftBoxCutlist({
-        H: n(dims.H), W: n(dims.W), D: n(dims.D),
-        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount,
-        topPanel: Number(dims.topPanel ?? 0) === 1, topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left', topPanelWidth: n(dims.topPanelWidth) || 300,
-      });
+      const cutRows = loftBoxCutlist(loftBoxInputsFromDims(dims));
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
     DrawingComponent: (props) => <LoftBoxDrawing dims={props.dims} />,
@@ -1532,7 +1528,7 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
     // never a genuine value), per the user's explicit instruction: no more
     // fixed 6 default; LoftBoxDrawing.tsx computes the live recommendation
     // from Width via the shared loftDoorEngine until the user edits it.
-    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 0, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
+    demoDimensions: { H: 600, W: 1000, D: 400, onlyShutter: 1, shutterCount: 0, shutterW: 0, topPanel: 0, topPanelSide: 'Left', topPanelWidth: 300 },
     measurementFields: [
       { key: 'H', label: 'Height', unit: 'mm', defaultValue: 600, min: 300, max: 900 },
       { key: 'W', label: 'Width', unit: 'mm', defaultValue: 1000, min: 600, max: 3600 },
@@ -1542,19 +1538,15 @@ export const PRODUCT_REGISTRY: ProductTemplate[] = [
       // computed recommendation exists — LoftBoxDrawing.tsx overrides the
       // effective value live from Width / 400 (shared loftDoorEngine).
       { key: 'shutterCount', label: 'Number of Shutters', unit: 'count', defaultValue: 0, min: 1, max: 12 },
+      // 0 = not entered — shows the live formula value (W − count×2) / count until edited.
+      { key: 'shutterW', label: 'Shutter Width', unit: 'mm', defaultValue: 0, min: 0, max: 1200 },
       { key: 'topPanel', label: 'Top Panel', unit: 'bool', defaultValue: 0 },
       { key: 'topPanelSide', label: 'Top Panel Side', unit: 'select', defaultValue: 'Left', options: ['Left', 'Right'] },
       { key: 'topPanelWidth', label: 'Top Panel Width', unit: 'mm', defaultValue: 300, min: 100, max: 1200 },
     ],
     views: ['plan'],
     computeCutlist: (dims) => {
-      const shutterCountRaw = n(dims.shutterCount);
-      const shutterCount = shutterCountRaw > 0 ? shutterCountRaw : recommendLoftDoorCount(n(dims.W) || 1000).doorCount;
-      const cutRows = loftBoxCutlist({
-        H: n(dims.H), W: n(dims.W), D: n(dims.D),
-        onlyShutter: Number(dims.onlyShutter ?? 0) === 1, shutterCount,
-        topPanel: Number(dims.topPanel ?? 0) === 1, topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left', topPanelWidth: n(dims.topPanelWidth) || 300,
-      });
+      const cutRows = loftBoxCutlist(loftBoxInputsFromDims(dims));
       return cutRows.map((r, i) => row(i + 1, r.component, 'Site Measurement', r.width, r.height, r.qty, 0, '', r.remark));
     },
     DrawingComponent: (props) => <LoftBoxDrawing dims={props.dims} />,

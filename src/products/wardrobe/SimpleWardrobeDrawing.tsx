@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, defaultStyleFor, type ComponentStyle } from '../../engine/CanonicalSvg';
-import { resolveSimpleWardrobePlan, simpleWardrobeTitle, wardrobeCarcassWidth, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
-import { calculateWardrobeDoorWidth } from '../../engine/loftDoorEngine';
+import { resolveSimpleWardrobePlan, simpleWardrobeTitle, type SimpleWardrobeInputs, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeOpenBoxInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from './simpleWardrobeGeometry';
+import { wardrobeDoorWidthBreakdown } from './wardrobeAddonInputs';
 import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
 
@@ -65,25 +65,17 @@ export const SimpleWardrobeDrawing: React.FC<Props> = ({ dims, dressing, topPane
   const W = n(dims.W);
   const resolvedDressing = dressing ?? DEFAULT_DRESSING;
   const wardrobeDoorCount = n(dims.doorCount) || 0;
-  // Door Width is CALCULATED (per the user's explicit correction — no
-  // longer manually entered, per-door or shared) via the ONE shared
-  // calculateWardrobeDoorWidth() engine: Wardrobe's own usable (carcass)
-  // Width, Door Count, a mandatory 2mm/door deduction, and an optional
-  // single 2mm deduction (dims.doorExtraDeduction, the one real input this
-  // calculation still takes) — every door gets the same calculated width.
-  const wardrobeCarcassW = wardrobeCarcassWidth(W, resolvedDressing);
-  const wardrobeDoorCalc = calculateWardrobeDoorWidth({
-    wardrobeDoorWidth: wardrobeCarcassW,
-    doorCount: wardrobeDoorCount,
-    extra2mmDeduction: Number(dims.doorExtraDeduction ?? 0) === 1,
-  });
+  // Door Width defaults to the calculated value (carcass Width, Door Count,
+  // mandatory 2mm/door, optional extra 2mm) and honours a manually entered
+  // dims.doorWidth — same breakdown the form and cutlist use.
+  const doorWidths = wardrobeDoorWidthBreakdown(dims, resolvedDressing, wardrobeDoorCount).widths;
   const inp: SimpleWardrobeInputs = {
     W, H: n(dims.H), D: n(dims.D),
     // 0 = no Door field entered for this product (e.g. Sliding Wardrobe,
     // which has its own different sliding-panel concept) — draws no door
     // lines at all, rather than silently assuming 2 doors.
     doorCount: wardrobeDoorCount,
-    doorWidthsMm: Array.from({ length: wardrobeDoorCount }, () => wardrobeDoorCalc.doorWidth),
+    doorWidthsMm: doorWidths,
     dressing: resolvedDressing,
     topPanel: topPanel ?? DEFAULT_TOP_PANEL,
     loft: loft ?? DEFAULT_LOFT,

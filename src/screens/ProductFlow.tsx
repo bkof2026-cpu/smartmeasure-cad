@@ -10,14 +10,16 @@ import { simpleBedCutlist, resolveSimpleBedPlan, type SimpleSideTableInput, type
 import { ChildrenBedDrawing } from '../products/bed/ChildrenBedDrawing';
 import { childrenBedCutlist, childrenBedInputsFromDims, type CenterTableInput } from '../products/bed/childrenBedGeometry';
 import { SimpleWardrobeDrawing } from '../products/wardrobe/SimpleWardrobeDrawing';
-import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, wardrobeCarcassWidth, type WardrobeSide, type WardrobeDressingInput, type WardrobeTopPanelInput, type WardrobeLoftInput, type WardrobeLoftSidePanelInput, type WardrobeFixPattiInput, type WardrobeKhachaInput, type WardrobeStorageInput, type WardrobeStorageSideInput, type WardrobeOpenBoxInput, type WardrobeOpenBoxSideInput, type WardrobeStudyTableInput, type WardrobeAdjacentLoftInput } from '../products/wardrobe/simpleWardrobeGeometry';
-import { recommendLoftDoorCount, loftHeightForWardrobe, usableLoftDoorWidthWithKhacha, totalFixPattiWidth, calculateLoftDoorWidth, calculateWardrobeDoorWidth, type FixPattiPosition, type KhachaPosition } from '../engine/loftDoorEngine';
+import { simpleWardrobeCutlist, resolveSimpleWardrobePlan, type WardrobeSide, type WardrobeDressingInput } from '../products/wardrobe/simpleWardrobeGeometry';
 import { WardrobeTechnicalDrawing, wardrobeDimsFrom } from '../products/wardrobe/WardrobeTechnicalDrawing';
 import { getWardrobeDesignDef } from '../products/wardrobe/wardrobeDesigns';
 import { computeWardrobeCutlist } from '../products/wardrobe/wardrobeGeometry';
+import { deriveWardrobeAddonInputs, wardrobeCalculatedDoorWidths, wardrobeDoorWidthBreakdown } from '../products/wardrobe/wardrobeAddonInputs';
+import { loftBoxInputsFromDims } from '../products/loftBox/loftBoxGeometry';
 import { SimpleShoeRackDrawing } from '../products/shoeRack/SimpleShoeRackDrawing';
 import { shoeRackCutlist, resolveShoeRackPlan, type ShoeRackBoxInput } from '../products/shoeRack/shoeRackGeometry';
 import { fetchMyStats, logDrawingEvent, type MyStats } from '../auth/authClient';
+import { useLengthUnit, getLengthUnit, mmToDisplay, displayToMm, formatLength, unitLabel, UnitSelect, type LengthUnit } from '../units/lengthUnit';
 import { mountOffscreenSvgs } from '../pdf/mountOffscreen';
 import {
   generateAndDownloadPdf, generateAndDownloadSingleProductPdf,
@@ -151,336 +153,6 @@ function deriveChildrenBedAddonInputs(productId: ProductId, dims: Record<string,
   return { centerTable, lst, rst };
 }
 
-const FIX_PATTI_POSITIONS: FixPattiPosition[] = ['none', 'left', 'right', 'both'];
-const KHACHA_POSITIONS: KhachaPosition[] = ['none', 'left', 'right', 'both'];
-// Same None/Left/Right/Both shape, used by Storage and Open Box position
-// dropdowns (spec §27/§34) — WardrobeSide doesn't itself include 'none',
-// so this is its own local option list rather than reusing SIDE_OPTS.
-const SIDE_OR_NONE_OPTS: (WardrobeSide | 'none')[] = ['none', 'left', 'right', 'both'];
-
-/** Openable/Sliding Wardrobe's own per-door Width array — every door shares
- * the SAME calculated width now (per the user's explicit correction: no
- * longer manually entered, per-door or shared single-field; see
- * calculateWardrobeDoorWidth() in engine/loftDoorEngine.ts, the one shared
- * calculation). Returns an array sized doorCount, each entry the real
- * unrounded calculated width — feeds resolveSimpleWardrobePlan/
- * simpleWardrobeCutlist's own doorWidthsMm array directly, so the drawing's
- * divider lines land at the correct EQUAL boundaries. */
-function wardrobeCalculatedDoorWidths(dims: Record<string, number | string>, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>, doorCount: number): number[] {
-  const count = Math.max(0, Math.round(doorCount) || 0);
-  if (count <= 0) return [];
-  const SIDE_OPTS: WardrobeSide[] = ['left', 'right', 'both'];
-  const dressing: WardrobeDressingInput = {
-    enabled: selectedAddons.has('dressing'),
-    side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
-    widthMm: (addonDims['dressing']?.W) ?? 400,
-    hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0,
-  };
-  const carcassW = wardrobeCarcassWidth(n(dims.W ?? 0), dressing);
-  const extraOn = Number(dims.doorExtraDeduction ?? 0) === 1;
-  const calc = calculateWardrobeDoorWidth({ wardrobeDoorWidth: carcassW, doorCount: count, extra2mmDeduction: extraOn });
-  return Array.from({ length: count }, () => calc.doorWidth);
-}
-
-/** Real Wardrobe/Loft/Fix Patti add-on state, with the "auto-calculated
- * default, still editable" pattern the spec requires for Top Panel Width,
- * Loft Height, and Loft Door Count: `addonDims[...]` only holds a REAL
- * value once the user has actually typed one (see handleAddonDimChange) —
- * until then this derives the live computed default from the shared
- * loftDoorEngine / the Wardrobe's own current Width/Dressing/Total Width,
- * so the UI shows a real recommendation on first render, not a fixed
- * placeholder constant, without ever overwriting a value the user already
- * set (§32 "Do not unexpectedly overwrite a user's manual value"). */
-function deriveWardrobeAddonInputs(productId: ProductId, dims: Record<string, number | string>, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
-  const isWardrobe = productId === 'openable-wardrobe' || productId === 'sliding-wardrobe';
-  const SIDE_OPTS: WardrobeSide[] = ['left', 'right', 'both'];
-  const wardrobeW = n(dims.W ?? 0);
-  const wardrobeH = n(dims.H ?? 0);
-  const dressing: WardrobeDressingInput = {
-    enabled: isWardrobe && selectedAddons.has('dressing'),
-    side: SIDE_OPTS[(addonDims['dressing']?.side) ?? 0] ?? 'left',
-    widthMm: (addonDims['dressing']?.W) ?? 400,
-    hasMirror: ((addonDims['dressing']?.mirror) ?? 0) === 1,
-    drawerCount: (addonDims['dressing']?.drawers) ?? 0,
-    totalDrawerHeightMm: (addonDims['dressing']?.drawerH) ?? 600,
-  };
-  const dressingTotalW = dressing.enabled ? (dressing.side === 'both' ? dressing.widthMm * 2 : dressing.widthMm) : 0;
-
-  // Fix Patti — read first (before Top Panel/Loft) since its width feeds
-  // the Loft Door Count calculation below. position is forced to 'none'
-  // whenever the Fix Patti addon card itself isn't selected — a real bug
-  // fixed here: addonDims['fix-patti'].position PERSISTS in state once
-  // ever set (e.g. toggled to Left/Both then the whole addon toggled back
-  // off), and without this selectedAddons check that stale position kept
-  // silently deducting from Wall A's usable Loft width forever, even
-  // after the addon card showed "not selected" in the UI — exactly the
-  // "phantom Fix Patti sliver eating into the Loft width" bug reported.
-  const fixPatti: WardrobeFixPattiInput = {
-    position: isWardrobe && selectedAddons.has('fix-patti') ? (FIX_PATTI_POSITIONS[(addonDims['fix-patti']?.position) ?? 0] ?? 'none') : 'none',
-    leftHeightMm: (addonDims['fix-patti']?.leftH) ?? 400,
-    leftWidthMm: (addonDims['fix-patti']?.leftW) ?? 100,
-    rightHeightMm: (addonDims['fix-patti']?.rightH) ?? 400,
-    rightWidthMm: (addonDims['fix-patti']?.rightW) ?? 100,
-  };
-
-  // Khacha — a real, separate component from Fix Patti (never merged
-  // data, per the spec's own explicit rule). Read alongside Fix Patti
-  // since BOTH widths feed the Loft Door Count calculation together.
-  // Same selectedAddons gate as Fix Patti above, same real bug fixed.
-  const khacha: WardrobeKhachaInput = {
-    position: isWardrobe && selectedAddons.has('khacha') ? (KHACHA_POSITIONS[(addonDims['khacha']?.position) ?? 0] ?? 'none') : 'none',
-    leftHeightMm: (addonDims['khacha']?.leftH) ?? 400,
-    leftWidthMm: (addonDims['khacha']?.leftW) ?? 100,
-    rightHeightMm: (addonDims['khacha']?.rightH) ?? 400,
-    rightWidthMm: (addonDims['khacha']?.rightW) ?? 100,
-  };
-
-  // Room/Total Width — entered directly (see productRegistry.tsx's
-  // 'totalWidth' field); falls back to the entered Wardrobe Width when not
-  // entered (0). Per the user's explicit correction, the entered Wardrobe
-  // Width now ALREADY represents the full Wardrobe+Dressing span (Dressing
-  // Width comes OUT of the wardrobe carcass rather than being added on top
-  // of it — see wardrobeCarcassWidth() in simpleWardrobeGeometry.ts), so
-  // the composite fallback is simply the entered Width itself, not
-  // Width + Dressing (which would double-count Dressing's own span).
-  const enteredTotalW = n(dims.totalWidth ?? 0);
-  const totalWidthForCalc = enteredTotalW > 0 ? enteredTotalW : wardrobeW;
-
-  // Loft Height — resolved FIRST (before the Top Panel default below),
-  // because the Top Panel formula is conditional on whether Fix Patti's
-  // height reaches the Loft height. Live computed default = Total Height
-  // − Wardrobe Height − 10mm gap, falling back to a 400mm placeholder
-  // when Total Height isn't entered yet.
-  const enteredTotalH = n(dims.totalHeight ?? 0);
-  const loftHeightDefault = enteredTotalH > 0 ? loftHeightForWardrobe(enteredTotalH, wardrobeH) : 400;
-  const loftMode: 'door' | 'box' = ((addonDims['loft']?.mode) ?? 0) === 1 ? 'box' : 'door';
-  const loftDepthMm = (addonDims['loft']?.D) ?? 350;
-  const resolvedLoftHeight = (addonDims['loft']?.H) ?? loftHeightDefault;
-
-  // Fix Patti total width (0 when the addon isn't selected —
-  // fixPatti.position is already forced to 'none' in that case), and the
-  // max Fix Patti height across whatever side(s) are active — both feed
-  // the conditional Top Panel formula below.
-  const fixPattiTotalW = totalFixPattiWidth(fixPatti);
-  const fixPattiMaxH = fixPatti.position === 'none' ? 0 : Math.max(
-    fixPatti.position === 'left' || fixPatti.position === 'both' ? fixPatti.leftHeightMm : 0,
-    fixPatti.position === 'right' || fixPatti.position === 'both' ? fixPatti.rightHeightMm : 0,
-  );
-
-  // Top Panel (a.k.a. Side Panel) — Width's live computed default. The
-  // formula is CONDITIONAL on whether Fix Patti reaches the Loft height,
-  // per the user's explicit correction (Dressing Width is NOT part of this
-  // deduction — Dressing already sits between the Wardrobe and the Top
-  // Panel, so the Top Panel just fills whatever remains of the wall beyond
-  // the Wardrobe+Dressing):
-  //   IF Fix Patti height >= Loft height:
-  //     Top Panel Width = Total Room Width − Wardrobe Carcass Width − Dressing Width − Fix Patti Width
-  //   ELSE:
-  //     Top Panel Width = Total Room Width − Wardrobe Carcass Width − Dressing Width
-  // Uses the Wardrobe's own CARCASS width (entered Width minus Dressing,
-  // per wardrobeCarcassWidth()) plus Dressing's own width separately, since
-  // the entered Width no longer represents the carcass alone — using the
-  // raw entered Width here would double-count Dressing's span and under-
-  // allocate the Top Panel by exactly Dressing's width.
-  // Only seeds the DISPLAYED default before the user touches the field; a
-  // real stored value wins.
-  const wardrobeCarcassW = Math.max(1, wardrobeW - dressingTotalW);
-  const topPanelSubtractsFixPatti = fixPattiMaxH > 0 && fixPattiMaxH >= resolvedLoftHeight;
-  const topPanelWidthDefault = Math.max(
-    0,
-    totalWidthForCalc - wardrobeCarcassW - dressingTotalW
-      - (topPanelSubtractsFixPatti ? fixPattiTotalW : 0),
-  );
-  const topPanel: WardrobeTopPanelInput = {
-    enabled: isWardrobe && selectedAddons.has('top-panel'),
-    side: SIDE_OPTS[(addonDims['top-panel']?.side) ?? 0] ?? 'left',
-    widthMm: (addonDims['top-panel']?.W) ?? topPanelWidthDefault,
-    depthMm: (addonDims['top-panel']?.D) ?? 600,
-  };
-
-  // Loft Total Width — the Loft's OWN separate measurement field (per the
-  // user's explicit correction), independent of the Wardrobe's own 'Total
-  // Width' field (which still only drives the outer room-width dimension
-  // line and the Top Panel default). Falls back to totalWidthForCalc (the
-  // Wardrobe's own Total Width / composite width) as a sensible starting
-  // point only until the user actually types a value into this field —
-  // once set, a real stored value always wins, same override convention
-  // as every other computed-default addon field.
-  const loftTotalWidthDefault = totalWidthForCalc;
-  const loftTotalW = (addonDims['loft']?.totalW) ?? loftTotalWidthDefault;
-
-  // Loft Width = Loft Total Width − Fix Patti (Left+Right) − Khacha
-  // (Left+Right). Wardrobe/Dressing/Top Panel Width are NEVER part of
-  // this deduction (they sit below the Loft, not beside it). loft.widthMm
-  // is therefore already the final USABLE Loft Door Width — Door Count /
-  // One Door Width / the drawing all use it directly as the REAL,
-  // PHYSICAL width (drawn box/boundary — never includes the Attached-
-  // Dressing calculation allowance below).
-  const usableW = usableLoftDoorWidthWithKhacha(loftTotalW, fixPatti, khacha);
-
-  // Attached Side Dressing -> Loft Door Width calculation-only +20mm
-  // allowance — per the user's explicit, repeated spec: a real 20mm
-  // fabrication gap between the Wardrobe's own door and the Dressing's
-  // own door, which the Loft spans across, so its DOOR WIDTH (never its
-  // drawn geometry) must account for it. `dressing.enabled` is exactly
-  // "this Wardrobe has an Attached Side Dressing" (not a standalone
-  // Dressing product elsewhere) — the one condition specified. Uses the
-  // ONE shared calculateLoftDoorWidth() engine (engine/loftDoorEngine.ts)
-  // so Openable Wardrobe and Sliding Wardrobe never get two different
-  // formulas. doorCalculationWidthMm is handed to the geometry resolver
-  // as a SEPARATE field from widthMm — the resolver only ever uses it for
-  // the printed door-width number, never for the drawn Loft box itself.
-  const loftDoorCalc = calculateLoftDoorWidth({
-    actualLoftWidth: usableW,
-    doorCount: (addonDims['loft']?.doors) ?? recommendLoftDoorCount(usableW).doorCount,
-    hasAttachedDressing: dressing.enabled,
-  });
-  const doorCountDefault = recommendLoftDoorCount(usableW).doorCount;
-
-  const loft: WardrobeLoftInput = {
-    enabled: isWardrobe && selectedAddons.has('loft'),
-    mode: loftMode,
-    widthMm: usableW,
-    heightMm: resolvedLoftHeight,
-    depthMm: loftDepthMm,
-    doorCount: (addonDims['loft']?.doors) ?? doorCountDefault,
-    doorCalculationWidthMm: loftDoorCalc.calculationLoftWidth,
-  };
-
-  // Loft Side Panel — purely visual/informational extra measurement,
-  // Depth defaults to the Wardrobe's own Depth (live computed default,
-  // still editable) — same convention as Storage/Open Box/Study Table's
-  // own Depth defaults above.
-  const loftSidePanel: WardrobeLoftSidePanelInput = {
-    enabled: isWardrobe && selectedAddons.has('loft-side-panel'),
-    widthMm: (addonDims['loft-side-panel']?.W) ?? 100,
-    heightMm: (addonDims['loft-side-panel']?.H) ?? 400,
-    depthMm: (addonDims['loft-side-panel']?.D) ?? (n(dims.D ?? 0) || 600),
-  };
-
-  // Extra Storage — a real box beside the Wardrobe/Dressing, with its OWN
-  // door calculation from Storage Width alone (spec §29: "Do NOT calculate
-  // Storage Doors using Room Width, Loft Width, Wardrobe Width"). Depth
-  // defaults to Wardrobe Depth (spec §28), same "live computed default,
-  // still editable" pattern as Loft Height/Door Count.
-  // storagePosition/openBoxPosition below are the RAW stored dropdown
-  // value, which PERSISTS once ever set even after the addon card itself
-  // is toggled back off — storage/openBox.position (and every left/right
-  // .enabled below) must gate on selectedAddons too, the same real bug
-  // just fixed for Fix Patti/Khacha above (a stale Left/Both position
-  // would otherwise keep drawing a phantom Storage/Open Box even after
-  // the addon showed "not selected" in the UI).
-  const storageAddonActive = isWardrobe && selectedAddons.has('storage');
-  const storagePosition = storageAddonActive ? (SIDE_OR_NONE_OPTS[(addonDims['storage']?.position) ?? 0] ?? 'none') : 'none';
-  const storageLeftWidth = (addonDims['storage']?.leftW) ?? 600;
-  const storageRightWidth = (addonDims['storage']?.rightW) ?? 600;
-  const storage: WardrobeStorageInput = {
-    position: storagePosition,
-    left: {
-      enabled: storagePosition === 'left' || storagePosition === 'both',
-      heightMm: (addonDims['storage']?.leftH) ?? 450,
-      widthMm: storageLeftWidth,
-      depthMm: (addonDims['storage']?.leftD) ?? (n(dims.D ?? 0) || 600),
-      doorCount: (addonDims['storage']?.leftDoors) ?? recommendLoftDoorCount(storageLeftWidth).doorCount,
-    },
-    right: {
-      enabled: storagePosition === 'right' || storagePosition === 'both',
-      heightMm: (addonDims['storage']?.rightH) ?? 450,
-      widthMm: storageRightWidth,
-      depthMm: (addonDims['storage']?.rightD) ?? (n(dims.D ?? 0) || 600),
-      doorCount: (addonDims['storage']?.rightDoors) ?? recommendLoftDoorCount(storageRightWidth).doorCount,
-    },
-  };
-
-  // Open Box — a small open box in the top pocket (top edge = Loft
-  // bottom), no door calculation, keeping its own entered W/H/D.
-  //   - WITH a Storage Box on the same side: sits directly below the
-  //     Storage Box in the same column; Width defaults to the Storage Box
-  //     Width (reference: "W = 340, by default same as Storage Box W").
-  //   - WITHOUT a Storage Box: takes the Storage Box's own top spot;
-  //     defaults to a small box — W 300 / H 200 / D 200 (reference:
-  //     "Open Box Without Storage box — W=300, H=200, D=200").
-  // The user's entered value always wins over any default.
-  const openBoxAddonActive = isWardrobe && selectedAddons.has('open-box');
-  const openBoxPosition = openBoxAddonActive ? (SIDE_OR_NONE_OPTS[(addonDims['open-box']?.position) ?? 0] ?? 'none') : 'none';
-  const hasStorageLeft = (storage.position === 'left' || storage.position === 'both') && storage.left.enabled;
-  const hasStorageRight = (storage.position === 'right' || storage.position === 'both') && storage.right.enabled;
-  const openBox: WardrobeOpenBoxInput = {
-    position: openBoxPosition,
-    left: {
-      enabled: openBoxPosition === 'left' || openBoxPosition === 'both',
-      heightMm: (addonDims['open-box']?.leftH) ?? 200,
-      widthMm: (addonDims['open-box']?.leftW) ?? (hasStorageLeft ? storage.left.widthMm : 300),
-      depthMm: (addonDims['open-box']?.leftD) ?? (hasStorageLeft ? (n(dims.D ?? 0) || 450) : 200),
-    },
-    right: {
-      enabled: openBoxPosition === 'right' || openBoxPosition === 'both',
-      heightMm: (addonDims['open-box']?.rightH) ?? 200,
-      widthMm: (addonDims['open-box']?.rightW) ?? (hasStorageRight ? storage.right.widthMm : 300),
-      depthMm: (addonDims['open-box']?.rightD) ?? (hasStorageRight ? (n(dims.D ?? 0) || 450) : 200),
-    },
-  };
-
-  // Study Table attached to the Wardrobe — uses the SAME measurement set +
-  // drawing as the standalone Study Table product (H/W/D + optional
-  // Storage + optional Side Panel); the extra `Position` dropdown docks
-  // it to the Wardrobe on that side (Left / Right / Both). Can coexist
-  // with Side Dressing — Dressing sits flush to the wardrobe, the Study
-  // Table docks outside it on its chosen side.
-  const studyTableAddonActive = isWardrobe && selectedAddons.has('study-table');
-  const studyTablePosition = studyTableAddonActive
-    ? (SIDE_OPTS[(addonDims['study-table']?.side) ?? 0] ?? 'left')
-    : 'none';
-  const studyTable: WardrobeStudyTableInput = {
-    position: studyTablePosition,
-    heightMm: (addonDims['study-table']?.H) ?? 750,
-    widthMm: (addonDims['study-table']?.W) ?? 1200,
-    depthMm: (addonDims['study-table']?.D) ?? (n(dims.D ?? 0) || 600),
-    storage: SIDE_OR_NONE_OPTS[(addonDims['study-table']?.storage) ?? 0] ?? 'none',
-    storageWidthMm: (addonDims['study-table']?.storageW) ?? 450,
-    sidePanel: SIDE_OR_NONE_OPTS[(addonDims['study-table']?.sidePanel) ?? 0] ?? 'none',
-  };
-
-  // L-Shaped Loft — Wall B, a fully independent second Loft standing on
-  // the adjacent wall, using the EXACT SAME door-count/width formulas as
-  // Wall A (the main Loft) above, but calculated completely
-  // independently — its own entered Width, its own Fix Patti/Khacha
-  // (never combined with Wall A's), never combined into one width for
-  // door calculation, per the user's own explicit instruction.
-  const alFixPatti: WardrobeFixPattiInput = {
-    position: FIX_PATTI_POSITIONS[(addonDims['adjacent-loft']?.fpPosition) ?? 0] ?? 'none',
-    leftHeightMm: (addonDims['adjacent-loft']?.fpLeftH) ?? 400,
-    leftWidthMm: (addonDims['adjacent-loft']?.fpLeftW) ?? 100,
-    rightHeightMm: (addonDims['adjacent-loft']?.fpRightH) ?? 400,
-    rightWidthMm: (addonDims['adjacent-loft']?.fpRightW) ?? 100,
-  };
-  const alKhacha: WardrobeKhachaInput = {
-    position: KHACHA_POSITIONS[(addonDims['adjacent-loft']?.khPosition) ?? 0] ?? 'none',
-    leftHeightMm: (addonDims['adjacent-loft']?.khLeftH) ?? 400,
-    leftWidthMm: (addonDims['adjacent-loft']?.khLeftW) ?? 100,
-    rightHeightMm: (addonDims['adjacent-loft']?.khRightH) ?? 400,
-    rightWidthMm: (addonDims['adjacent-loft']?.khRightW) ?? 100,
-  };
-  // Wall B's own entered Total Width (its own room-wall span, entirely
-  // separate from Wall A's) — its usable Loft Door Width is this value
-  // minus Wall B's own Fix Patti + Khacha, same shared formula as Wall A.
-  const alEnteredWidth = (addonDims['adjacent-loft']?.totalW) ?? 2000;
-  const alUsableW = usableLoftDoorWidthWithKhacha(alEnteredWidth, alFixPatti, alKhacha);
-  const alDoorCountDefault = recommendLoftDoorCount(alUsableW).doorCount;
-  const adjacentLoft: WardrobeAdjacentLoftInput = {
-    enabled: isWardrobe && selectedAddons.has('adjacent-loft'),
-    side: ((addonDims['adjacent-loft']?.side) ?? 0) === 1 ? 'right' : 'left',
-    mode: ((addonDims['adjacent-loft']?.mode) ?? 0) === 1 ? 'box' : 'door',
-    widthMm: alUsableW,
-    heightMm: (addonDims['adjacent-loft']?.H) ?? 400,
-    depthMm: (addonDims['adjacent-loft']?.D) ?? 350,
-    doorCount: (addonDims['adjacent-loft']?.doors) ?? alDoorCountDefault,
-    fixPatti: alFixPatti,
-    khacha: alKhacha,
-  };
-
-  return { dressing, topPanel, loft, loftTotalWidthDefault, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft };
-}
 
 function deriveShoeRackAddonInputs(productId: ProductId, selectedAddons: Set<string>, addonDims: Record<string, Record<string, number>>) {
   const isShoeRack = productId === 'shoe-rack';
@@ -576,7 +248,7 @@ function elementAndIssuesForSession(product: ProductTemplate, session: ProductSe
     const wardrobeDoorCount = n(dims.doorCount ?? 0);
     const drawing = resolveSimpleWardrobePlan({ W: n(dims.W ?? 0), H: n(dims.H ?? 0), D: n(dims.D ?? 0), doorCount: wardrobeDoorCount, doorWidthsMm: wardrobeCalculatedDoorWidths(dims, selectedAddons, addonDims, wardrobeDoorCount), dressing, topPanel, loft, loftSidePanel, fixPatti, khacha, storage, openBox, studyTable, adjacentLoft, totalWidthMm: n(dims.totalWidth ?? 0), totalHeightMm: n(dims.totalHeight ?? 0) });
     return {
-      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} adjacentLoft={adjacentLoft} />,
+      element: <SimpleWardrobeDrawing dims={dims} dressing={dressing} topPanel={topPanel} loft={loft} loftSidePanel={loftSidePanel} fixPatti={fixPatti} khacha={khacha} storage={storage} openBox={openBox} studyTable={studyTable} adjacentLoft={adjacentLoft} />,
       criticalIssues: drawing.issues.filter((i) => i.severity === 'CRITICAL').map((i) => i.message),
     };
   }
@@ -596,7 +268,7 @@ function captionForSession(product: ProductTemplate, dims: Record<string, number
   return product.measurementFields
     .filter((f) => f.unit === 'mm')
     .slice(0, 4)
-    .map((f) => `${f.label.replace(/^(Bed|Wardrobe|Table)\s+/i, '').split(' ')[0]}: ${Math.round(n(dims[f.key] ?? f.defaultValue))}mm`)
+    .map((f) => `${f.label.replace(/^(Bed|Wardrobe|Table)\s+/i, '').split(' ')[0]}: ${formatLength(n(dims[f.key] ?? f.defaultValue), getLengthUnit(), 0).replace(' inch', '"').replace(' mm', 'mm')}`)
     .join('   ');
 }
 
@@ -801,8 +473,13 @@ export function MyStatsPanel() {
 // DISPLAY back to the last committed value (matching the "don't change
 // current functionality / default values" instruction) rather than
 // leaving a stale, never-committed "" sitting in dims.
+//
+// `unit` (length fields only — omit for counts): `value` is always the
+// stored millimetre value; the box shows and accepts it in the shared
+// MM/Inch preference and commits back in millimetres, so nothing
+// downstream ever sees an inch value.
 function MeasurementNumberInput({
-  value, onCommit, min, max, step, className, style,
+  value, onCommit, min, max, step, className, style, unit,
 }: {
   value: number;
   onCommit: (n: number) => void;
@@ -811,17 +488,21 @@ function MeasurementNumberInput({
   step?: number;
   className?: string;
   style?: React.CSSProperties;
+  unit?: LengthUnit;
 }) {
-  const [draft, setDraft] = useState<string>(String(value));
+  const shown = (v: number) => String(unit ? mmToDisplay(v, unit) : v);
+  const [draft, setDraft] = useState<string>(shown(value));
   const editingRef = useRef(false);
 
   // Syncs the display from the real value whenever it changes from OUTSIDE
   // this input (product switch, History recall, another control affecting
-  // the same field) — but never while the user is actively typing in this
-  // exact box, so an external re-render can't stomp on an in-progress edit.
+  // the same field, a MM/Inch switch) — but never while the user is
+  // actively typing in this exact box, so an external re-render can't
+  // stomp on an in-progress edit.
   useEffect(() => {
-    if (!editingRef.current) setDraft(String(value));
-  }, [value]);
+    if (!editingRef.current) setDraft(shown(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, unit]);
 
   return (
     <input
@@ -843,7 +524,7 @@ function MeasurementNumberInput({
         setDraft(raw);
         const parsed = Number(raw);
         if (raw !== '' && raw !== '-' && !raw.endsWith('.') && Number.isFinite(parsed)) {
-          onCommit(parsed);
+          onCommit(unit ? displayToMm(parsed, unit) : parsed);
         }
       }}
       onBlur={() => {
@@ -851,7 +532,7 @@ function MeasurementNumberInput({
         // Left empty/invalid on blur — snap the DISPLAY back to the last
         // real committed value (never silently commit 0), matching "keep
         // the current default/standard measurement behavior".
-        setDraft(String(value));
+        setDraft(shown(value));
       }}
       className={className}
       style={style}
@@ -959,6 +640,9 @@ export const ProductFlow: React.FC = () => {
     activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeWorkspace]);
   const { model, setEvidenceNote, saveMeasurementSnapshot, updateProject } = useApp();
+  // Shared MM/Inch entry unit — every length field shows/accepts this unit;
+  // stored values stay in millimetres.
+  const lengthUnit = useLengthUnit();
   const product = getProduct(selectedId);
   const addons = PRODUCT_ADDONS[selectedId] ?? [];
   // Bed's own field groups split by Bed Measurement Type — the plain "Bed"
@@ -988,6 +672,24 @@ export const ProductFlow: React.FC = () => {
     selectedId === 'tv-unit' && (fieldKey === 'mandirH' || fieldKey === 'partitionH')
       ? Number(dims.H) || staticDefault
       : staticDefault;
+
+  // Formula-driven main fields — shown pre-filled with the live formula
+  // value and still editable; the stored value stays 0 ("not entered")
+  // until the user types their own, which then always wins. Loft Box /
+  // Kitchen Loft: Number of Shutters (recommended for this Width) and
+  // Shutter Width ((W − count × 2mm) / count).
+  const loftBoxComputed = selectedId === 'loft-box' || selectedId === 'kitchen-loft' ? loftBoxInputsFromDims(dims) : null;
+  const computedMainField = (fieldKey: string): number | undefined => {
+    if (!loftBoxComputed) return undefined;
+    if (fieldKey === 'shutterCount') return loftBoxComputed.recommendedShutterCount;
+    if (fieldKey === 'shutterW') return Math.round(loftBoxComputed.formulaShutterWidth * 100) / 100;
+    return undefined;
+  };
+  const measurementFieldValue = (fieldKey: string, staticDefault: number | string): number => {
+    const computed = computedMainField(fieldKey);
+    if (computed !== undefined && !(Number(dims[fieldKey]) > 0)) return computed;
+    return Number(dims[fieldKey] ?? measurementFieldDefault(fieldKey, staticDefault));
+  };
 
   // The real key into productSessions/multiSelectIds for whatever is
   // currently open — combines selectedId (which product TYPE) with
@@ -1097,6 +799,17 @@ export const ProductFlow: React.FC = () => {
       return next;
     });
     markInProgress();
+  }, [markInProgress]);
+
+  // Drops a manually entered addon value so the field goes back to its
+  // live formula default.
+  const handleAddonDimReset = useCallback((addonId: string, key: string) => {
+    markInProgress();
+    setAddonDims((prev) => {
+      if (!prev[addonId] || !(key in prev[addonId])) return prev;
+      const { [key]: _removed, ...rest } = prev[addonId];
+      return { ...prev, [addonId]: rest };
+    });
   }, [markInProgress]);
 
   const handleAddonDimChange = useCallback((addonId: string, key: string, val: number) => {
@@ -1273,7 +986,7 @@ export const ProductFlow: React.FC = () => {
   const { lst: bedLST, rst: bedRST, profileShutter: bedProfileShutter } = deriveBedAddonInputs(selectedId, selectedAddons, addonDims, n(dims.H ?? 0));
   const { centerTable: childrenBedCenterTable, lst: childrenBedLST, rst: childrenBedRST } = deriveChildrenBedAddonInputs(selectedId, dims, selectedAddons, addonDims);
   const isWardrobe = selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe';
-  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftTotalWidthDefault: wardrobeLoftTotalWidthDefault, loftSidePanel: wardrobeLoftSidePanel, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
+  const { dressing: wardrobeDressing, topPanel: wardrobeTopPanel, loft: wardrobeLoft, loftTotalWidthDefault: wardrobeLoftTotalWidthDefault, loftDoorWidthFormula: wardrobeLoftDoorWidthFormula, loftSidePanel: wardrobeLoftSidePanel, fixPatti: wardrobeFixPatti, khacha: wardrobeKhacha, storage: wardrobeStorage, openBox: wardrobeOpenBox, studyTable: wardrobeStudyTable, adjacentLoft: wardrobeAdjacentLoft } = deriveWardrobeAddonInputs(selectedId, dims, selectedAddons, addonDims);
   // Live-computed defaults for the Wardrobe's own auto-calculated-but-
   // editable fields (Top Panel Width, Loft Height, Loft Door Count) — the
   // generic "Add Extra Items" field renderer below falls back to a plain
@@ -1284,7 +997,11 @@ export const ProductFlow: React.FC = () => {
   // as before.
   const wardrobeComputedAddonDefaults: Record<string, Record<string, number>> = isWardrobe ? {
     'top-panel': { W: wardrobeTopPanel.widthMm },
-    loft: { totalW: wardrobeLoftTotalWidthDefault, H: wardrobeLoft.heightMm, doors: wardrobeLoft.doorCount },
+    // Dressing Height defaults to the Wardrobe Height, still editable.
+    dressing: { H: n(dims.H ?? 0) },
+    // Loft Door Width defaults to the shared Loft formula
+    // ((Loft Width [+20mm with attached Dressing] − doors × 2mm) / doors).
+    loft: { totalW: wardrobeLoftTotalWidthDefault, H: wardrobeLoft.heightMm, doors: wardrobeLoft.doorCount, doorW: Math.round(wardrobeLoftDoorWidthFormula * 100) / 100 },
     // Storage's own Depth (defaults to Wardrobe Depth) and Door Count
     // (auto-recommended from Storage Width alone, spec §29) — same "live
     // computed default, still editable, never overwrites a real user
@@ -1998,8 +1715,8 @@ export const ProductFlow: React.FC = () => {
                           style={{ borderLeft: `2px solid ${group.color}40`, paddingLeft: 8 }}>
                           <label className="text-xs font-semibold" style={{ color: `${group.color}cc` }}>
                             {field.label}
-                            {field.unit !== 'select' && field.unit !== 'bool' && field.unit !== 'count' && (
-                              <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>({field.unit})</span>
+                            {field.unit === 'mm' && (
+                              <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>({unitLabel(lengthUnit)})</span>
                             )}
                           </label>
                           {field.unit === 'select' ? (
@@ -2023,19 +1740,27 @@ export const ProductFlow: React.FC = () => {
                               {Number(dims[field.key]) === 1 ? 'Yes' : 'No'}
                             </button>
                           ) : (
-                            <div className="flex gap-1">
-                              <MeasurementNumberInput
-                                value={Number(dims[field.key] ?? measurementFieldDefault(field.key, field.defaultValue))}
-                                onCommit={(val) => handleDimChange(field.key, val)}
-                                min={field.min} max={field.max} step={field.step ?? 1}
-                                className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
-                                style={{ background: '#1e293b', color: '#e2e8f0', border: `1px solid ${group.color}40` }}
-                              />
-                              {field.unit !== 'count' && (
-                                <span className="flex items-center text-xs px-1.5 rounded"
-                                  style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                            <>
+                              <div className="flex gap-1">
+                                <MeasurementNumberInput
+                                  value={measurementFieldValue(field.key, field.defaultValue)}
+                                  onCommit={(val) => handleDimChange(field.key, val)}
+                                  min={field.min} max={field.max} step={field.step ?? 1}
+                                  unit={field.unit === 'mm' ? lengthUnit : undefined}
+                                  className="flex-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                  style={{ background: '#1e293b', color: '#e2e8f0', border: `1px solid ${group.color}40` }}
+                                />
+                                {field.unit === 'mm' && <UnitSelect />}
+                              </div>
+                              {computedMainField(field.key) !== undefined && Number(dims[field.key]) > 0 && (
+                                <button
+                                  onClick={() => handleDimChange(field.key, 0)}
+                                  className="self-start text-[11px] underline"
+                                  style={{ color: '#64748b' }}>
+                                  ↺ Use formula value ({field.unit === 'mm' ? formatLength(computedMainField(field.key)!, lengthUnit, 2) : computedMainField(field.key)})
+                                </button>
                               )}
-                            </div>
+                            </>
                           )}
                         </div>
                       ))}
@@ -2053,6 +1778,12 @@ export const ProductFlow: React.FC = () => {
                         Extra 2mm Deduction toggle. This fully replaces the
                         old per-door manual Width fields. */}
                     {group.label === 'Door' && (selectedId === 'openable-wardrobe' || selectedId === 'sliding-wardrobe') && (() => {
+                      // Door Width — pre-filled with the calculated value
+                      // ((Wardrobe usable Width − doors × 2mm [− 2mm
+                      // extra]) / doors) and editable; a typed value is
+                      // stored in dims.doorWidth and used by the drawing,
+                      // cutlist and PDF (wardrobeDoorWidthBreakdown, the one
+                      // shared source).
                       const doorCount = Math.max(0, Math.round(Number(dims.doorCount ?? 0)) || 0);
                       if (doorCount <= 0) return null;
                       const wardrobeDressingForDoor: WardrobeDressingInput = {
@@ -2061,18 +1792,17 @@ export const ProductFlow: React.FC = () => {
                         widthMm: (addonDims['dressing']?.W) ?? 400,
                         hasMirror: false, drawerCount: 0, totalDrawerHeightMm: 0,
                       };
-                      const carcassW = wardrobeCarcassWidth(Number(dims.W ?? 0), wardrobeDressingForDoor);
-                      const extraOn = Number(dims.doorExtraDeduction ?? 0) === 1;
-                      const calc = calculateWardrobeDoorWidth({ wardrobeDoorWidth: carcassW, doorCount, extra2mmDeduction: extraOn });
+                      const door = wardrobeDoorWidthBreakdown(dims, wardrobeDressingForDoor, doorCount);
+                      const { calc, carcassW, extraOn } = door;
                       return (
                         <div className="flex flex-col gap-1.5 mt-1" style={{ borderLeft: `2px solid ${group.color}40`, paddingLeft: 8 }}>
                           <div className="flex items-center justify-between text-xs">
                             <span style={{ color: '#94a3b8' }}>Wardrobe Width (usable)</span>
-                            <span className="font-mono" style={{ color: '#e2e8f0' }}>{Math.round(carcassW)} mm</span>
+                            <span className="font-mono" style={{ color: '#e2e8f0' }}>{formatLength(carcassW, lengthUnit)}</span>
                           </div>
                           <div className="flex items-center justify-between text-xs">
                             <span style={{ color: '#94a3b8' }}>Mandatory Deduction ({doorCount} × 2mm)</span>
-                            <span className="font-mono" style={{ color: '#e2e8f0' }}>{calc.mandatoryDeductionMm} mm</span>
+                            <span className="font-mono" style={{ color: '#e2e8f0' }}>{formatLength(calc.mandatoryDeductionMm, lengthUnit)}</span>
                           </div>
                           <label className="flex items-center justify-between gap-2 text-xs cursor-pointer">
                             <span style={{ color: `${group.color}cc` }} className="font-semibold">Extra 2mm Deduction</span>
@@ -2088,13 +1818,33 @@ export const ProductFlow: React.FC = () => {
                               {extraOn ? 'Yes' : 'No'}
                             </button>
                           </label>
-                          <div className="flex items-center justify-between text-xs pt-1 mt-0.5" style={{ borderTop: `1px dashed ${group.color}40` }}>
-                            <span className="font-semibold" style={{ color: '#e2e8f0' }}>Calculated Door Width</span>
-                            <span className="font-mono font-bold" style={{ color: calc.valid ? group.color : '#f87171' }}>
-                              {calc.valid ? calc.doorWidth.toFixed(1) : '—'} mm
+                          <div className="flex flex-col gap-0.5 pt-1 mt-0.5" style={{ borderTop: `1px dashed ${group.color}40` }}>
+                            <label className="text-xs font-semibold" style={{ color: `${group.color}cc` }}>
+                              Door Width <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>({unitLabel(lengthUnit)})</span>
+                            </label>
+                            <div className="flex gap-1">
+                              <MeasurementNumberInput
+                                value={Math.round(door.doorWidth * 100) / 100}
+                                onCommit={(val) => handleDimChange('doorWidth', val)}
+                                unit={lengthUnit}
+                                className="flex-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                style={{ background: '#1e293b', color: calc.valid || door.isOverridden ? '#e2e8f0' : '#f87171', border: `1px solid ${group.color}40` }}
+                              />
+                              <UnitSelect />
+                            </div>
+                            <span className="text-[11px]" style={{ color: '#64748b' }}>
+                              Formula: ({Math.round(carcassW)} − {calc.totalDeductionMm}) / {doorCount} = {calc.valid ? `${calc.doorWidth.toFixed(1)} mm` : '—'}
                             </span>
+                            {door.isOverridden && (
+                              <button
+                                onClick={() => setDims((prev) => { const { doorWidth: _removed, ...rest } = prev; return rest; })}
+                                className="self-start text-[11px] underline"
+                                style={{ color: '#64748b' }}>
+                                ↺ Use formula value
+                              </button>
+                            )}
                           </div>
-                          {!calc.valid && (
+                          {!calc.valid && !door.isOverridden && (
                             <p className="text-xs" style={{ color: '#f87171' }}>⚠ Reduce Door Count or increase Wardrobe Width — the calculated Door Width must be greater than 0.</p>
                           )}
                         </div>
@@ -2109,8 +1859,8 @@ export const ProductFlow: React.FC = () => {
                     <div key={field.key} className="flex flex-col gap-0.5">
                       <label className="text-xs font-semibold" style={{ color: '#94a3b8' }}>
                         {field.label}
-                        {field.unit !== 'select' && field.unit !== 'bool' && field.unit !== 'count' && (
-                          <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>({field.unit})</span>
+                        {field.unit === 'mm' && (
+                          <span className="ml-1 text-xs font-mono" style={{ color: '#475569' }}>({unitLabel(lengthUnit)})</span>
                         )}
                       </label>
                       {field.unit === 'bool' ? (
@@ -2134,13 +1884,27 @@ export const ProductFlow: React.FC = () => {
                           {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                       ) : (
-                        <MeasurementNumberInput
-                          value={Number(dims[field.key] ?? field.defaultValue)}
-                          onCommit={(val) => handleDimChange(field.key, val)}
-                          min={field.min} max={field.max} step={field.step ?? 1}
-                          className="px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
-                          style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045' }}
-                        />
+                        <>
+                          <div className="flex gap-1">
+                            <MeasurementNumberInput
+                              value={measurementFieldValue(field.key, field.defaultValue)}
+                              onCommit={(val) => handleDimChange(field.key, val)}
+                              min={field.min} max={field.max} step={field.step ?? 1}
+                              unit={field.unit === 'mm' ? lengthUnit : undefined}
+                              className="flex-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                              style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #243045' }}
+                            />
+                            {field.unit === 'mm' && <UnitSelect />}
+                          </div>
+                          {computedMainField(field.key) !== undefined && Number(dims[field.key]) > 0 && (
+                            <button
+                              onClick={() => handleDimChange(field.key, 0)}
+                              className="self-start text-[11px] underline"
+                              style={{ color: '#64748b' }}>
+                              ↺ Use formula value ({field.unit === 'mm' ? formatLength(computedMainField(field.key)!, lengthUnit, 2) : computedMainField(field.key)})
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   ))}
@@ -2294,7 +2058,7 @@ export const ProductFlow: React.FC = () => {
                           <div className="px-3 pb-3 flex flex-col gap-2 border-t" style={{ borderColor: '#2d1f4a' }}>
                             {visibleFields.map((field) => (
                               <div key={field.key} className="flex flex-col gap-0.5 mt-2">
-                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>{field.label}{!field.options && field.kind !== 'checkbox' && !field.isCount && ' (mm)'}</label>
+                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>{field.label}{!field.options && field.kind !== 'checkbox' && !field.isCount && ` (${unitLabel(lengthUnit)})`}</label>
                                 {field.kind === 'checkbox' ? (
                                   <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer"
                                     style={{ background: '#1e293b', border: '1px solid #3b1f6a', color: '#e2e8f0' }}>
@@ -2321,30 +2085,27 @@ export const ProductFlow: React.FC = () => {
                                         value={Number(adDims[field.key] ?? effectiveDefault(field.key, field.defaultValue))}
                                         onCommit={(val) => handleAddonDimChange(addon.id, field.key, val)}
                                         min={field.min} max={field.max} step={field.step ?? 1}
-                                        className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                        unit={field.isCount ? undefined : lengthUnit}
+                                        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                                         style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
                                       />
-                                      {!field.isCount && (
-                                        <span className="flex items-center text-xs px-1.5 rounded"
-                                          style={{ background: '#131b27', color: '#475569' }}>mm</span>
-                                      )}
+                                      {!field.isCount && <UnitSelect />}
                                     </div>
                                     <span className="text-xs font-mono" style={{ color: '#334155' }}>
-                                      {field.min}–{field.max}{field.isCount ? '' : 'mm'}
+                                      {field.isCount ? `${field.min}–${field.max}` : `${mmToDisplay(field.min, lengthUnit)}–${mmToDisplay(field.max, lengthUnit)} ${unitLabel(lengthUnit)}`}
                                     </span>
+                                    {adDims[field.key] !== undefined && wardrobeComputedAddonDefaults[addon.id]?.[field.key] !== undefined && (
+                                      <button
+                                        onClick={() => handleAddonDimReset(addon.id, field.key)}
+                                        className="self-start text-[11px] underline"
+                                        style={{ color: '#64748b' }}>
+                                        ↺ Use formula value ({field.isCount ? wardrobeComputedAddonDefaults[addon.id][field.key] : formatLength(wardrobeComputedAddonDefaults[addon.id][field.key], lengthUnit, 2)})
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </div>
                             ))}
-                            {addon.id === 'dressing' && (
-                              <div className="flex flex-col gap-0.5 mt-2">
-                                <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Height (mm)</label>
-                                <div className="rounded-lg px-2 py-1.5 text-sm font-mono" style={{ background: '#131b27', color: '#94a3b8', border: '1px dashed #3b1f6a' }}>
-                                  {Number(dims.H ?? 0)} mm
-                                </div>
-                                <span className="text-xs" style={{ color: '#334155' }}>Auto-fetched from Wardrobe Height</span>
-                              </div>
-                            )}
                             {addon.id === 'profile-shutter' && (() => {
                               // Dressing's own Width/Depth are ALWAYS real,
                               // independently editable fields now — never
@@ -2372,32 +2133,34 @@ export const ProductFlow: React.FC = () => {
                               return (
                                 <div className="flex flex-col gap-2 mt-2">
                                   <div className="flex flex-col gap-0.5">
-                                    <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width (mm)</label>
+                                    <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Width ({unitLabel(lengthUnit)})</label>
                                     <div className="flex gap-1">
                                       <MeasurementNumberInput
                                         value={Number(adDims['W'] ?? widthDefault)}
                                         onCommit={(val) => handleAddonDimChange(addon.id, 'W', val)}
                                         min={280} max={900} step={1}
-                                        className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                        unit={lengthUnit}
+                                        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                                         style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
                                       />
-                                      <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                      <UnitSelect />
                                     </div>
                                     {adDims['W'] === undefined && target.enabled && (
                                       <span className="text-xs" style={{ color: '#334155' }}>Starting value from {onLeft ? 'LST' : 'RST'} Width — edit freely</span>
                                     )}
                                   </div>
                                   <div className="flex flex-col gap-0.5">
-                                    <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Depth (mm)</label>
+                                    <label className="text-xs font-semibold" style={{ color: '#a78bfa' }}>Depth ({unitLabel(lengthUnit)})</label>
                                     <div className="flex gap-1">
                                       <MeasurementNumberInput
                                         value={Number(adDims['D'] ?? depthDefault)}
                                         onCommit={(val) => handleAddonDimChange(addon.id, 'D', val)}
                                         min={280} max={700} step={1}
-                                        className="flex-1 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
+                                        unit={lengthUnit}
+                                        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-mono outline-none"
                                         style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #3b1f6a' }}
                                       />
-                                      <span className="flex items-center text-xs px-1.5 rounded" style={{ background: '#131b27', color: '#475569' }}>mm</span>
+                                      <UnitSelect />
                                     </div>
                                     {adDims['D'] === undefined && target.enabled && (
                                       <span className="text-xs" style={{ color: '#334155' }}>Starting value from {onLeft ? 'LST' : 'RST'} Depth — edit freely</span>
@@ -2436,7 +2199,7 @@ export const ProductFlow: React.FC = () => {
               </button>
             ))}
             <span className="ml-auto text-[10px] sm:text-xs" style={{ color: '#334155' }}>
-              All dims in mm
+              Drawing dims in {unitLabel(lengthUnit)}
             </span>
           </div>
 

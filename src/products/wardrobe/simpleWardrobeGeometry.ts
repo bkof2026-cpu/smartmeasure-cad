@@ -52,7 +52,10 @@ export type WardrobeSide = 'left' | 'right' | 'both';
 export interface WardrobeDressingInput {
   enabled: boolean;
   side: WardrobeSide;
-  widthMm: number; // Height is always Wardrobe Height (auto-fetched)
+  widthMm: number;
+  /** Dressing Height — defaults to the Wardrobe Height (the form shows that
+   * as the starting value) but stays editable; undefined = Wardrobe Height. */
+  heightMm?: number;
   // Mirror (spec §22) — a real, separate optional component inside
   // Dressing, no independent measurement (fills the Dressing's own
   // upper portion, matching the reference layout).
@@ -197,6 +200,11 @@ export interface WardrobeLoftInput {
   // exactly as before. See calculateLoftDoorWidth() in
   // engine/loftDoorEngine.ts — the ONE place this +20mm value is computed.
   doorCalculationWidthMm?: number;
+  /** A manually entered Loft Door Width (the field defaults to the
+   * calculated value and stays editable) — when set it replaces the
+   * calculated per-door width in the printed labels and the cutlist. The
+   * drawn doors still divide the real Loft width equally. */
+  doorWidthOverrideMm?: number;
 }
 
 // Loft Side Panel — a NEW, purely visual/informational extra measurement
@@ -334,19 +342,28 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     // still listed separately (never silently merged into a "xN" row),
     // since a future edit to just one of them must never require
     // splitting an already-merged row back apart.
+    const n = widths.length;
+    const plain = (carcassW - n * 2) / n;
+    const withExtra = (carcassW - n * 2 - 2) / n;
     widths.forEach((w, i) => {
+      const widthRemark = Math.abs(w - plain) < 0.01
+        ? `Width = (Wardrobe Width ${Math.round(carcassW)} − ${n} × 2mm) / ${n} = ${w.toFixed(1)}mm`
+        : Math.abs(w - withExtra) < 0.01
+          ? `Width = (Wardrobe Width ${Math.round(carcassW)} − ${n} × 2mm − 2mm extra) / ${n} = ${w.toFixed(1)}mm`
+          : `Width entered manually = ${w.toFixed(1)}mm (formula value ${plain.toFixed(1)}mm)`;
       rows.push({
         component: `Door ${i + 1} of ${inp.doorCount}`, width: w, height: doorH, qty: 1,
-        remark: `Width entered (own per-door value) | Height = Wardrobe Height(${Math.round(inp.H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`,
+        remark: `${widthRemark} | Height = Wardrobe Height(${Math.round(inp.H)}) − ${WARDROBE_DOOR_HEIGHT_FRAME_ALLOWANCE_MM}mm − ${WARDROBE_SKIRTING_HEIGHT_MM}mm (skirting) = ${Math.round(doorH)}mm`,
       });
     });
   }
   if (inp.dressing.enabled) {
     const sideLabel = inp.dressing.side === 'both' ? 'Left + Right' : inp.dressing.side === 'left' ? 'Left' : 'Right';
     const qty = inp.dressing.side === 'both' ? 2 : 1;
-    rows.push({ component: `Side Dressing (${sideLabel})`, width: inp.dressing.widthMm, height: inp.H, qty, remark: `Width entered; Height = Wardrobe Height (auto-fetched, ${Math.round(inp.H)}mm)` });
+    const dressH = inp.dressing.heightMm ?? inp.H;
+    rows.push({ component: `Side Dressing (${sideLabel})`, width: inp.dressing.widthMm, height: dressH, qty, remark: inp.dressing.heightMm === undefined || Math.abs(dressH - inp.H) < 0.01 ? `Width entered; Height = Wardrobe Height (${Math.round(inp.H)}mm)` : `Width entered; Height entered (${Math.round(dressH)}mm)` });
     if (inp.dressing.hasMirror) {
-      rows.push({ component: 'Dressing Mirror', width: inp.dressing.widthMm, height: inp.H, qty: 1, remark: 'Width = Dressing Width, Height = Dressing Height (both auto-fetched) — no independent measurement' });
+      rows.push({ component: 'Dressing Mirror', width: inp.dressing.widthMm, height: dressH, qty: 1, remark: 'Width = Dressing Width, Height = Dressing Height (both auto-fetched) — no independent measurement' });
     }
     if (inp.dressing.drawerCount > 0) {
       rows.push({ component: `Dressing Drawer (x${inp.dressing.drawerCount})`, width: inp.dressing.widthMm, height: inp.dressing.totalDrawerHeightMm / inp.dressing.drawerCount, qty: inp.dressing.drawerCount, remark: `Drawer Width = Dressing Width (${Math.round(inp.dressing.widthMm)}mm, auto) | Total Drawer Height = ${Math.round(inp.dressing.totalDrawerHeightMm)}mm ÷ ${inp.dressing.drawerCount} drawers = ${(inp.dressing.totalDrawerHeightMm / inp.dressing.drawerCount).toFixed(1)}mm each` });
@@ -395,9 +412,12 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
     // each door's own cut width.
     const doorCalcW = inp.loft.doorCalculationWidthMm ?? usableW;
     const count = Math.max(1, Math.round(inp.loft.doorCount) || 1);
-    const doorW = loftOneDoorWidth(doorCalcW, count);
+    const formulaDoorW = loftOneDoorWidth(doorCalcW, count);
+    const doorW = inp.loft.doorWidthOverrideMm ?? formulaDoorW;
     const doorLabel = inp.loft.mode === 'box' ? `Loft Box Door (x${count})` : `Loft Door (x${count})`;
-    const doorRemark = doorCalcW !== usableW
+    const doorRemark = inp.loft.doorWidthOverrideMm !== undefined
+      ? `Door Width entered manually = ${doorW.toFixed(2)}mm (formula value would be ${formulaDoorW.toFixed(2)}mm)`
+      : doorCalcW !== usableW
       ? `Calculation Loft Width (physical ${Math.round(usableW)}mm + 20mm Attached-Dressing allowance) = ${Math.round(doorCalcW)}mm | Deduction = ${count} × 2 = ${count * 2}mm | Each Door = (${Math.round(doorCalcW)} − ${count * 2}) / ${count} = ${doorW.toFixed(2)}mm`
       : `Loft Width (Total Width − Fix Patti) = ${Math.round(usableW)}mm | Deduction = ${count} × 2 = ${count * 2}mm | Each Door = (${Math.round(usableW)} − ${count * 2}) / ${count} = ${doorW.toFixed(2)}mm`;
     rows.push({ component: doorLabel, width: doorW, height: inp.loft.heightMm, qty: count, remark: doorRemark });
@@ -487,6 +507,8 @@ export function simpleWardrobeCutlist(inp: SimpleWardrobeInputs): SimpleWardrobe
 }
 
 const DIAG = '#cc2200';
+/** Top Panel's own line/callout colour — distinct from every other component colour in this drawing. */
+export const TOP_PANEL_COLOR = '#0e7490';
 
 /**
  * The Wardrobe carcass's own drawn/calculated Width — the entered Width
@@ -855,7 +877,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     {
       const count = Math.max(1, Math.round(loft.doorCount) || 1);
       const doorW = loftOneDoorWidth(loftFrameWidth, count);
-      const labelDoorW = loftOneDoorWidth(loftDoorCalcWidth, count);
+      const labelDoorW = loft.doorWidthOverrideMm ?? loftOneDoorWidth(loftDoorCalcWidth, count);
       const gapMm = 2;
       let doorCursorX = doorsAreaX;
       // Each door is its OWN component box (with its own real border,
@@ -1144,28 +1166,43 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   const doorH = wardrobeDoorHeight(H);
   if (doorCount > 0) {
     const doorWidths = wardrobeDoorWidths(inp.doorWidthsMm, doorCount);
-    // Doors are drawn at their REAL entered widths, honestly — never
-    // silently stretched/shrunk to force-fit the carcass (same "do not
-    // silently reconcile a mismatch" convention already used elsewhere in
-    // this codebase, e.g. Kitchen's WIDTH_SUM_MISMATCH). A real mismatch
-    // between the doors' own total and the carcass Width surfaces as a
-    // WARNING below (see issues), never hidden.
+    // Door Width = (Carcass W − doorCount×2mm [− optional 2mm]) / doorCount,
+    // so the doors alone never fill the carcass — the deducted mm are the
+    // real shutter gaps. Spread that leftover evenly as one gap per door
+    // (half each side), so the divider between two doors sits in the
+    // middle of their shared gap and the last door ends at the carcass
+    // edge instead of a few mm short. A manually overridden Door Width
+    // that no longer fits leaves gap = 0 and is flagged below, never
+    // silently stretched.
+    const doorGap = Math.max(0, (W - doorWidths.reduce((a, b) => a + b, 0)) / doorCount);
+    // With a Loft directly on top, the wardrobe's top edge IS the Loft's
+    // bottom edge — a top-edge dimension chain would be pushed up INTO the
+    // Loft and print over its doors. Use an in-door width arrow instead
+    // (same convention as the Dressing's own width arrow).
+    const doorWidthInside = loft.enabled;
     let doorCursorX = wardrobeX;
-    // Door Width — each door's own real dimension tick along the
-    // wardrobe's own TOP edge (a chain of per-door "(W)" arrows, same
-    // convention as the Loft's own per-door width chain), so every door's
-    // real size is visible and always matches exactly where its divider
-    // line actually falls.
     doorWidths.forEach((dw, i) => {
       if (i > 0) {
         lines.push({ x1: doorCursorX, y1: wardrobeY, x2: doorCursorX, y2: wardrobeY + bodyH, color: '#1e3a8a', strokeWidth: 1.4 });
       }
-      dimReqs.push({
-        axis: 'h', x1: doorCursorX, y1: wardrobeY, x2: doorCursorX + dw, y2: wardrobeY, edge: 'top',
-        componentIds: ['wardrobe'], label: `${Math.round(dw)}`,
-        source: { formula: `Door ${i + 1} of ${doorCount} Width (entered — own per-door value)`, constants: [] },
-      });
-      doorCursorX += dw;
+      const doorX = doorCursorX + doorGap / 2;
+      const formula = `Door ${i + 1} of ${doorCount} Width = ${dw.toFixed(1)}mm (calculated: (Wardrobe Width − ${doorCount} × 2mm gap) / ${doorCount}, or the manually entered override)`;
+      if (doorWidthInside) {
+        const y = wardrobeY + Math.min(bodyH * 0.12, 260);
+        const inset = Math.min(6, dw * 0.06);
+        lines.push({
+          x1: doorX + inset, y1: y, x2: doorX + dw - inset, y2: y,
+          color: '#1e3a8a', strokeWidth: 0.9, arrowAtStart: true, arrowAtEnd: true,
+          label: `${Math.round(dw)}(W)`,
+        });
+      } else {
+        dimReqs.push({
+          axis: 'h', x1: doorX, y1: wardrobeY, x2: doorX + dw, y2: wardrobeY, edge: 'top',
+          componentIds: ['wardrobe'], label: `${Math.round(dw)}`,
+          source: { formula, constants: [] },
+        });
+      }
+      doorCursorX += dw + doorGap;
     });
     // Door Height — a real dimension arrow measuring the formula-derived
     // door height, anchored at the floor line (doors sit above the
@@ -1271,19 +1308,24 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // portion, dynamically generated per the entered count and Total
   // Drawer Height (auto-divided evenly, never asked per-drawer), each
   // one's Width always equal to Dressing Width (never a separate field).
+  // Dressing Height — the Wardrobe Height unless edited; bottom-aligned on
+  // the same floor line, never taller than the Wardrobe carcass.
+  const dressH = Math.min(bodyH, Math.max(1, dressing.heightMm ?? H));
+  const dressY = wardrobeY + bodyH - dressH;
+  const dressHDiffers = Math.abs(dressH - bodyH) > 0.5;
   function drawDressingInternals(dressId: string, dx: number, dressW: number, side: 'left' | 'right') {
     const hasMirror = dressing.hasMirror;
     const drawerCount = Math.max(0, Math.round(dressing.drawerCount) || 0);
-    const totalDrawerH = drawerCount > 0 ? Math.min(dressing.totalDrawerHeightMm, bodyH) : 0;
+    const totalDrawerH = drawerCount > 0 ? Math.min(dressing.totalDrawerHeightMm, dressH) : 0;
     if (hasMirror) {
-      const mirrorH = bodyH - totalDrawerH;
+      const mirrorH = dressH - totalDrawerH;
       components.push({
-        id: `${dressId}-mirror`, type: 'MIRROR', label: 'Mirror', x: dx, y: wardrobeY, width: dressW, height: mirrorH, qty: 1, visible: true,
+        id: `${dressId}-mirror`, type: 'MIRROR', label: 'Mirror', x: dx, y: dressY, width: dressW, height: mirrorH, qty: 1, visible: true,
         source: { formula: 'Dressing Mirror — Width = Dressing Width, Height = Dressing Height minus Drawer section (both auto-fetched), no independent measurement', constants: [] },
       });
     }
     if (drawerCount > 0) {
-      const drawerY = wardrobeY + bodyH - totalDrawerH;
+      const drawerY = dressY + dressH - totalDrawerH;
       const eachH = totalDrawerH / drawerCount;
       for (let i = 0; i < drawerCount; i++) {
         components.push({
@@ -1312,7 +1354,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // centre. Its Height is always the Wardrobe Height (auto-fetched) so no
   // separate height arrow is drawn.
   const drawDressingWidthArrow = (dx: number, w: number) => {
-    const y = wardrobeY + bodyH * 0.65;
+    const y = dressY + dressH * 0.65;
     const inset = Math.min(6, w * 0.06);
     lines.push({
       x1: dx + inset, y1: y, x2: dx + w - inset, y2: y,
@@ -1322,14 +1364,16 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   };
   if (dressL > 0) {
     const dx = wardrobeX - dressL;
-    components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing`, x: dx, y: wardrobeY, width: dressL, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
+    components.push({ id: 'dress-l', type: 'DRESSING', label: `Dressing`, x: dx, y: dressY, width: dressL, height: dressH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressL)}mm (entered) | Height = ${dressHDiffers ? `${Math.round(dressH)}mm (entered)` : 'Wardrobe Height'}`, constants: [] } });
     drawDressingWidthArrow(dx, dressL);
+    if (dressHDiffers) dimReqs.push({ axis: 'v', x1: dx, y1: dressY, x2: dx, y2: dressY + dressH, edge: 'left', componentIds: ['dress-l'], label: `${Math.round(dressH)} (Dressing H)`, source: { formula: 'Dressing Height (entered — defaults to Wardrobe Height)', constants: [] } });
     drawDressingInternals('dress-l', dx, dressL, 'left');
   }
   if (dressR > 0) {
     const dx = wardrobeX + W;
-    components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing`, x: dx, y: wardrobeY, width: dressR, height: bodyH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = Wardrobe Height (equal, auto-fetched)`, constants: [] } });
+    components.push({ id: 'dress-r', type: 'DRESSING', label: `Dressing`, x: dx, y: dressY, width: dressR, height: dressH, qty: 1, visible: true, source: { formula: `Width = ${Math.round(dressR)}mm (entered) | Height = ${dressHDiffers ? `${Math.round(dressH)}mm (entered)` : 'Wardrobe Height'}`, constants: [] } });
     drawDressingWidthArrow(dx, dressR);
+    if (dressHDiffers) dimReqs.push({ axis: 'v', x1: dx + dressR, y1: dressY, x2: dx + dressR, y2: dressY + dressH, edge: 'right', componentIds: ['dress-r'], label: `${Math.round(dressH)} (Dressing H)`, source: { formula: 'Dressing Height (entered — defaults to Wardrobe Height)', constants: [] } });
     drawDressingInternals('dress-r', dx, dressR, 'right');
   }
 
@@ -1380,8 +1424,10 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // another thin line under the Loft's edge. Never confused with Fix
   // Patti (which lives INSIDE the Loft's own row, above) — two completely
   // separate components at two completely separate drawing positions.
-  const panelLineColor = loft.enabled ? '#7c3aed' : '#222';
-  const panelLineWidth = loft.enabled ? 2.5 : 0.8;
+  // Its own cyan, never the Loft's violet — sitting right on the Loft's
+  // bottom edge, a violet line was indistinguishable from the Loft border.
+  const panelLineColor = TOP_PANEL_COLOR;
+  const panelLineWidth = 3;
   // Top Panel is a thin line, not a box, so its own W/D used to be shown
   // via a dimension arrow + diagonal leader right next to the panel —
   // exactly the kind of crowded, small-component annotation the callout
@@ -1415,7 +1461,7 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
     const px = wardrobeX + W + dressR;
     // Same outward extension on the right, to the composite's true
     // outer-right edge (wardrobeX + rightExtra).
-    const outerX = wardrobeX + rightExtra;
+    const outerX = wardrobeX + W + rightExtra;
     lines.push({ x1: px, y1: wardrobeY, x2: outerX, y2: wardrobeY, color: panelLineColor, strokeWidth: panelLineWidth });
     calloutRequests.push({
       id: 'top-panel-right-note',
@@ -1687,8 +1733,13 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
   // embedded Study Table, …) also emit "<n>(H)"/"<n> mm (W)" dims, and
   // `find` on a loose regex would grab one of those instead, leaving the
   // Total arrow pinned to the wrong (usually inner) tier.
-  const wardrobeWidthTier = resolvedDims.find((d) => d.componentIds.includes('wardrobe') && d.axis === 'h')?.tier ?? 0;
-  const wardrobeHeightTier = resolvedDims.find((d) => d.componentIds.includes('wardrobe') && d.axis === 'v')?.tier ?? 0;
+  // Must be the BOTTOM-edge "(W)" / RIGHT-edge "(H)" arrows specifically —
+  // the per-door width ticks (top edge) and Door H (left edge) also carry
+  // componentId 'wardrobe', and matching one of those instead left Total W
+  // pinned onto the very same tier as the Wardrobe's own W, printing the
+  // two labels on top of each other.
+  const wardrobeWidthTier = resolvedDims.find((d) => d.componentIds.includes('wardrobe') && d.axis === 'h' && d.edge === 'bottom')?.tier ?? 0;
+  const wardrobeHeightTier = resolvedDims.find((d) => d.componentIds.includes('wardrobe') && d.axis === 'v' && d.edge === 'right')?.tier ?? 0;
   const dimensions = resolvedDims.map((d) => {
     // Wardrobe's own W/H keeps its (inner) resolved tier; any enclosing
     // "Total W" / "Total H" is pushed one full tier further out.
@@ -1708,24 +1759,28 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       { key: 'H', label: 'Wardrobe Height', min: 1 },
       { key: 'D', label: 'Wardrobe Depth', min: 1 },
     ]),
-    // Doors are drawn at their own real entered widths, never silently
-    // stretched/shrunk to force-fit the carcass — a real mismatch between
-    // the doors' own total and the carcass Width is surfaced here, exactly
-    // the "do not silently reconcile" convention already used elsewhere
-    // (e.g. Kitchen's WIDTH_SUM_MISMATCH), rather than hidden.
+    // Doors + their mandatory 2mm/door gaps must add back up to the carcass
+    // Width (the optional extra 2mm deduction allows up to 2mm more slack).
+    // The calculated Door Width always satisfies this; only a manually
+    // overridden Door Width can break it — surfaced here, never hidden.
+    // (Previously compared the bare door sum to W, which ignored the gaps
+    // and so warned on EVERY wardrobe.)
     ...(() => {
       if (doorCount <= 0) return [];
       const widths = wardrobeDoorWidths(inp.doorWidthsMm, doorCount);
       const sum = widths.reduce((a, b) => a + b, 0);
-      if (Math.abs(sum - W) <= 1) return [];
+      const slack = W - sum - doorCount * 2;
+      if (slack >= -1 && slack <= 3) return [];
       return [{
         id: 'val-door-width-sum-mismatch', severity: 'WARNING' as const, code: 'DOOR_WIDTH_SUM_MISMATCH',
-        message: `⚠ The ${doorCount} door width(s) sum to ${Math.round(sum)}mm, which doesn't match the Wardrobe's own drawn Width (${Math.round(W)}mm) — doors are drawn at their real entered widths, not stretched to fit.`,
+        message: `⚠ ${doorCount} door(s) × ${widths[0].toFixed(1)}mm + ${doorCount} × 2mm gap = ${Math.round(sum + doorCount * 2)}mm, but the Wardrobe Width is ${Math.round(W)}mm — check the manually entered Door Width.`,
       }];
     })(),
     ...(dressing.enabled ? validateMeasurements({ W: dressing.widthMm }, [{ key: 'W', label: 'Dressing Width', min: 1 }]) : []),
     ...(dressing.enabled && dressing.drawerCount > 0 ? validateMeasurements({ H: dressing.totalDrawerHeightMm }, [{ key: 'H', label: 'Total Drawer Height', min: 1 }]) : []),
-    ...(dressing.enabled && dressing.drawerCount > 0 && dressing.totalDrawerHeightMm > bodyH ? [{ id: 'val-drawer-height-exceeds', severity: 'WARNING' as const, code: 'DRAWER_HEIGHT_EXCEEDS_DRESSING', message: `⚠ Total Drawer Height (${Math.round(dressing.totalDrawerHeightMm)}mm) exceeds Dressing Height (${Math.round(bodyH)}mm) — clamped to fit.` }] : []),
+    ...(dressing.enabled && dressing.drawerCount > 0 && dressing.totalDrawerHeightMm > dressH ? [{ id: 'val-drawer-height-exceeds', severity: 'WARNING' as const, code: 'DRAWER_HEIGHT_EXCEEDS_DRESSING', message: `⚠ Total Drawer Height (${Math.round(dressing.totalDrawerHeightMm)}mm) exceeds Dressing Height (${Math.round(dressH)}mm) — clamped to fit.` }] : []),
+    ...(dressing.enabled && dressing.heightMm !== undefined ? validateMeasurements({ H: dressing.heightMm }, [{ key: 'H', label: 'Dressing Height', min: 1 }]) : []),
+    ...(dressing.enabled && dressing.heightMm !== undefined && dressing.heightMm > bodyH + 0.5 ? [{ id: 'val-dressing-taller', severity: 'WARNING' as const, code: 'DRESSING_TALLER_THAN_WARDROBE', message: `⚠ Dressing Height (${Math.round(dressing.heightMm)}mm) is taller than the Wardrobe Height (${Math.round(bodyH)}mm) — drawn at the Wardrobe Height.` }] : []),
     ...(inp.studyTable.position !== 'none' ? validateMeasurements({ H: inp.studyTable.heightMm, W: inp.studyTable.widthMm, D: inp.studyTable.depthMm }, [{ key: 'H', label: 'Study Table Height', min: 1 }, { key: 'W', label: 'Study Table Width', min: 1 }, { key: 'D', label: 'Study Table Depth', min: 1 }]) : []),
     ...(inp.studyTable.position !== 'none' && inp.studyTable.storage !== 'none' ? validateMeasurements({ W: inp.studyTable.storageWidthMm }, [{ key: 'W', label: 'Study Table Storage Width', min: 1 }]) : []),
     ...(adjacentLoft.enabled ? validateMeasurements({ H: adjacentLoft.heightMm, W: adjacentLoft.widthMm }, [{ key: 'H', label: 'L-Shaped Loft (Wall B) Height', min: 1 }, { key: 'W', label: 'L-Shaped Loft (Wall B) Width', min: 1 }]) : []),
@@ -1767,9 +1822,11 @@ export function resolveSimpleWardrobePlan(inp: SimpleWardrobeInputs): ResolvedDr
       if (!loft.enabled) return [];
       // loft.widthMm is already the usable Loft Width (Total Room Width −
       // Fix Patti − Khacha) — no further deduction here.
-      const usableW = loft.widthMm;
+      // Checked against the SAME width that is printed on the drawing and
+      // cutlist (incl. the Attached-Dressing +20mm calculation allowance,
+      // or a manual override) — never the bare physical width.
       const count = Math.max(1, Math.round(loft.doorCount) || 1);
-      const oneDoorW = loftOneDoorWidth(usableW, count);
+      const oneDoorW = loft.doorWidthOverrideMm ?? loftOneDoorWidth(loft.doorCalculationWidthMm ?? loft.widthMm, count);
       const status = loftDoorWidthStatus(oneDoorW);
       if (status === 'below-min') return [{ id: 'val-loft-door-narrow', severity: 'WARNING' as const, code: 'LOFT_DOOR_TOO_NARROW', message: `⚠ Door width below 310mm (currently ${oneDoorW.toFixed(0)}mm) — reduce Door Count or increase Total Width.` }];
       if (status === 'above-max') return [{ id: 'val-loft-door-wide', severity: 'WARNING' as const, code: 'LOFT_DOOR_TOO_WIDE', message: `⚠ Door width exceeds 400mm (currently ${oneDoorW.toFixed(0)}mm) — increase Door Count.` }];

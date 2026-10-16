@@ -334,8 +334,17 @@ export function resolveLShapeKitchenPlan(inputs: LShapeKitchenDrawingInputs): Re
 
   // 5. Merge every wall (main row + relocated Inner Trolley) + the corner
   //    into one flat set of arrays.
-  let components = [...wallA.components, ...wallAInnerShifted.components, ...wallB.components, ...wallBInnerShifted.components, ...cornerResult.components];
-  let dimReqs = [...wallA.dimensionRequests, ...wallAInnerShifted.dimensions, ...wallB.dimensionRequests, ...wallBInnerShifted.dimensions, ...cornerResult.dimensions];
+  //    Both walls come out of the same resolveKitchenWall engine, so Wall B
+  //    repeats Wall A's fixed ids ('kitchen-body', 'pani-patti', ...) —
+  //    duplicate React keys in the rendered SVG and ambiguous componentIds
+  //    for the dimension engine/inspector. Namespace only Wall B's
+  //    colliding ids (and its own dimensions' references to them).
+  const wallAIds = new Set([...wallA.components, ...wallAInnerShifted.components].map((c) => c.id));
+  const wallBId = (id: string) => (wallAIds.has(id) ? `wall-b-${id}` : id);
+  const wallBComponents = [...wallB.components, ...wallBInnerShifted.components].map((c) => ({ ...c, id: wallBId(c.id) }));
+  const wallBDimReqs = [...wallB.dimensionRequests, ...wallBInnerShifted.dimensions].map((d) => ({ ...d, componentIds: d.componentIds.map(wallBId) }));
+  let components = [...wallA.components, ...wallAInnerShifted.components, ...wallBComponents, ...cornerResult.components];
+  let dimReqs = [...wallA.dimensionRequests, ...wallAInnerShifted.dimensions, ...wallBDimReqs, ...cornerResult.dimensions];
   let lines = [...wallA.lines, ...wallAInnerShifted.lines, ...wallB.lines, ...wallBInnerShifted.lines, ...cornerResult.lines];
   let calloutRequests = [...wallA.calloutRequests, ...wallB.calloutRequests, ...cornerResult.calloutRequests];
   const issues: ValidationIssue[] = [...wallA.issues, ...wallB.issues, ...cornerResult.issues, ...validateLCorner(wallA, wallB, corner)];

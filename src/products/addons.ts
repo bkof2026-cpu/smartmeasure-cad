@@ -136,7 +136,7 @@ export const FIELD_GROUPS: Record<string, FieldColorGroup[]> = {
   ],
   'loft-box': [
     { label: 'Loft Box', color: '#3b82f6', keys: ['H', 'W', 'D'] },
-    { label: 'Shutters', color: '#22c55e', keys: ['onlyShutter', 'shutterCount'] },
+    { label: 'Shutters', color: '#22c55e', keys: ['onlyShutter', 'shutterCount', 'shutterW'] },
     { label: 'Top Panel', color: '#7c3aed', keys: ['topPanel', 'topPanelSide', 'topPanelWidth'] },
   ],
   'study-table': [
@@ -284,17 +284,19 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
   ],
   'openable-wardrobe': [
     {
-      // Height is not a field here — always auto-fetched from the
-      // Wardrobe's own Height (see simpleWardrobeGeometry.ts), matching
-      // the same "H = auto" convention as the Bed's LST/RST.
+      // Height defaults to the Wardrobe's own Height but is editable —
+      // same convention as the Bed's LST/RST Height.
       id: 'dressing',
       label: 'Side Dressing',
       icon: '🪟',
-      description: 'Extra dressing panel beside the wardrobe — Height auto-fetched from Wardrobe Height',
+      description: 'Extra dressing panel beside the wardrobe — Height defaults to Wardrobe Height, editable',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
         { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
+        // Defaults live to the Wardrobe Height (ProductFlow.tsx's computed
+        // addon defaults) until the user types their own value.
+        { key: 'H', label: 'Height', defaultValue: 2090, min: 300, max: 2700 },
         { key: 'mirror', label: 'Add Mirror', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
         { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8, isCount: true },
         { key: 'drawerH', label: 'Total Drawer Height', defaultValue: 600, min: 100, max: 1800 },
@@ -344,6 +346,9 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
+        // Defaults live to the Loft formula ((Loft Width − doors × 2mm) /
+        // doors, +20mm with an attached Dressing) — still editable.
+        { key: 'doorW', label: 'Loft Door Width', defaultValue: 0, min: 100, max: 1200 },
       ],
     },
     {
@@ -504,11 +509,14 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
       id: 'dressing',
       label: 'Side Dressing',
       icon: '🪟',
-      description: 'Extra dressing panel beside the wardrobe — Height auto-fetched from Wardrobe Height',
+      description: 'Extra dressing panel beside the wardrobe — Height defaults to Wardrobe Height, editable',
       placement: 'composite',
       fields: [
         { key: 'side', label: 'Side', defaultValue: 0, min: 0, max: 2, options: ['Left', 'Right', 'Both'] },
         { key: 'W', label: 'Width', defaultValue: 400, min: 200, max: 800 },
+        // Defaults live to the Wardrobe Height (ProductFlow.tsx's computed
+        // addon defaults) until the user types their own value.
+        { key: 'H', label: 'Height', defaultValue: 2090, min: 300, max: 2700 },
         { key: 'mirror', label: 'Add Mirror', defaultValue: 0, min: 0, max: 1, kind: 'checkbox' },
         { key: 'drawers', label: 'Number of Drawers', defaultValue: 0, min: 0, max: 8, isCount: true },
         { key: 'drawerH', label: 'Total Drawer Height', defaultValue: 600, min: 100, max: 1800 },
@@ -540,6 +548,9 @@ export const PRODUCT_ADDONS: Record<string, AddonDef[]> = {
         { key: 'H', label: 'Loft Height', defaultValue: 400, min: 100, max: 900 },
         { key: 'D', label: 'Loft Depth', defaultValue: 350, min: 250, max: 500, showWhen: { key: 'mode', equals: 1 } },
         { key: 'doors', label: 'Number of Loft Doors', defaultValue: 2, min: 1, max: 12, isCount: true },
+        // Defaults live to the Loft formula ((Loft Width − doors × 2mm) /
+        // doors, +20mm with an attached Dressing) — still editable.
+        { key: 'doorW', label: 'Loft Door Width', defaultValue: 0, min: 100, max: 1200 },
       ],
     },
     {

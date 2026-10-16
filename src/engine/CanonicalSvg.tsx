@@ -1,5 +1,6 @@
 import React from 'react';
 import type { AnnotationLine, ComponentSpec, CustomShape, DimensionLine, NoteBox } from './types';
+import { useLengthUnit, convertLabelUnits } from '../units/lengthUnit';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared SVG primitives used by every product's technical drawing renderer.
@@ -217,7 +218,33 @@ interface RenderProps {
 }
 
 /** The one renderer every product's technical drawing view goes through. */
-export function TechnicalDrawingSvg({
+/**
+ * Every product drawing renders through here. Geometry engines always build
+ * their labels in millimetres; when the shared measurement unit is Inch,
+ * every label (title, dimensions, leader/line labels, note boxes, in-box
+ * component text) is converted here, once, before layout — so label-width
+ * measurement and collision handling see the real displayed text, and the
+ * same SVG mounted for the PDF comes out in inches too.
+ */
+export function TechnicalDrawingSvg(props: RenderProps) {
+  const unit = useLengthUnit();
+  if (unit === 'mm') return <TechnicalDrawingSvgInner {...props} unitLabel="mm" />;
+  const cv = (t: string) => convertLabelUnits(t, unit);
+  return (
+    <TechnicalDrawingSvgInner
+      {...props}
+      unitLabel="in"
+      title={cv(props.title)}
+      components={props.components.map((c) => (c.label ? { ...c, label: c.label.split('\n').map(cv).join('\n') } : c))}
+      dimensions={props.dimensions.map((d) => ({ ...d, label: cv(d.label) }))}
+      lines={props.lines?.map((l) => (l.label ? { ...l, label: cv(l.label) } : l))}
+      noteBoxes={props.noteBoxes?.map((nb) => ({ ...nb, title: nb.title && cv(nb.title), lines: nb.lines.map(cv) }))}
+    />
+  );
+}
+
+function TechnicalDrawingSvgInner({
+  unitLabel,
   worldWidth, worldHeight, title, components, dimensions, lines = [], shapes = [], noteBoxes = [],
   // Bumped from 640x480, then 760x560, then 960x720 — the densest drawings
   // (e.g. Bed with both side tables + Profile Shutter, or a Wardrobe with
@@ -230,7 +257,7 @@ export function TechnicalDrawingSvg({
   // more scale, which grows every drawn box's real on-screen size (fixed-
   // px labels/fonts stay constant, so this is pure legibility headroom).
   maxVw: maxVwProp = 1280, maxVh: maxVhProp = 960, componentStyle, selectedComponentId, onSelectComponent, onSelectDimension, plainDimLabels,
-}: RenderProps) {
+}: RenderProps & { unitLabel: 'mm' | 'in' }) {
   const viewportOverride = React.useContext(DrawingViewportContext);
   const maxVw = viewportOverride?.maxVw ?? maxVwProp;
   const maxVh = viewportOverride?.maxVh ?? maxVhProp;
@@ -294,7 +321,7 @@ export function TechnicalDrawingSvg({
           // Skip labels that are just a measurement (a bare number, or a
           // number followed by a "(W)"/"(H)"/"(D)" unit tag) — those are
           // door widths etc., already covered by their own dim arrow.
-          if (!first || /^[\d.]+$/.test(first) || /^[\d.]+\s*\(/.test(first)) return '';
+          if (!first || /^[\d.]+"?$/.test(first) || /^[\d.]+"?\s*\(/.test(first)) return '';
           if (namedByDim.has(first.toLowerCase())) return '';
           return first;
         };
@@ -628,7 +655,7 @@ export function TechnicalDrawingSvg({
         <g>
           <line x1={4} y1={vh - footerRoom} x2={vw - 4} y2={vh - footerRoom} stroke="#ddd" strokeWidth={0.6} />
           <text x={6} y={footerY} fontSize={footerFs} fontFamily="'JetBrains Mono',monospace" fill="#999">SmartMeasure CAD</text>
-          <text x={vw - 6} y={footerY} textAnchor="end" fontSize={footerFs} fontFamily="'JetBrains Mono',monospace" fill="#999">SCALE NTS · UNIT MM</text>
+          <text x={vw - 6} y={footerY} textAnchor="end" fontSize={footerFs} fontFamily="'JetBrains Mono',monospace" fill="#999">SCALE NTS · UNIT {unitLabel === 'in' ? 'INCH' : 'MM'}</text>
         </g>
       )}
     </svg>

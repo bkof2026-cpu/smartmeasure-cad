@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import 'svg2pdf.js';
+import { getLengthUnit, inchLabel } from '../units/lengthUnit';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Real PDF generation — one .pdf file, one download, no HTML/JSON side-file.
@@ -650,8 +651,8 @@ export interface PdfViewItem {
 const COMPONENT_TABLE_COLS = [
   { key: 'sr', label: 'Sr.', w: 0.045 },
   { key: 'component', label: 'Component', w: 0.235 },
-  { key: 'width', label: 'Width (mm)', w: 0.13 },
-  { key: 'height', label: 'Height (mm)', w: 0.13 },
+  { key: 'width', label: 'Width', w: 0.13 },
+  { key: 'height', label: 'Height', w: 0.13 },
   { key: 'qty', label: 'Qty', w: 0.07 },
   { key: 'thk', label: 'Thk (mm)', w: 0.09 },
   { key: 'remark', label: 'Evidence Note', w: 0.30 },
@@ -665,6 +666,14 @@ const COMPONENT_TABLE_COLS = [
  * muted grey the old formula text used) so it reads as a note, not
  * secondary metadata. Returns '' when there is no note, so the column is
  * simply blank rather than showing anything invented. */
+/** Width/Height cell text in the shared MM/Inch unit (the drawing above it uses the same unit). */
+function lengthCell(mm: number): string {
+  return getLengthUnit() === 'in' ? inchLabel(mm) : String(Math.round(mm));
+}
+function columnHeader(c: { key: string; label: string }): string {
+  return c.key === 'width' || c.key === 'height' ? `${c.label} (${getLengthUnit() === 'in' ? 'inch' : 'mm'})` : c.label;
+}
+
 function noteColumnText(evidenceNote: string | undefined): string {
   return evidenceNote?.trim() || '';
 }
@@ -677,7 +686,7 @@ function componentTableHeight(doc: jsPDF, rows: PdfCutRow[], tableWidth: number,
   doc.setFontSize(7.5);
   const noteText = noteColumnText(evidenceNote);
   const rowsH = rows.reduce((sum, r) => {
-    const values = [String(1), r.component, String(Math.round(r.width)), String(Math.round(r.height)), String(r.qty), r.thickness ? String(r.thickness) : '', noteText];
+    const values = [String(1), r.component, lengthCell(r.width), lengthCell(r.height), String(r.qty), r.thickness ? String(r.thickness) : '', noteText];
     const rowLines = values.map((v, ci) => doc.splitTextToSize(v, tableWidth * COMPONENT_TABLE_COLS[ci].w - 6));
     return sum + Math.max(11, ...rowLines.map((l) => l.length * 8));
   }, 0);
@@ -699,11 +708,11 @@ function drawComponentTable(doc: jsPDF, rows: PdfCutRow[], startY: number, table
   doc.setTextColor(17, 17, 17);
   doc.setFillColor(240, 240, 240);
   doc.rect(x, startY, w, 14, 'F');
-  cols.forEach((c, i) => doc.text(c.label, colX[i] + 3, startY + 10));
+  cols.forEach((c, i) => doc.text(columnHeader(c), colX[i] + 3, startY + 10));
 
   let y = startY + 14;
   rows.forEach((r, i) => {
-    const values = [String(i + 1), r.component, String(Math.round(r.width)), String(Math.round(r.height)), String(r.qty), r.thickness ? String(r.thickness) : '', noteText];
+    const values = [String(i + 1), r.component, lengthCell(r.width), lengthCell(r.height), String(r.qty), r.thickness ? String(r.thickness) : '', noteText];
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     const rowLines = values.map((v, ci) => doc.splitTextToSize(v, w * cols[ci].w - 6));

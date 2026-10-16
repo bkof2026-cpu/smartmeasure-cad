@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import { TechnicalDrawingSvg, type ComponentStyle } from '../../engine/CanonicalSvg';
-import { resolveLoftBoxPlan, loftBoxTitle, type LoftBoxInputs } from './loftBoxGeometry';
-import { recommendLoftDoorCount } from '../../engine/loftDoorEngine';
+import { resolveLoftBoxPlan, loftBoxTitle, loftBoxInputsFromDims } from './loftBoxGeometry';
 import { DrawingInspector } from '../../engine/DrawingInspector';
 import type { ComponentSpec, DimensionLine } from '../../engine/types';
-
-const n = (v: number | string | undefined) => Number(v ?? 0);
 
 interface Props {
   dims: Record<string, number | string>;
@@ -16,29 +13,9 @@ function loftBoxStyle(): ComponentStyle {
 }
 
 export const LoftBoxDrawing: React.FC<Props> = ({ dims }) => {
-  const W = n(dims.W) || 1000;
-  // Number of Shutters — no more fixed 6 default, per the user's explicit
-  // instruction. dims.shutterCount is 0 (see productRegistry.tsx's
-  // demoDimensions) until the user actually edits the field, at which
-  // point it holds their real chosen count and this recommendation is
-  // never consulted again — same "compute live until touched, then the
-  // user's own value always wins" pattern used for Wardrobe's Loft Door
-  // Count. Reuses the exact same shared engine (loftDoorEngine), not a
-  // separate/conflicting implementation.
-  const shutterCountRaw = n(dims.shutterCount);
-  const shutterCount = shutterCountRaw > 0 ? shutterCountRaw : recommendLoftDoorCount(W).doorCount;
-  const inp: LoftBoxInputs = {
-    H: n(dims.H) || 600,
-    W,
-    D: n(dims.D) || 400,
-    onlyShutter: Number(dims.onlyShutter ?? 0) === 1,
-    shutterCount,
-    topPanel: Number(dims.topPanel ?? 0) === 1,
-    // Base measurementFields store a 'select' as its literal option string
-    // (never an index) — unlike addon fields, which store an index.
-    topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left',
-    topPanelWidth: n(dims.topPanelWidth) || 300,
-  };
+  // Shutter Count / Shutter Width fall back to the live Loft-formula
+  // values until the user edits them (see loftBoxInputsFromDims).
+  const inp = loftBoxInputsFromDims(dims);
   const drawing = resolveLoftBoxPlan(inp);
   const [selected, setSelected] = useState<ComponentSpec | DimensionLine | null>(null);
 

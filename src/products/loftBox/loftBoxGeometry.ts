@@ -1,7 +1,7 @@
 import type { AnnotationLine, ComponentSpec, ResolvedDrawing } from '../../engine/types';
 import { resolveDimensions, type DimensionRequest } from '../../engine/dimensionEngine';
 import { validateComponentBounds, validateDimensionIntegrity, validateMeasurements } from '../../engine/validationEngine';
-import { loftOneDoorWidth } from '../../engine/loftDoorEngine';
+import { loftOneDoorWidth, loftDoorWidthStatus, recommendLoftDoorCount } from '../../engine/loftDoorEngine';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Loft Box — matches the user's own reference sketch: one box (Height x
@@ -22,8 +22,12 @@ export interface LoftBoxInputs {
   H: number;
   W: number;
   D: number;
-  onlyShutter: boolean;
-  shutterCount: number; // only meaningful when onlyShutter is true
+  onlyShutter: boolean; // true = shutters only (no carcass); false = full Box — BOTH are divided into shutterCount doors by the Loft formula
+  shutterCount: number;
+  /** Manually entered Shutter Width — defaults to the formula value and
+   * stays editable; when set it replaces the formula value in the labels
+   * and cutlist (the drawn shutters still divide the Width equally). */
+  shutterWidthOverride?: number;
   topPanel: boolean;
   topPanelSide: TopPanelSide;
   topPanelWidth: number; // only meaningful when topPanel is true
@@ -52,16 +56,46 @@ export function loftShutterWidth(loftWidth: number, shutterCount: number): numbe
   return loftOneDoorWidth(loftWidth, shutterCount);
 }
 
+/** Loft Box / Kitchen Loft form values → resolved inputs — the ONE place
+ * the drawing, the cutlist and the form's displayed defaults read from.
+ * shutterCount / shutterW are 0 (or absent) until the user edits them, and
+ * then fall back to the live Loft-formula values: the recommended count
+ * for this Width, and (W − count × 2mm) / count. */
+export function loftBoxInputsFromDims(dims: Record<string, number | string>): LoftBoxInputs & { recommendedShutterCount: number; formulaShutterWidth: number } {
+  const num = (v: number | string | undefined) => Number(v ?? 0);
+  const W = num(dims.W) || 1000;
+  const recommendedShutterCount = recommendLoftDoorCount(W).doorCount;
+  const shutterCount = num(dims.shutterCount) > 0 ? num(dims.shutterCount) : recommendedShutterCount;
+  const formulaShutterWidth = loftShutterWidth(W, shutterCount);
+  return {
+    H: num(dims.H) || 600,
+    W,
+    D: num(dims.D) || 400,
+    onlyShutter: num(dims.onlyShutter) === 1,
+    shutterCount,
+    shutterWidthOverride: num(dims.shutterW) > 0 ? num(dims.shutterW) : undefined,
+    topPanel: num(dims.topPanel) === 1,
+    // Base measurementFields store a 'select' as its literal option string.
+    topPanelSide: String(dims.topPanelSide ?? 'Left').toLowerCase() === 'right' ? 'right' : 'left',
+    topPanelWidth: num(dims.topPanelWidth) || 300,
+    recommendedShutterCount,
+    formulaShutterWidth,
+  };
+}
+
 export function loftBoxCutlist(inp: LoftBoxInputs): LoftBoxCutRow[] {
   const rows: LoftBoxCutRow[] = [
     { component: 'Loft Box', width: inp.W, height: inp.H, qty: 1, remark: `Height × Width (both entered) | Depth = ${Math.round(inp.D)}mm (entered)` },
   ];
-  if (inp.onlyShutter) {
+  {
     const count = Math.max(1, Math.round(inp.shutterCount) || 1);
-    const sw = loftShutterWidth(inp.W, count);
+    const formulaW = loftShutterWidth(inp.W, count);
+    const sw = inp.shutterWidthOverride ?? formulaW;
     rows.push({
-      component: `Shutter (×${count})`, width: sw, height: inp.H, qty: count,
-      remark: `Deduction = ${count} × 2 = ${count * 2}mm | Usable = ${Math.round(inp.W)} − ${count * 2} = ${Math.round(inp.W - count * 2)}mm | Each Shutter = ${(inp.W - count * 2).toFixed(0)} / ${count} = ${sw.toFixed(2)}mm`,
+      component: `${inp.onlyShutter ? 'Shutter' : 'Loft Box Door'} (×${count})`, width: sw, height: inp.H, qty: count,
+      remark: inp.shutterWidthOverride !== undefined
+        ? `Width entered manually = ${sw.toFixed(2)}mm (formula value ${formulaW.toFixed(2)}mm)`
+        : `Deduction = ${count} × 2 = ${count * 2}mm | Usable = ${Math.round(inp.W)} − ${count * 2} = ${Math.round(inp.W - count * 2)}mm | Each = ${(inp.W - count * 2).toFixed(0)} / ${count} = ${sw.toFixed(2)}mm`,
     });
   }
   if (inp.topPanel) {
@@ -72,7 +106,8 @@ export function loftBoxCutlist(inp: LoftBoxInputs): LoftBoxCutRow[] {
 
 export function loftBoxTitle(inp: LoftBoxInputs): string {
   const parts: string[] = [];
-  if (inp.onlyShutter) parts.push(`${Math.max(1, Math.round(inp.shutterCount) || 1)} SHUTTERS`);
+  const count = Math.max(1, Math.round(inp.shutterCount) || 1);
+  parts.push(inp.onlyShutter ? `ONLY SHUTTER (${count})` : `BOX (${count} DOORS)`);
   if (inp.topPanel) parts.push(`TOP PANEL (${inp.topPanelSide === 'left' ? 'LEFT' : 'RIGHT'})`);
   return parts.length ? `LOFT BOX — ${parts.join(' + ')}` : 'LOFT BOX';
 }
@@ -102,36 +137,30 @@ export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
   const lines: AnnotationLine[] = [];
   const dimReqs: DimensionRequest[] = [];
 
-  if (inp.onlyShutter) {
+  // Both Loft types (Only Shutter / Box) are divided into the entered (or
+  // recommended) Number of Shutters by the shared Loft formula —
+  // (W − count × 2mm) / count — same as the Wardrobe's Loft. (Box mode
+  // used to ignore the count and always draw 4 fixed panels.) Each
+  // shutter's width is a real dimension tick along the top edge; a bare
+  // number inside the box is suppressed by the renderer.
+  {
     const count = Math.max(1, Math.round(inp.shutterCount) || 1);
     const sw = loftShutterWidth(W, count);
+    const labelW = inp.shutterWidthOverride ?? sw;
     const gapMm = 2;
     let cursorX = boxX;
-    // Every shutter shows its own computed Width — matching the user's own
-    // reference sketch, which writes the per-shutter result (e.g. "331")
-    // inside EACH column, not just one of them. The overall drawing title
-    // already reads "LOFT BOX — N SHUTTERS", so a separate "Only shutter"
-    // callout on one box would be redundant with that; this is the real
-    // per-shutter formula RESULT instead, exactly like the sketch.
     for (let i = 0; i < count; i++) {
       components.push({
-        id: `shutter-${i}`, type: 'DOOR', label: `${Math.round(sw)}`,
+        id: `shutter-${i}`, type: 'DOOR', label: '',
         x: cursorX, y: boxY + 2, width: sw, height: H - 4, qty: 1, visible: true,
         source: { formula: `Shutter ${i + 1} of ${count} — Width = (W − ${count}×2) / ${count} = ${sw.toFixed(2)}mm`, constants: [] },
       });
+      dimReqs.push({
+        axis: 'h', x1: cursorX, y1: boxY, x2: cursorX + sw, y2: boxY, edge: 'top', componentIds: [`shutter-${i}`],
+        label: `${Math.round(labelW)}`,
+        source: { formula: inp.shutterWidthOverride !== undefined ? `Shutter ${i + 1} width entered manually = ${labelW.toFixed(2)}mm (formula ${sw.toFixed(2)}mm)` : `Shutter ${i + 1} of ${count} width = (${Math.round(W)} − ${count}×2) / ${count} = ${sw.toFixed(2)}mm`, constants: [] },
+      });
       cursorX += sw + gapMm;
-    }
-  } else {
-    // Even without "Only Shutter" active, the box still shows real
-    // divided panels — matching the user's own second reference sketch
-    // (a plain "Loft Box" with 4 equal columns, no per-column numbers
-    // since no shutter formula is in effect). A blank, undivided
-    // rectangle read as an unfinished drawing rather than a real Loft Box.
-    const defaultPanels = 4;
-    const panelW = W / defaultPanels;
-    for (let i = 1; i < defaultPanels; i++) {
-      const lx = boxX + panelW * i;
-      lines.push({ x1: lx, y1: boxY + 2, x2: lx, y2: boxY + H - 2, color: BOX_COLOR, strokeWidth: 1 });
     }
   }
 
@@ -179,9 +208,17 @@ export function resolveLoftBoxPlan(inp: LoftBoxInputs): ResolvedDrawing {
       { key: 'W', label: 'Width', min: 1 },
       { key: 'D', label: 'Depth', min: 1 },
     ]),
-    ...(inp.onlyShutter ? validateMeasurements({ shutterCount: inp.shutterCount }, [{ key: 'shutterCount', label: 'Number of Shutters', min: 1 }]) : []),
+    ...validateMeasurements({ shutterCount: inp.shutterCount }, [{ key: 'shutterCount', label: 'Number of Shutters', min: 1 }]),
     ...(inp.topPanel ? validateMeasurements({ topPanelWidth: inp.topPanelWidth }, [{ key: 'topPanelWidth', label: 'Top Panel Width', min: 1 }]) : []),
-    ...(inp.onlyShutter && loftShutterWidth(W, inp.shutterCount) <= 0 ? [{
+    ...(() => {
+      const w = inp.shutterWidthOverride ?? loftShutterWidth(W, inp.shutterCount);
+      const status = loftDoorWidthStatus(w);
+      if (w <= 0) return [];
+      if (status === 'below-min') return [{ id: 'val-loft-box-shutter-narrow', severity: 'WARNING' as const, code: 'LOFT_DOOR_TOO_NARROW', message: `⚠ Shutter width below 310mm (currently ${w.toFixed(0)}mm) — reduce Number of Shutters or increase Width.` }];
+      if (status === 'above-max') return [{ id: 'val-loft-box-shutter-wide', severity: 'WARNING' as const, code: 'LOFT_DOOR_TOO_WIDE', message: `⚠ Shutter width exceeds 400mm (currently ${w.toFixed(0)}mm) — increase Number of Shutters.` }];
+      return [];
+    })(),
+    ...(loftShutterWidth(W, inp.shutterCount) <= 0 ? [{
       id: 'val-loft-box-shutter-negative', severity: 'CRITICAL' as const, code: 'SHUTTER_TOO_NARROW',
       message: `${Math.round(inp.shutterCount)} shutters at a 2mm gap each leave no usable width out of ${Math.round(W)}mm — reduce the shutter count or increase Width.`,
     }] : []),

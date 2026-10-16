@@ -11,6 +11,7 @@ import { logDrawingEvent } from '../auth/authClient';
 import { mountOffscreenSvgs } from '../pdf/mountOffscreen';
 import { generateAndDownloadSingleProductPdf } from '../pdf/pdfEngine';
 import { MyStatsPanel } from './ProductFlow';
+import { useLengthUnit, mmToDisplay, displayToMm, unitLabel, UnitSelect } from '../units/lengthUnit';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The whole Kitchen product lives on ONE screen now — a simple
@@ -91,24 +92,31 @@ function NumInput({ label, value, onChange, unit = 'mm', note, required }: {
   // model was updated from elsewhere — Trolley change resetting spoValues,
   // demo load, etc.) so external updates still show up correctly.
   const [draft, setDraft] = React.useState<string | null>(null);
-  const displayValue = draft !== null ? draft : (value || value === 0 ? String(value || '') : '');
+  // Length fields ('mm') show and accept the shared MM/Inch unit; the
+  // stored value (and onChange) always stay in millimetres.
+  const lengthUnit = useLengthUnit();
+  const isLength = unit === 'mm';
+  const shownValue = isLength ? mmToDisplay(value, lengthUnit) : value;
+  const displayValue = draft !== null ? draft : (shownValue || shownValue === 0 ? String(shownValue || '') : '');
   const isEmpty = displayValue === '';
   return (
     <div className="flex flex-col gap-1 min-w-0">
       <div className="flex items-center justify-between gap-1">
         <label className="text-[10px] font-bold tracking-widest uppercase truncate" style={{ color: '#94a3b8' }}>{label}</label>
-        <span className="text-[10px] font-mono shrink-0" style={{ color: '#475569' }}>{unit}</span>
+        {isLength
+          ? <UnitSelect className="text-[10px] font-mono shrink-0 rounded outline-none cursor-pointer" style={{ background: '#1e2535', color: '#94a3b8', border: '1px solid #2a3347' }} />
+          : <span className="text-[10px] font-mono shrink-0" style={{ color: '#475569' }}>{unit}</span>}
       </div>
       <input
         type="number"
-        inputMode="numeric"
+        inputMode="decimal"
         value={displayValue}
         onChange={(e) => {
           const raw = e.target.value;
           setDraft(raw);
           if (raw === '') return; // do NOT write 0 while the field is genuinely empty
           const n = Number(raw);
-          if (Number.isFinite(n)) onChange(n);
+          if (Number.isFinite(n)) onChange(isLength ? displayToMm(n, lengthUnit) : n);
         }}
         onBlur={() => setDraft(null)}
         onWheel={(e) => e.currentTarget.blur()}
@@ -470,6 +478,7 @@ function SideSectionDoorsFrame({ iShape, clearSegments, updateIShapeConfig }: {
               <div className="grid grid-cols-2 gap-2">
                 <NumInput
                   label="Number of Doors"
+                  unit="count"
                   value={doors.doorCount}
                   onChange={(v) => updateIShapeConfig(
                     side === 'inner'
@@ -631,24 +640,27 @@ const DEPTH_DEDUCTION_OPTIONS = [10, 20];
  * same "don't silently insert 0 while the box is empty" behavior as
  * NumInput, but sized to sit inline in a single row instead of its own
  * labeled block. */
-function InlineNumEdit({ value, onChange, prefix = '', suffix = ' mm' }: {
+function InlineNumEdit({ value, onChange, prefix = '', suffix }: {
   value: number; onChange: (v: number) => void; prefix?: string; suffix?: string;
 }) {
   const [draft, setDraft] = React.useState<string | null>(null);
-  const displayValue = draft !== null ? draft : (value || value === 0 ? String(value) : '');
+  // A millimetre value shown/entered in the shared MM/Inch unit.
+  const lengthUnit = useLengthUnit();
+  const shownValue = mmToDisplay(value, lengthUnit);
+  const displayValue = draft !== null ? draft : (shownValue || shownValue === 0 ? String(shownValue) : '');
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 2 }}>
       {prefix}
       <input
         type="number"
-        inputMode="numeric"
+        inputMode="decimal"
         value={displayValue}
         onChange={(e) => {
           const raw = e.target.value;
           setDraft(raw);
           if (raw === '') return;
           const n = Number(raw);
-          if (Number.isFinite(n)) onChange(n);
+          if (Number.isFinite(n)) onChange(displayToMm(n, lengthUnit));
         }}
         onBlur={() => setDraft(null)}
         onWheel={(e) => e.currentTarget.blur()}
@@ -656,7 +668,7 @@ function InlineNumEdit({ value, onChange, prefix = '', suffix = ' mm' }: {
         className="text-right font-mono font-bold outline-none rounded"
         style={{ width: 56, background: '#1e2535', border: '1px solid #2a3347', color: '#fbbf24', fontSize: 12, padding: '1px 4px' }}
       />
-      {suffix}
+      {suffix ?? ` ${unitLabel(lengthUnit)}`}
     </span>
   );
 }
